@@ -6,12 +6,12 @@
 <meta name="theme-color" content="#faf7f2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="饭搭子">
+<meta name="apple-mobile-web-app-title" content="i吃饭">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" type="image/png" href="./icons/icon-192.png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
-<title>饭搭子 · 美食记录与聚餐决策</title>
+<title>i吃饭 · 美食记录与聚餐决策</title>
 <style>
   :root{
     --bg:#faf7f2; --card:#fff; --ink:#221d19; --ink2:#6b615a; --ink3:#9a8f86;
@@ -434,9 +434,9 @@
 
 <header class="topbar">
   <div class="topbar-in">
-    <div class="logo">饭</div>
+    <div class="logo">i</div>
     <div class="brand">
-      <h1>饭搭子</h1>
+      <h1>i吃饭</h1>
       <p>记录 · 决定 · 聚会 · 健身</p>
     </div>
     <div class="spacer"></div>
@@ -3897,7 +3897,7 @@
   }
   function shareText(payload){
     var lines = [];
-    lines.push('【饭搭子 · 朋友推荐】');
+    lines.push('【i吃饭 · 朋友推荐】');
     lines.push('条件：'+payload.n+' 人 · '+payload.b+(payload.tastes ? ' · 口味 '+payload.tastes : '')+(payload.avoid ? ' · 忌口 '+payload.avoid : ''));
     payload.items.forEach(function(it, i){
       lines.push((i+1)+'）'+it.n+(it.c ? '（'+it.c+'）' : '')+'｜人均 ¥'+it.p+(it.r ? ' · 评分 '+it.r : ''));
@@ -6059,7 +6059,7 @@
   }
   function diagText(){
     var lines = [
-      '饭搭子诊断',
+      'i吃饭诊断',
       '时间：'+new Date().toISOString(),
       '记录：'+db.records.length+' 条 / 店铺：'+getStores().length+' 家',
       'localStorage：'+fmtBytes(storageBytes())+'（键 '+KEY+'）',
@@ -7475,7 +7475,7 @@
         patrolEta(s), patrolUrl(s)].map(csvCell).join(','));
     });
     lines.push('');
-    lines.push(csvCell('由「饭搭子」本地生成于 '+new Date().toISOString()));
+    lines.push(csvCell('由「i吃饭」本地生成于 '+new Date().toISOString()));
     lines.push(csvCell('链接为高德网页版，未填经纬度时为店名搜索'));
     return '\ufeff' + lines.join('\r\n');
   }
@@ -7566,13 +7566,13 @@
       .then(function(res){
         var uri = (res && res.uri) || '';
         if(!uri) throw new Error('无法取得文件地址');
-        return Share.share({ title: title || '饭搭子', text: mime === 'image/png' ? '数据来自本人记录' : '', files: [uri], dialogTitle: title || '饭搭子' });
+        return Share.share({ title: title || 'i吃饭', text: mime === 'image/png' ? '数据来自本人记录' : '', files: [uri], dialogTitle: title || 'i吃饭' });
       });
   }
   function nativeShareText(text, title){
     var Share = capPlugin('Share');
     if(!Share) return Promise.reject(new Error('原生插件不可用'));
-    return Share.share({ title: title || '饭搭子', text: text, dialogTitle: title || '饭搭子' });
+    return Share.share({ title: title || 'i吃饭', text: text, dialogTitle: title || 'i吃饭' });
   }
   function nativeFailMsg(where, e, action){
     logError(where, e);
@@ -7585,7 +7585,7 @@
   }
   function download(filename, content, mime){
     if(nativeFileBridge()){
-      nativeShareFile(filename, utf8Base64(content), mime || 'text/plain', '导出 · 饭搭子')
+      nativeShareFile(filename, utf8Base64(content), mime || 'text/plain', '导出 · i吃饭')
         .then(function(){ toast('已生成文件，请在弹出的分享面板里保存或发送'); })
         .catch(function(e){ nativeFailMsg('导出文件', e, '导出'); });
       return;
@@ -7599,7 +7599,7 @@
   }
   function exportJson(){
     if(!db.records.length){ toast('还没有数据可导出'); return; }
-    download('饭搭子-美食记录-'+todayStr()+'.json', JSON.stringify(db, null, 2), 'application/json');
+    download('i吃饭-美食记录-'+todayStr()+'.json', JSON.stringify(db, null, 2), 'application/json');
     toast('已导出 JSON');
   }
   function csvCell(v){
@@ -7614,7 +7614,7 @@
       return [r.name,r.city,r.area,r.address,r.visitDate,MEAL_LABEL[r.mealType]||'',SCENE_LABEL[r.scene]||'',r.people,r.totalPrice,perPriceOf(r),r.category,r.rating,d.taste||'',d.env||'',d.service||'',d.value||'',(r.tags||[]).join(' '),r.kcal||'',r.protein||'',r.fitnessFriendly?'是':'',r.note];
     });
     var csv = '\ufeff' + [head].concat(rows).map(function(row){ return row.map(csvCell).join(','); }).join('\r\n');
-    download('饭搭子-美食记录-'+todayStr()+'.csv', csv, 'text/csv');
+    download('i吃饭-美食记录-'+todayStr()+'.csv', csv, 'text/csv');
     toast('已导出 CSV');
   }
   function importJson(file){
@@ -7756,7 +7756,7 @@
     if(!('Notification' in window) || Notification.permission !== 'granted') return;
     if(db.settings.lastNotified === info.key) return;
     try{
-      var n = new Notification('饭搭子 · 该记'+MEAL_LABEL[info.meal]+'了', {
+      var n = new Notification('i吃饭 · 该记'+MEAL_LABEL[info.meal]+'了', {
         body: '今天还没有'+MEAL_LABEL[info.meal]+'记录，点开记一餐。提醒只在本机生成。',
         tag: 'fandazi-meal'
       });
@@ -7944,7 +7944,7 @@
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, 280);
     ctx.fillStyle = 'rgba(255,255,255,.96)';
     ctx.font = '700 54px ' + SHARE_FONT;
-    ctx.fillText('饭搭子', 72, 112);
+    ctx.fillText('i吃饭', 72, 112);
     ctx.font = '400 26px ' + SHARE_FONT;
     ctx.fillStyle = 'rgba(255,255,255,.85)';
     ctx.fillText('记录吃过的店，替你决定下一顿', 72, 164);
@@ -8000,7 +8000,7 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = '#f6ece1';
     ctx.font = '800 92px ' + SHARE_FONT;
-    ctx.fillText('饭搭子', W/2, 1108);
+    ctx.fillText('i吃饭', W/2, 1108);
     ctx.fillStyle = '#dbcdbb';
     ctx.font = '400 24px ' + SHARE_FONT;
     ctx.fillText('记录吃过的店 · '+todayStr(), W/2, 1148);
@@ -8020,7 +8020,7 @@
   function shareImageText(kind){
     var data = shareDataOf(kind);
     if(!data) return '';
-    return ['【饭搭子 · '+data.title+'】', data.name, data.meta, data.tag]
+    return ['【i吃饭 · '+data.title+'】', data.name, data.meta, data.tag]
       .concat((data.lines||[]).map(function(l){ return '· '+l; }))
       .concat(['数据来自本人记录，不代表平台评价'])
       .join('\n');
@@ -8049,7 +8049,7 @@
   }
   function saveShareImage(){
     var kind = shareImage && shareImage.data ? shareImage.data.kind : 'daily';
-    var imgName = '饭搭子-'+todayStr()+'-'+(kind === 'draw' ? '抽签' : (kind === 'friend' ? '朋友推荐' : '推荐'))+'.png';
+    var imgName = 'i吃饭-'+todayStr()+'-'+(kind === 'draw' ? '抽签' : (kind === 'friend' ? '朋友推荐' : '推荐'))+'.png';
     if(nativeFileBridge()){
       shareImageBlob(function(blob){
         if(!blob){
@@ -8090,10 +8090,10 @@
     shareImageBlob(function(blob){
       if(!blob){ saveShareImage(); return; }
       var file = null;
-      try{ file = new File([blob], 'fandazi.png', { type: 'image/png' }); }catch(e){ file = null; }
+      try{ file = new File([blob], 'i吃饭.png', { type: 'image/png' }); }catch(e){ file = null; }
       if(file && navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share){
         try{
-          navigator.share({ files: [file], title: '饭搭子 · '+(data ? data.name : ''), text: shareImageText(kind) })
+          navigator.share({ files: [file], title: 'i吃饭 · '+(data ? data.name : ''), text: shareImageText(kind) })
             .then(function(){ toast('已调起系统分享'); })
             .catch(function(err){ if(err && err.name === 'AbortError') return; saveShareImage(); });
         }catch(e){ saveShareImage(); }
@@ -8481,14 +8481,14 @@
       lines.push(head.map(function(k){ return csvCell(row[k]); }).join(','));
     });
     lines.push('');
-    lines.push(csvCell('由「饭搭子」本地生成于 '+new Date().toISOString()));
+    lines.push(csvCell('由「i吃饭」本地生成于 '+new Date().toISOString()));
     lines.push(csvCell('数据来自本人记录，不代表平台评价'));
     return '\uFEFF' + lines.join('\r\n');
   }
   function downloadCsvSelected(){
     var records = exportTargets.slice(), opts = exportOpts();
     if(!records.length){ toast('没有选中记录'); return; }
-    download('饭搭子-选中记录-'+todayStr()+'.csv', buildCsv(records, opts), 'text/csv');
+    download('i吃饭-选中记录-'+todayStr()+'.csv', buildCsv(records, opts), 'text/csv');
     toast('已导出 CSV（'+records.length+' 条，UTF-8 BOM）');
     closeExport();
   }
@@ -8520,9 +8520,9 @@
     var records = exportTargets.slice(), opts = exportOpts();
     if(!records.length){ toast('没有选中记录'); return; }
     var out = {
-      应用: '饭搭子',
+      应用: 'i吃饭',
       生成时间: new Date().toISOString(),
-      说明: '由「饭搭子」在本机导出，未上传服务器；照片仅在本机 IndexedDB。',
+      说明: '由「i吃饭」在本机导出，未上传服务器；照片仅在本机 IndexedDB。',
       免责声明: '数据来自本人记录，不代表平台评价',
       字段选项: opts,
       记录数: records.length,
@@ -8531,7 +8531,7 @@
     var i = 0;
     function next(){
       if(i >= records.length){
-        download('饭搭子-选中记录-'+todayStr()+'.json', JSON.stringify(out, null, 2), 'application/json');
+        download('i吃饭-选中记录-'+todayStr()+'.json', JSON.stringify(out, null, 2), 'application/json');
         toast('已导出 JSON（'+records.length+' 条）');
         closeExport();
         return;
@@ -8565,7 +8565,7 @@
     return bits.join(' · ') || '本人到访记录';
   }
   function buildShareList(records, opts){
-    var lines = ['饭搭子 · 分享清单', '共 '+records.length+' 家 · 生成 '+todayStr(), ''];
+    var lines = ['i吃饭 · 分享清单', '共 '+records.length+' 家 · 生成 '+todayStr(), ''];
     records.forEach(function(r, i){
       var bits = [money(perPriceOf(r))+'/人'];
       if(hasKm(r)) bits.push(kmLine(r));
@@ -8573,7 +8573,7 @@
       lines.push((i+1)+'. '+r.name+'｜'+bits.join('｜')+'｜'+reasonOfRecord(r, opts));
     });
     lines.push('');
-    lines.push('由「饭搭子」在本机生成，未上传服务器。');
+    lines.push('由「i吃饭」在本机生成，未上传服务器。');
     lines.push('数据来自本人记录，不代表平台评价。');
     return lines.join('\n');
   }
@@ -8590,14 +8590,14 @@
     var text = longText || $('#shareListText').value;
     if(!text){ toast('清单为空'); return; }
     if(capNative() && capPlugin('Share')){
-      nativeShareText(text, '饭搭子 · 分享清单')
+      nativeShareText(text, 'i吃饭 · 分享清单')
         .then(function(){ toast('已调起系统分享'); })
         .catch(function(e){ if(nativeCanceled(e)) return; copyText(text); });
       return;
     }
     if(navigator.share){
       try{
-        navigator.share({ title:'饭搭子 · 分享清单', text:text })
+        navigator.share({ title:'i吃饭 · 分享清单', text:text })
           .then(function(){ toast('已调起系统分享'); })
           .catch(function(err){ if(err && err.name === 'AbortError') return; copyText(text); });
       }catch(e){ copyText(text); }
@@ -8620,7 +8620,7 @@
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, TOP);
     ctx.fillStyle = 'rgba(255,255,255,.96)';
     ctx.font = '700 50px ' + SHARE_FONT;
-    ctx.fillText('我的饭搭子清单', M, 104);
+    ctx.fillText('我的 i吃饭 清单', M, 104);
     ctx.fillStyle = 'rgba(255,255,255,.85)';
     ctx.font = '400 26px ' + SHARE_FONT;
     ctx.fillText('共 '+total+' 家 · 生成 '+todayStr()+' · 本人记录，不代表平台评价', M, 154);
@@ -8674,7 +8674,7 @@
     ctx.fillText('数据来自本人记录，不代表平台评价', M, fy+52);
     ctx.fillStyle = '#9a8f86';
     ctx.font = '400 22px ' + SHARE_FONT;
-    ctx.fillText('由「饭搭子」在本机生成 · 距离为手填或按坐标估算、价格手填 · '+todayStr(), M, fy+92);
+    ctx.fillText('由「i吃饭」在本机生成 · 距离为手填或按坐标估算、价格手填 · '+todayStr(), M, fy+92);
     return c;
   }
   function generateLongImages(){
@@ -8707,7 +8707,7 @@
       }
       canvas.toBlob(function(blob){
         if(blob){
-          longBlobs.push({ blob: blob, name: '饭搭子-清单-'+todayStr()+'-'+(i+1)+'.png' });
+          longBlobs.push({ blob: blob, name: 'i吃饭-清单-'+todayStr()+'-'+(i+1)+'.png' });
           var img = document.createElement('img');
           var url = URL.createObjectURL(blob);
           longUrls.push(url);
@@ -8726,7 +8726,7 @@
     if(nativeFileBridge()){
       blobBase64(blob, function(b64){
         if(!b64){ toast('导出失败：文件内容为空'); return; }
-        nativeShareFile(name, b64, blob.type || 'application/octet-stream', '导出 · 饭搭子')
+        nativeShareFile(name, b64, blob.type || 'application/octet-stream', '导出 · i吃饭')
           .then(function(){ toast('已生成文件，请在分享面板里保存或发送'); })
           .catch(function(e){ nativeFailMsg('导出文件', e, '导出'); });
       });
@@ -8761,7 +8761,7 @@
     if(nativeFileBridge()){
       nativeShareBlobs(longBlobs.slice(0, 10), function(err, uris){
         if(err || !uris.length){ nativeFailMsg('保存长图', err || new Error('文件写入失败'), '保存'); return; }
-        capPlugin('Share').share({ title:'饭搭子 · 长图', files: uris, dialogTitle:'保存长图' })
+        capPlugin('Share').share({ title:'i吃饭 · 长图', files: uris, dialogTitle:'保存长图' })
           .then(function(){ toast('已生成 '+uris.length+' 张长图，请在分享面板里保存'); })
           .catch(function(e){ if(nativeCanceled(e)) return; nativeFailMsg('保存长图', e, '保存'); });
       });
@@ -8781,7 +8781,7 @@
     if(nativeFileBridge()){
       nativeShareBlobs(longBlobs.slice(0, 10), function(err, uris){
         if(err || !uris.length){ nativeFailMsg('分享长图', err || new Error('文件写入失败'), '分享'); return; }
-        capPlugin('Share').share({ title:'饭搭子 · 分享清单', text:longText || '数据来自本人记录，不代表平台评价', files: uris, dialogTitle:'分享清单' })
+        capPlugin('Share').share({ title:'i吃饭 · 分享清单', text:longText || '数据来自本人记录，不代表平台评价', files: uris, dialogTitle:'分享清单' })
           .then(function(){ toast('已调起系统分享'); })
           .catch(function(e){ if(nativeCanceled(e)) return; nativeFailMsg('分享长图', e, '分享'); });
       });
@@ -8795,7 +8795,7 @@
     }catch(e){ files = []; }
     if(files.length && navigator.canShare && navigator.canShare({ files: files }) && navigator.share){
       try{
-        navigator.share({ files: files, title:'饭搭子 · 分享清单', text:longText || '数据来自本人记录，不代表平台评价' })
+        navigator.share({ files: files, title:'i吃饭 · 分享清单', text:longText || '数据来自本人记录，不代表平台评价' })
           .then(function(){ toast('已调起系统分享'); })
           .catch(function(err){ if(err && err.name === 'AbortError') return; saveLongImages(); });
       }catch(e){ saveLongImages(); }
@@ -8932,7 +8932,7 @@
     setFanziStatus('正在打包 '+recs.length+' 条记录…');
     buildFanziPayload(recs, opts).then(function(pkg){
       var json = JSON.stringify(pkg);
-      var name = '饭搭子-分享-'+todayStr()+'.fanzi.json';
+      var name = 'i吃饭-分享-'+todayStr()+'.fanzi.json';
       var blob = new Blob([json], { type:'application/json' });
       var file = null;
       try{ file = new File([blob], name, { type:'application/json' }); }catch(e){ file = null; }
@@ -8949,7 +8949,7 @@
         var ok = false;
         try{ ok = navigator.canShare({ files:[file] }); }catch(e){ ok = false; }
         if(ok){
-          navigator.share({ files:[file], title:'饭搭子 · 好友分享', text:'数据来自对方记录，仅供参考' })
+          navigator.share({ files:[file], title:'i吃饭 · 好友分享', text:'数据来自对方记录，仅供参考' })
             .then(function(){ setFanziStatus('已调起系统分享（'+json.length+' 字符）'); })
             .catch(function(err){
               if(err && err.name === 'AbortError') return;
@@ -10001,7 +10001,7 @@
         photos.forEach(function(p){ photoBytes += p.dataUrl.length; });
         return {
           format: BACKUP_FORMAT,
-          app: '饭搭子',
+          app: 'i吃饭',
           schemaVersion: db.version,
           exportedAt: new Date().toISOString(),
           checksum: { algo:'SHA-256', scope:'canonical(payload+photos)', value:sum },
@@ -10023,7 +10023,7 @@
       });
     });
   }
-  function backupFilename(){ return '饭搭子-完整备份-' + todayStr() + '.fandazi-backup.json'; }
+  function backupFilename(){ return 'i吃饭-完整备份-' + todayStr() + '.fandazi-backup.json'; }
   function generateBackupFile(){
     if(backupBusy) return Promise.resolve({ busy:true });
     backupBusy = true;
@@ -10058,7 +10058,7 @@
     try{ obj = JSON.parse(raw); }
     catch(e){ throw new Error('不是有效的 JSON：文件可能被截断或编码损坏'); }
     if(!obj || typeof obj !== 'object' || obj.format !== BACKUP_FORMAT){
-      throw new Error('不是「饭搭子」完整备份文件（缺少 format=' + BACKUP_FORMAT + '）');
+      throw new Error('不是「i吃饭」完整备份文件（缺少 format=' + BACKUP_FORMAT + '）');
     }
     var ver = num(obj.schemaVersion);
     if(!ver) throw new Error('备份文件缺少 schemaVersion，无法判断版本兼容性');
@@ -11757,7 +11757,7 @@
   $('#btnPatrolShare').addEventListener('click', sharePatrol);
   $('#btnPatrolCsv').addEventListener('click', function(){
     if(!patrolState.stops.length){ toast('还没有站点'); return; }
-    download('饭搭子-巡店清单-'+todayStr()+'.csv', patrolCsvText(), 'text/csv');
+    download('i吃饭-巡店清单-'+todayStr()+'.csv', patrolCsvText(), 'text/csv');
     toast('已导出巡店清单 CSV（'+patrolState.stops.length+' 站）');
   });
   $('#btnMapClose').addEventListener('click', closeMapModal);

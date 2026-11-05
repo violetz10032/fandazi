@@ -2,7 +2,7 @@
   "name": "fandazi",
   "version": "1.0.1",
   "private": true,
-  "description": "饭搭子 Android 壳（Capacitor WebView）",
+  "description": "i吃饭 Android 壳（Capacitor WebView）",
   "scripts": {
     "sync:www": "node scripts/copy-www.js",
     "sync:android": "npm run sync:www && npx cap sync android",

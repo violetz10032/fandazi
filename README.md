@@ -1,4 +1,4 @@
-# 饭搭子 · fandazi
+# i吃饭 · fandazi
 
 记录吃过的店，按场景、时间与距离决定下一顿。
 
@@ -10,7 +10,7 @@
 
 ## 是什么
 
-吃饭这件事有三个高频问题：去过哪家、这次吃什么、一群人吃什么。饭搭子把它们放进一个本地应用：
+吃饭这件事有三个高频问题：去过哪家、这次吃什么、一群人吃什么。i吃饭把它们放进一个本地应用：
 
 - **记录**：店名、商圈、人均、人数、四维评分（口味 / 环境 / 服务 / 性价比）、口味标签、忌口、营业与适合时段、手填距离与出行耗时。
 - **推荐**：日常（1 主推 + 2 备选，附中文理由）、聚会（2–3 个方案含总价与人均）、健身（按热量/蛋白目标汇总）、朋友（可复制推荐文案）。
@@ -92,7 +92,7 @@ Artifact 只保留 **14 天**，过期后重新跑一次工作流即可。
 
 ```
 android-app/
-├── capacitor.config.json     # appId com.fandazi.app，appName 饭搭子，webDir=www
+├── capacitor.config.json     # appId com.fandazi.app，appName i吃饭，webDir=www
 ├── package.json              # Capacitor 6.2.3 + @capacitor/filesystem/@capacitor/share 6.0.4
 ├── scripts/copy-www.js       # 从仓库根同步 index.html、manifest、sw.js、icons 到 www/
 ├── www/                      # WebView 加载的本地资产（由脚本同步，勿手改）
@@ -148,7 +148,7 @@ APK 内接了 `@capacitor/filesystem` + `@capacitor/share`：**CSV / JSON / 文�
 
 ### APK 自测清单（装机后 1 分钟）
 
-1. 打开应用 →「我的」→「数据」→ **导出 JSON**：应弹出系统分享面板，里面能看到 `饭搭子-美食记录-<日期>.json`；
+1. 打开应用 →「我的」→「数据」→ **导出 JSON**：应弹出系统分享面板，里面能看到 `i吃饭-美食记录-<日期>.json`；
 2. 在分享面板选「保存到文件」或「下载」→ 到文件管理器确认文件存在、用文本编辑器能打开；
 3. 「我的」→「数据」→ **导出 CSV** → 同上，确认有中文表头（BOM 不应乱码）；
 4. 「今天吃什么」→ **分享图** → 预览页点「保存」或「分享」→ 分享面板里有 PNG（1080×1350）；
