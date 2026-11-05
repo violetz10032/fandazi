@@ -71,6 +71,12 @@
   .tag.rating{color:var(--amber);background:#fffaf0;border-color:#f6e3ba}
   .tag.dim{color:#4a6b5a;background:#f2f8f4;border-color:#d8e8de}
   .tag.warn{color:#8a4b0f;background:#fff4e8;border-color:#ffd9ba}
+  .fb-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;padding-top:9px;border-top:1px dashed var(--line)}
+  .fb-label{font-size:11px;color:var(--ink3);margin-right:1px}
+  .fb-chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 9px;font-size:11px;color:var(--ink2);cursor:pointer;line-height:1.2;white-space:nowrap}
+  .fb-chip:active{transform:scale(.97)}
+  .fb-chip.on{background:var(--soft);border-color:#ffd0ad;color:#b8460a;font-weight:600}
+  .fb-badge{display:inline-block;margin-top:4px;font-size:11px;color:#8a4b0f;background:#fff4e8;border:1px solid #ffd9ba;border-radius:999px;padding:2px 8px;white-space:nowrap}
   .addr{font-size:12px;color:var(--ink2);margin-top:8px}
   .desc{font-size:13px;color:var(--ink2);margin-top:6px;white-space:pre-wrap;word-break:break-word}
   .actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
@@ -676,6 +682,26 @@
           <span class="hint" id="blackHint"></span>
         </div>
         <div id="blackBox"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-head" style="margin:0 0 10px">
+          <h2>推荐反馈</h2>
+          <span class="hint" id="fbHint"></span>
+        </div>
+        <div class="frow" style="gap:8px;margin-bottom:10px">
+          <select class="input" id="fbFilter">
+            <option value="">全部档位</option>
+            <option value="want">想吃</option>
+            <option value="tired">最近吃腻了</option>
+            <option value="dislike">不喜欢这家店</option>
+            <option value="never">永不推荐</option>
+            <option value="today">今天不想吃</option>
+          </select>
+          <button type="button" class="btn btn-danger" id="btnFbClear" style="flex:none">清空全部</button>
+        </div>
+        <div id="feedbackBox"></div>
+        <p class="dist-note">「今天不想吃」只在当天有效、不写入长期偏好；「永不推荐」等同黑名单。「可以考虑」会清除该店现有的负向反馈。</p>
       </div>
 
       <div class="card">
@@ -1962,12 +1988,20 @@
     if(isBlack(store)) return;
     db.blacklist.push({ key:store.key, name:store.name, city:store.city||'', at:new Date().toISOString() });
     save();
+    feedbackPersist('never', store);
     toast('已把「'+store.name+'」加入不再推荐');
   }
   function unblack(key){
+    var removedFb = false;
     db.blacklist = db.blacklist.filter(function(b){ return b.key !== key; });
+    feedbackStore.items = feedbackStore.items.filter(function(it){
+      if(it.action === 'never' && (it.blackKey === key || it.key === key)){ removedFb = true; return false; }
+      return true;
+    });
     save();
+    if(removedFb) saveFeedbackStore();
     toast('已移出黑名单');
+    if(activeView === 'more'){ renderBlacklist(); renderFeedback(); }
   }
   function conflictOf(store, restrictions){
     if(!restrictions || !restrictions.length) return null;
@@ -2235,7 +2269,8 @@
       ? { p:0.24, q:0.20, t:0.14, m:0.16, n:0.14, tr:0.08, wk:0.04 }
       : { p:0.28, q:0.22, t:0.16, m:0.14, n:0.10, tr:0.08, wk:0.02 };
     var base = 100*(w.p*pf + w.q*q + w.t*tf.v + w.m*mealVal + w.n*nov + w.tr*trv + w.wk*wk);
-    var score = Math.round(base * rp.m);
+    var fb = feedbackMultiplier(feedbackKeyOf(store));
+    var score = Math.round(base * rp.m * fb);
     var reasons = [];
 
     if(store.isWish) reasons.push('来自想去清单，还没打卡的新店');
@@ -2272,7 +2307,9 @@
       else reasons.push('很久没去（'+(Math.round(days/7)||1)+' 周），换个口味');
       if(store.visits > 1) reasons.push('累计记录 '+store.visits+' 次到访');
     }
-    return { score:score, reasons:reasons, penalty:rp, store:store, travelMin:tmin };
+    if(fb > 1.0001) reasons.push('你标记过想吃，反馈加权 ×'+fb.toFixed(2));
+    else if(fb < 0.9999) reasons.push('反馈降权 ×'+fb.toFixed(2)+'（到期或撤销后恢复）');
+    return { score:score, reasons:reasons, penalty:rp, store:store, travelMin:tmin, feedback:fb };
   }
 
   function runDaily(ctx){
@@ -2292,6 +2329,7 @@
     var nearestKm = { km: null, name: '' };
     all.forEach(function(s){
       if(isBlack(s)){ skipped.push({name:s.name, why:'在黑名单'}); return; }
+      if(feedbackTodaySkipped(s)){ skipped.push({name:s.name, why:'今天不想吃（仅当天排除）'}); return; }
       var cf = conflictOf(s, ctx.restrictions);
       if(cf){ skipped.push({name:s.name, why:'忌口命中「'+cf+'」'}); return; }
       var dkm = storeKm(s);
@@ -2350,7 +2388,7 @@
   function storeWeight(store){
     var rn = store.rating ? clamp(num(store.rating)/5, 0, 1) : 0.55;
     var rec = store.isWish ? 1 : Math.exp(-Math.max(0, num(store.days))/180);
-    var w = 1 + 1.5*rn + 1.0*rec;
+    var w = (1 + 1.5*rn + 1.0*rec) * feedbackMultiplier(feedbackKeyOf(store));
     return isFinite(w) ? w : 0;
   }
   function runDraw(min, max, nearOnly, maxTravel){
@@ -2674,6 +2712,241 @@
   var updateReady = false;
   var shareImage = null;
 
+  /* ================= 推荐反馈（六档） ================= */
+  /* 反馈独立存 localStorage 的 fandazi.feedback，不改 db.records 与 fandazi.v1。
+     key 现阶段沿用现有去重键「城市|店名」（与 keyOf 一致的小写形式）；
+     v2 迁移时会把它映射为 shopId，避免以后改店名/换城市丢反馈。 */
+  var FB_KEY = 'fandazi.feedback';
+  var FB_VERSION = 1;
+  var FB_TIRED_DAYS = 21;
+  var FB_ACTIONS = {
+    want:    { label:'想吃',        tone:'good' },
+    neutral: { label:'可以考虑',    tone:'' },
+    today:   { label:'今天不想吃',  tone:'warn' },
+    tired:   { label:'最近吃腻了',  tone:'warn' },
+    dislike: { label:'不喜欢这家店', tone:'warn' },
+    never:   { label:'永不推荐',    tone:'warn' }
+  };
+  var feedbackStore = loadFeedbackStore();
+  var feedbackToday = { date: todayStr(), items: {} };
+
+  function loadFeedbackStore(){
+    var out = { version:FB_VERSION, items:[] };
+    try{
+      var raw = JSON.parse(localStorage.getItem(FB_KEY) || 'null');
+      if(raw && typeof raw === 'object' && Array.isArray(raw.items)){
+        raw.items.forEach(function(it){
+          if(!it || typeof it.key !== 'string' || !it.key) return;
+          if(!FB_ACTIONS[it.action] || it.action === 'neutral' || it.action === 'today') return;
+          var at = Date.parse(it.at);
+          var until = it.until ? Date.parse(it.until) : NaN;
+          out.items.push({
+            key: it.key,
+            action: it.action,
+            at: new Date(isFinite(at) ? at : Date.now()).toISOString(),
+            until: isFinite(until) ? new Date(until).toISOString() : (it.action === 'tired' ? new Date(Date.now() + FB_TIRED_DAYS*86400000).toISOString() : null),
+            name: String(it.name || ''),
+            blackKey: it.blackKey ? String(it.blackKey) : null
+          });
+        });
+      }
+    }catch(e){ logError('反馈读取', e); }
+    return out;
+  }
+  function saveFeedbackStore(){
+    try{ localStorage.setItem(FB_KEY, JSON.stringify({ version:FB_VERSION, items:feedbackStore.items })); }
+    catch(e){ logError('反馈保存', e); toast('反馈保存失败：本机存储可能已满'); }
+  }
+  function ensureFeedbackToday(){
+    var d = todayStr();
+    if(feedbackToday.date !== d){ feedbackToday.date = d; feedbackToday.items = {}; }
+  }
+  function feedbackKeyOf(store){
+    if(!store) return '';
+    if(store.isWish || !store.key) return String(store.city || '').trim().toLowerCase() + '|' + String(store.name || '').trim().toLowerCase();
+    return store.key;
+  }
+  /* 无反馈严格返回 1.0；到期/无效条目同样恰好乘 1，不改变原排序 */
+  function feedbackTierMultiplier(it, now){
+    if(it.action === 'want'){
+      var age = Math.max(0, (now - (Date.parse(it.at) || now)) / 86400000);
+      return 1.12 + 0.10 * Math.exp(-age / 180);
+    }
+    if(it.action === 'tired'){
+      var end = Date.parse(it.until);
+      var remain = isFinite(end) ? (end - now) / 86400000 : 0;
+      if(remain <= 0) return 1;
+      return 1 - 0.45 * Math.min(1, remain / FB_TIRED_DAYS);
+    }
+    if(it.action === 'dislike'){
+      var age2 = Math.max(0, (now - (Date.parse(it.at) || now)) / 86400000);
+      return 0.62 + 0.38 * (1 - Math.exp(-age2 / 240));
+    }
+    return 1;
+  }
+  function feedbackMultiplier(key){
+    if(!key || !feedbackStore.items.length) return 1;
+    var now = Date.now(), m = 1;
+    for(var i=0;i<feedbackStore.items.length;i++){
+      var it = feedbackStore.items[i];
+      if(it.key !== key) continue;
+      m *= feedbackTierMultiplier(it, now);
+    }
+    return isFinite(m) && m > 0 ? m : 1;
+  }
+  function feedbackExpired(it){
+    return it.action === 'tired' && isFinite(Date.parse(it.until)) && Date.parse(it.until) <= Date.now();
+  }
+  function pruneFeedback(){
+    var before = feedbackStore.items.length;
+    feedbackStore.items = feedbackStore.items.filter(function(it){ return !feedbackExpired(it); });
+    if(before !== feedbackStore.items.length) saveFeedbackStore();
+  }
+  function feedbackActiveFor(key){
+    var now = Date.now(), out = null;
+    for(var i=0;i<feedbackStore.items.length;i++){
+      var it = feedbackStore.items[i];
+      if(it.key !== key) continue;
+      if(it.action === 'tired'){
+        var end = Date.parse(it.until);
+        if(isFinite(end) && end <= now) continue;
+      }
+      out = it;
+    }
+    return out;
+  }
+  function feedbackTodaySkipped(store){
+    ensureFeedbackToday();
+    return !!feedbackToday.items[feedbackKeyOf(store)];
+  }
+  function feedbackPersist(action, store){
+    if(!store) return null;
+    pruneFeedback();
+    var key = feedbackKeyOf(store), now = Date.now();
+    feedbackStore.items = feedbackStore.items.filter(function(it){ return it.key !== key; });
+    if(action === 'neutral' || action === 'today'){
+      saveFeedbackStore();
+      return null;
+    }
+    var item = { key:key, action:action, at:new Date(now).toISOString(), name:String(store.name || '') };
+    if(action === 'tired') item.until = new Date(now + FB_TIRED_DAYS*86400000).toISOString();
+    if(action === 'never') item.blackKey = store.key || key;
+    feedbackStore.items.push(item);
+    saveFeedbackStore();
+    return item;
+  }
+  function applyFeedback(action, store){
+    if(!store || !FB_ACTIONS[action]) return false;
+    ensureFeedbackToday();
+    var key = feedbackKeyOf(store);
+    if(action === 'today'){
+      feedbackToday.items[key] = { key:key, name:String(store.name || ''), at:new Date().toISOString() };
+      toast('已把「'+(store.name||'这家店')+'」从今天的推荐中排除，明天恢复');
+      refreshAfterFeedback();
+      return true;
+    }
+    if(action === 'never'){
+      if(!confirm('把「'+(store.name||'这家店')+'」设为永不推荐？\n\n将从推荐与抽签中彻底排除，可在「我的 → 推荐反馈」或黑名单里移除。')) return false;
+      delete feedbackToday.items[key];
+      if(!isBlack(store)) blackStore(store);
+      else { feedbackPersist('never', store); toast('已标记为永不推荐'); }
+      refreshAfterFeedback();
+      return true;
+    }
+    delete feedbackToday.items[key];
+    feedbackPersist(action, store);
+    var msg = action === 'neutral' ? '已恢复中性，负向反馈已清除'
+      : action === 'want' ? '已标记想吃，推荐会适度提高这家店'
+      : action === 'tired' ? '已标记吃腻了，'+FB_TIRED_DAYS+' 天内降权，到期自动恢复'
+      : '已标记不喜欢，长期降权（会缓慢恢复）';
+    toast(msg);
+    refreshAfterFeedback();
+    return true;
+  }
+  function refreshAfterFeedback(){
+    if(dailyState) safeRender('runDecideNow', function(){ runDecideNow(false); });
+    else safeRender('renderDecide', renderDecide, '#decideBox');
+    safeRender('renderFeedback', renderFeedback);
+    if(activeView === 'more') safeRender('renderBlacklist', renderBlacklist);
+  }
+  function undoFeedback(key, action){
+    ensureFeedbackToday();
+    var dbChanged = false;
+    if(action === 'today'){
+      delete feedbackToday.items[key];
+    }else{
+      feedbackStore.items = feedbackStore.items.filter(function(it){
+        if(it.key !== key || it.action !== action) return true;
+        if(it.action === 'never'){
+          var bk = it.blackKey || it.key;
+          var before = db.blacklist.length;
+          db.blacklist = db.blacklist.filter(function(b){ return b.key !== bk && b.key !== it.key; });
+          if(before !== db.blacklist.length) dbChanged = true;
+        }
+        return false;
+      });
+      saveFeedbackStore();
+    }
+    if(dbChanged) save();
+    toast('已撤销反馈');
+    renderFeedback();
+    if($('#blackBox')) renderBlacklist();
+    if(dailyState) runDecideNow(false);
+    return true;
+  }
+  function clearAllFeedback(){
+    ensureFeedbackToday();
+    var n = feedbackStore.items.length + Object.keys(feedbackToday.items).length;
+    if(!n){ toast('没有可清空的反馈'); return false; }
+    if(!confirm('清空全部 '+n+' 条推荐反馈？\n\n「永不推荐」加入的黑名单也会一并移除；到访记录不受影响。')) return false;
+    var blackKeys = {};
+    feedbackStore.items.forEach(function(it){
+      if(it.action === 'never'){ blackKeys[it.blackKey || it.key] = 1; blackKeys[it.key] = 1; }
+    });
+    feedbackStore.items = [];
+    feedbackToday.items = {};
+    var before = db.blacklist.length;
+    db.blacklist = db.blacklist.filter(function(b){ return !blackKeys[b.key]; });
+    saveFeedbackStore();
+    if(before !== db.blacklist.length) save();
+    toast('已清空全部推荐反馈');
+    renderFeedback();
+    if($('#blackBox')) renderBlacklist();
+    if(dailyState) runDecideNow(false);
+    return true;
+  }
+  function feedbackTierText(it){
+    if(!it) return '';
+    if(it.action === 'tired'){
+      var end = Date.parse(it.until);
+      var remain = isFinite(end) ? Math.max(0, Math.ceil((end - Date.now())/86400000)) : 0;
+      return '吃腻了·剩 '+remain+' 天';
+    }
+    return FB_ACTIONS[it.action] ? FB_ACTIONS[it.action].label : it.action;
+  }
+  function feedbackBadgeHtml(store){
+    var key = feedbackKeyOf(store), it = feedbackActiveFor(key), parts = [];
+    if(feedbackTodaySkipped(store)) parts.push('今天不想吃');
+    if(it) parts.push(feedbackTierText(it));
+    if(!parts.length) return '';
+    return '<span class="fb-badge">'+esc(parts.join(' · '))+'</span>';
+  }
+  function feedbackBarHtml(store){
+    var key = feedbackKeyOf(store), cur = feedbackActiveFor(key), today = feedbackTodaySkipped(store);
+    var on = {
+      want: !!(cur && cur.action === 'want'),
+      neutral: !cur,
+      today: today,
+      tired: !!(cur && cur.action === 'tired'),
+      dislike: !!(cur && cur.action === 'dislike'),
+      never: !!(cur && cur.action === 'never')
+    };
+    return '<div class="fb-bar"><span class="fb-label">反馈</span>'+
+      Object.keys(FB_ACTIONS).map(function(a){
+        return '<button type="button" class="fb-chip'+(on[a]?' on':'')+'" data-act="fb" data-key="'+esc(store.key)+'" data-fb="'+a+'">'+esc(FB_ACTIONS[a].label)+'</button>';
+      }).join('')+'</div>';
+  }
+
   function quickScore(rec){
     var p = perPriceOf(rec);
     return Math.round(100*(
@@ -2949,7 +3222,7 @@
       '<div class="top">'+
         '<div style="min-width:0">'+
           '<p class="muted">主推 · '+esc(MEAL_LABEL[st.ctx.meal])+'</p>'+
-          '<div class="draw-name">'+esc(main.store.name)+'</div>'+
+          '<div class="draw-name">'+esc(main.store.name)+'</div>'+feedbackBadgeHtml(main.store)+
           '<p class="draw-price">'+money(main.store.perPrice)+'/人 · '+(main.store.category||'未分类')+' · 适配分 '+main.score+'</p>'+
           '<p class="meta">'+esc([main.store.city,main.store.area].filter(Boolean).join(' · ')||'未填位置')+'</p>'+
         '</div>'+
@@ -2962,17 +3235,18 @@
         '<button class="btn" data-act="shareDaily">分享图</button>'+
       '</div>'+
       '<button class="btn btn-primary btn-block btn-lg" data-act="dailyEat" data-key="'+esc(main.store.key)+'" style="margin-top:9px">就吃这个</button>'+
+      feedbackBarHtml(main.store)+
     '</article>';
 
     var altCards = alts.map(function(x, i){
       return '<article class="card" style="padding:12px">'+
-        '<div class="top"><div style="min-width:0"><h3 style="font-size:15px">备选 '+(i+1)+' · '+esc(x.store.name)+'</h3>'+
+        '<div class="top"><div style="min-width:0"><h3 style="font-size:15px">备选 '+(i+1)+' · '+esc(x.store.name)+'</h3>'+feedbackBadgeHtml(x.store)+
         '<p class="meta">'+money(x.store.perPrice)+'/人 · '+(x.store.category||'未分类')+' · 适配分 '+x.score+'</p></div></div>'+
         '<div class="why">'+x.reasons.slice(0,2).map(function(t){ return '<div class="why-item">'+t+'</div>'; }).join('')+'</div>'+
         '<div class="actions" style="margin-top:10px">'+
           '<button class="btn btn-sm" data-act="dailyEat" data-key="'+esc(x.store.key)+'">就吃这个</button>'+
           '<button class="btn btn-sm btn-soft" data-act="jumpStore" data-key="'+esc(x.store.key)+'">打开平台</button>'+
-        '</div></article>';
+        '</div>'+feedbackBarHtml(x.store)+'</article>';
     }).join('');
 
     var log = '候选 '+st.list.length+' 家；已排除 '+(st.skipped.length)+' 家';
@@ -3364,6 +3638,39 @@
     }).join('');
   }
 
+  function renderFeedback(){
+    var box = $('#feedbackBox');
+    if(!box) return;
+    ensureFeedbackToday();
+    pruneFeedback();
+    var filter = $('#fbFilter') ? String($('#fbFilter').value || '') : '';
+    var rows = [];
+    feedbackStore.items.forEach(function(it){
+      rows.push({ key:it.key, name:it.name || it.key, action:it.action, at:it.at, item:it });
+    });
+    Object.keys(feedbackToday.items).forEach(function(k){
+      var t = feedbackToday.items[k];
+      rows.push({ key:k, name:t.name || k, action:'today', at:t.at, item:null });
+    });
+    if(filter) rows = rows.filter(function(r){ return r.action === filter; });
+    rows.sort(function(a,b){ return String(b.at || '').localeCompare(String(a.at || '')); });
+    var hint = $('#fbHint');
+    if(hint) hint.textContent = rows.length ? rows.length+' 条' : '';
+    if(!rows.length){
+      box.innerHTML = '<p class="muted">还没有反馈。推荐卡片底部的一排小按钮会记在这里。</p>';
+      return;
+    }
+    box.innerHTML = rows.map(function(r){
+      var label = r.action === 'tired' ? feedbackTierText(r.item) : FB_ACTIONS[r.action].label;
+      var tone = (r.action === 'want') ? 'dim' : 'warn';
+      return '<div class="vote-item">'+
+        '<div style="flex:1;min-width:0"><div style="font-size:13px"><b>'+esc(r.name)+'</b> <span class="tag '+tone+'">'+esc(label)+'</span></div>'+
+        '<p class="meta">'+esc(String(r.at || '').slice(0,10))+' · '+esc(r.key)+'</p></div>'+
+        '<button class="btn btn-sm" data-act="fbUndo" data-fbkey="'+esc(r.key)+'" data-fba="'+esc(r.action)+'">撤销</button>'+
+      '</div>';
+    }).join('');
+  }
+
   function renderSettings(){
     renderTasteChips($('#myTasteChips'), db.settings.tasteTags||[]);
     $('#myAvoidChips').innerHTML = (db.settings.restrictions||[]).map(function(t){
@@ -3473,6 +3780,7 @@
     renderStats();
     renderWishlist();
     renderBlacklist();
+    renderFeedback();
     renderSettings();
     renderPlaces();
     $('#st-records').textContent = db.records.length;
@@ -7261,6 +7569,9 @@
     var vid = actEl.getAttribute('data-vid');
     var pid = actEl.getAttribute('data-pid');
     var idx = parseInt(actEl.getAttribute('data-idx'), 10);
+    var fbAction = actEl.getAttribute('data-fb');
+    var fbKey = actEl.getAttribute('data-fbkey');
+    var fbPrev = actEl.getAttribute('data-fba');
 
     if(act === 'add'){ openForm(); }
     else if(act === 'loadMore'){
@@ -7362,6 +7673,11 @@
       toast('已从想去清单移除');
     }
     else if(act === 'unblack'){ if(key) unblack(key); }
+    else if(act === 'fb'){
+      var sfb = findStore(key);
+      if(sfb && fbAction) applyFeedback(fbAction, sfb);
+    }
+    else if(act === 'fbUndo'){ if(fbKey && fbPrev) undoFeedback(fbKey, fbPrev); }
     else if(act === 'setDefaultPlace'){ if(pid) setDefaultPlaceById(pid); }
     else if(act === 'delPlace'){ if(pid) delPlaceById(pid); }
     else if(act === 'delAvoid'){
@@ -7650,6 +7966,8 @@
   $('#btnAddTaste').addEventListener('click', addSettingTaste);
   $('#btnAddAvoid').addEventListener('click', addSettingAvoid);
   $('#btnAddPlace').addEventListener('click', addPlace);
+  $('#fbFilter').addEventListener('change', renderFeedback);
+  $('#btnFbClear').addEventListener('click', clearAllFeedback);
   $('#newPlace').addEventListener('keydown', function(e){
     if(e.key === 'Enter'){ e.preventDefault(); addPlace(); }
   });
@@ -8244,6 +8562,87 @@
           });
         });
       }
+    },
+    feedback: {
+      state: function(){
+        ensureFeedbackToday();
+        pruneFeedback();
+        return {
+          version:feedbackStore.version,
+          items:JSON.parse(JSON.stringify(feedbackStore.items)),
+          today:Object.keys(feedbackToday.items),
+          raw:(function(){ try{ return localStorage.getItem(FB_KEY); }catch(e){ return null; } })()
+        };
+      },
+      keyOf: function(name, city){
+        return String(city||'').trim().toLowerCase()+'|'+String(name||'').trim().toLowerCase();
+      },
+      set: function(key, action){
+        var s = findStore(key);
+        if(!s){ var p = String(key).split('|'); s = { key:key, name:p.slice(1).join('|') || key, city:p[0] || '' }; }
+        return applyFeedback(action, s);
+      },
+      setRaw: function(key, action){
+        var s = findStore(key);
+        if(!s){ var p = String(key).split('|'); s = { key:key, name:p.slice(1).join('|') || key, city:p[0] || '' }; }
+        if(action === 'never'){
+          if(!isBlack(s)) blackStore(s); else feedbackPersist('never', s);
+          refreshAfterFeedback();
+          return true;
+        }
+        return applyFeedback(action, s);
+      },
+      mult: function(key){ return feedbackMultiplier(key); },
+      active: function(key){ return feedbackActiveFor(key); },
+      undo: function(key, action){ return undoFeedback(key, action); },
+      patch: function(key, patch){
+        var it = null;
+        feedbackStore.items.forEach(function(x){ if(x.key === key) it = x; });
+        if(!it) return null;
+        Object.keys(patch || {}).forEach(function(k){ it[k] = patch[k]; });
+        saveFeedbackStore();
+        if(dailyState) runDecideNow(false);
+        return JSON.parse(JSON.stringify(it));
+      },
+      seed: function(items){
+        feedbackStore = { version:FB_VERSION, items:JSON.parse(JSON.stringify(items || [])) };
+        feedbackToday = { date:todayStr(), items:{} };
+        saveFeedbackStore();
+        renderFeedback();
+        if(dailyState) runDecideNow(false);
+        return feedbackStore.items.length;
+      },
+      rank: function(){
+        return dailyState ? dailyState.list.map(function(x){ return { name:x.store.name, score:x.score, fb:x.feedback }; }) : [];
+      },
+      skipped: function(){
+        return dailyState ? dailyState.skipped.map(function(x){ return { name:x.name, why:x.why }; }) : [];
+      },
+      badges: function(){
+        return $$('#decideBox .fb-badge').map(function(x){ return x.textContent; });
+      },
+      chips: function(){
+        return $$('#decideBox .fb-chip').map(function(x){ return { text:x.textContent, key:x.getAttribute('data-key'), fb:x.getAttribute('data-fb') }; });
+      },
+      drawPool: function(){
+        return drawState && drawState.pool ? drawState.pool.map(function(x){ return x.store.name; }) : [];
+      },
+      clearSilent: function(){
+        feedbackStore = { version:FB_VERSION, items:[] };
+        feedbackToday = { date:todayStr(), items:{} };
+        saveFeedbackStore();
+        renderFeedback();
+        if(dailyState) runDecideNow(false);
+        return true;
+      },
+      reset: function(){ return this.clearSilent(); },
+      todaySetDate: function(d){ feedbackToday.date = String(d || todayStr()); return feedbackToday.date; },
+      tierText: feedbackTierText,
+      list: function(){
+        renderFeedback();
+        return { text:$('#feedbackBox') ? $('#feedbackBox').innerText : '', hint:$('#fbHint') ? $('#fbHint').textContent : '' };
+      },
+      filter: function(v){ $('#fbFilter').value = v || ''; renderFeedback(); return $('#feedbackBox').innerText; }
     },
     map: {
       urls: function(o){
