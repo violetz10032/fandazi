@@ -1,7 +1,7 @@
 /* i吃饭 Service Worker
  * 只缓存同源静态资源；不代理、不缓存任何第三方站点；不上报任何数据。
  */
-const VERSION = 'fandazi-pwa-v6-20261105';
+const VERSION = 'fandazi-pwa-v7-20261106';
 const CACHE = 'fandazi-cache-' + VERSION;
 const PRECACHE = [
   './index.html',
@@ -9,7 +9,10 @@ const PRECACHE = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-192-maskable.png',
-  './icons/icon-512-maskable.png'
+  './icons/icon-512-maskable.png',
+  './icons/favicon-32.png',
+  './icons/favicon-16.png',
+  './icons/apple-touch-icon-180.png'
 ];
 
 self.addEventListener('install', function (event) {

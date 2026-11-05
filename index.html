@@ -13,8 +13,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 <meta name="apple-mobile-web-app-title" content="i吃饭">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="./manifest.webmanifest">
-<link rel="icon" type="image/png" href="./icons/icon-192.png">
-<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon-180.png">
 <title>i吃饭 · 美食记录与聚餐决策</title>
 <style>
   :root{
@@ -41,7 +42,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     --chart-axis:#e8ded2; --chart-grid:#f1eae0; --chart-text:#9a8f86;
     --chart-1:#e8590c; --chart-2:#2f8c5a; --chart-3:#6b5bd6; --chart-4:#b7791f; --chart-5:#3d7ea6; --chart-6:#9a8f86;
     --green:#2f8c5a; --amber:#b7791f; --danger:#b42318;
-    --shadow:0 6px 22px rgba(80,55,30,.07); --r:16px;
+    --shadow:0 1px 2px rgba(80,55,30,.05), 0 6px 20px rgba(80,55,30,.06); --r:16px;
+    /* 视觉 2.0：圆角 / 阴影 / 动效 / 图标统一规格（跟随皮肤 --r 自适应） */
+    --r-card:calc(var(--r) + 2px); --r-btn:min(var(--r),12px); --r-pill:999px; --r-tag:min(var(--r),8px);
+    --shadow-1:0 1px 2px rgba(80,55,30,.05), 0 4px 14px rgba(80,55,30,.05);
+    --shadow-2:0 2px 6px rgba(80,55,30,.07), 0 10px 26px rgba(80,55,30,.08);
+    --shadow-btn:0 2px 8px rgba(232,89,12,.22);
+    --ico-stroke:1.6px; --ico-r:6px;
+    --dur-fast:140ms; --dur-base:180ms; --ease:cubic-bezier(.2,.7,.2,1);
     /* 语义令牌：强调色分三种用途，避免「品牌黄当正文」这类冲突 */
     --accent-text:var(--accent); --accent-ink:#fff; --border-strong:#9a8c7a;
     /* 可覆盖的局部色（皮肤层只改变量，不改组件结构） */
@@ -75,6 +83,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     --chart-1:#ff7a2f; --chart-2:#4cc08a; --chart-3:#8b7dff; --chart-4:#e8b34e; --chart-5:#5aa5cc; --chart-6:#9d9184;
     --green:#4cc08a; --amber:#e8b34e; --danger:#ff7a70;
     --shadow:0 6px 22px rgba(0,0,0,.35);
+    --shadow-1:0 1px 2px rgba(0,0,0,.30), 0 4px 14px rgba(0,0,0,.24);
+    --shadow-2:0 2px 6px rgba(0,0,0,.34), 0 10px 26px rgba(0,0,0,.30);
+    --shadow-btn:0 2px 10px rgba(255,122,47,.26);
     --border-strong:#6d6156;
     --logo-a:#ff9a55; --logo-b:#ff6a1c; --logo-ink:#fff;
     --draw-a:#2c2018; --draw-b:#241f1a; --draw-line:#5a371e;
@@ -116,6 +127,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     --chart-1:#D8001F; --chart-2:#111111; --chart-3:#5F5F5F; --chart-4:#B07D00; --chart-5:#7A1F2B; --chart-6:#8A8377;
     --green:#2F7A4E; --amber:#8A5600; --danger:#B00019;
     --shadow:4px 4px 0 rgba(17,17,17,.16); --r:2px;
+    --shadow-1:2px 2px 0 rgba(17,17,17,.16); --shadow-2:3px 3px 0 rgba(17,17,17,.2); --shadow-btn:none;
     --logo-a:#D8001F; --logo-b:#111111; --logo-ink:#FFFFFF;
     --draw-a:#FCEAEB; --draw-b:#FFFFFF; --draw-line:#D8001F;
     --guide-a:#FCEAEB; --guide-b:#F5DCD8;
@@ -147,6 +159,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     --chart-1:#FF4A5C; --chart-2:#F7F3EC; --chart-3:#8E8E96; --chart-4:#FFC531; --chart-5:#B33A45; --chart-6:#63636B;
     --green:#4CC08A; --amber:#FFC531; --danger:#FF7A70;
     --shadow:4px 4px 0 rgba(0,0,0,.55);
+    --shadow-1:2px 2px 0 rgba(0,0,0,.5); --shadow-2:3px 3px 0 rgba(0,0,0,.6); --shadow-btn:none;
     --logo-a:#FF4A5C; --logo-b:#C4162B; --logo-ink:#FFFFFF;
     --draw-a:#2A1418; --draw-b:#18181B; --draw-line:#4E2329;
     --guide-a:#2A1418; --guide-b:#1F1416;
@@ -785,19 +798,117 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .g-pv .input{width:58px;height:32px;padding:4px 6px;font-size:12px;text-align:center;min-width:0}
   .g-vrow{font-size:11.5px;color:var(--ink2);line-height:1.7;overflow-wrap:anywhere}
   .g-empty .btn{margin-top:8px}
+
+  /* ============================================================
+     视觉 2.0：统一图标 / 层级 / 节奏 / 动效
+     只覆盖样式与少量包裹元素，不改动布局骨架与四视图结构。
+     ============================================================ */
+  /* ---------- 图标规范：24 网格、1.6 描边、圆头、R6 ---------- */
+  .ico{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:var(--ico-stroke);stroke-linecap:round;stroke-linejoin:round}
+  .ico-14{width:14px;height:14px}
+  .ico-16{width:16px;height:16px}
+  .ico-20{width:20px;height:20px}
+  .btn svg,.icon-btn svg,.tabbar svg,.guide-ico svg,.tut-fig svg,.remind svg,
+  .empty svg,.stat-sub svg,.annual-kv svg{stroke-width:var(--ico-stroke);stroke-linecap:round;stroke-linejoin:round}
+  .btn .ico-14,.icon-btn .ico-14{stroke-width:2}
+  .logo-bowl{width:19px;height:19px;stroke:var(--logo-ink);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .logo{box-shadow:0 2px 8px rgba(232,89,12,.22)}
+
+  /* ---------- 卡片层级与圆角 ---------- */
+  .card{border-radius:var(--r-card);padding:15px;box-shadow:var(--shadow-1)}
+  .card.flat{box-shadow:none}
+  .rec-card{box-shadow:var(--shadow-1);transition:box-shadow var(--dur-base) var(--ease),transform var(--dur-base) var(--ease)}
+  .rec-card:active{transform:scale(.997)}
+  .sheet{border-radius:calc(var(--r-card) + 4px) calc(var(--r-card) + 4px) 0 0}
+  .modal{border-radius:calc(var(--r-card) + 2px)}
+
+  /* ---------- 字号节奏 ---------- */
+  .brand h1{font-size:18px;font-weight:700;letter-spacing:.6px}
+  .brand p{font-size:10.5px;letter-spacing:.4px;color:var(--ink3)}
+  .section-head h2{font-size:16.5px;font-weight:700;letter-spacing:.2px}
+  .section-head .hint{font-size:11px;letter-spacing:.2px}
+  .rec-card h3{font-size:17px;font-weight:700;letter-spacing:.1px;line-height:1.35}
+  .rec-card .meta{font-size:11.5px;letter-spacing:.2px}
+  .score-pill{border-radius:calc(var(--r-btn) + 2px);min-width:54px;font-size:17px;font-variant-numeric:tabular-nums}
+  .score-pill small{font-size:9px;letter-spacing:.5px}
+
+  /* ---------- 标签：价格 / 评分排版 ---------- */
+  .tag{border-radius:var(--r-tag);font-variant-numeric:tabular-nums;letter-spacing:.1px}
+  .tag.price{font-weight:700;font-size:12.5px;letter-spacing:.2px}
+  .tag.rating{font-weight:600}
+  .tag.dim{font-variant-numeric:tabular-nums}
+  .actions{gap:7px}
+
+  /* ---------- 按钮主次 ---------- */
+  .btn{border-radius:var(--r-btn);min-height:36px;font-weight:600;letter-spacing:.1px;
+    transition:background-color var(--dur-fast) var(--ease),box-shadow var(--dur-fast) var(--ease),transform var(--dur-fast) var(--ease)}
+  .btn:active{transform:scale(.975)}
+  .btn-sm{min-height:30px;border-radius:min(var(--r),9px);font-weight:500}
+  .btn-primary{box-shadow:var(--shadow-btn);border-color:var(--accent)}
+  .btn-primary:active{box-shadow:none}
+  .btn-primary{min-height:44px}          /* 主按钮：≥44px 命中区 */
+  .btn-block{min-height:46px;font-size:15px;font-weight:700}
+  .btn-lg{min-height:48px}
+  .btn-soft{background:var(--soft);border-color:var(--accent-line)}
+  .btn-danger{font-weight:600}
+  @media (hover:hover){
+    .btn:hover{box-shadow:var(--shadow-1)}
+    .btn-primary:hover{filter:brightness(1.04)}
+    .rec-card:hover{box-shadow:var(--shadow-2)}
+  }
+
+  /* ---------- 底部标签：选中态胶囊 ---------- */
+  .tabbar{padding-bottom:calc(env(safe-area-inset-bottom) + 3px);box-shadow:0 -1px 0 var(--line),0 -10px 28px rgba(80,55,30,.05)}
+  html[data-theme="dark"] .tabbar{box-shadow:0 -1px 0 var(--line),0 -10px 28px rgba(0,0,0,.35)}
+  .tabbar button{position:relative;min-height:56px;gap:4px;padding:8px 0 7px;font-size:11.5px;letter-spacing:.4px}
+  .tabbar button svg{width:22px;height:22px}
+  .tabbar button.on::before{content:"";position:absolute;left:50%;top:5px;width:40px;height:29px;margin-left:-20px;
+    border-radius:calc(var(--r-btn) + 2px);background:var(--soft)}
+  .tabbar button.on{font-weight:700}
+  .tabbar button.on svg,.tabbar button.on span{position:relative}
+  .tabbar button:active svg{transform:scale(.94);transition:transform var(--dur-fast) var(--ease)}
+
+  /* ---------- 图标按钮：视觉 34px，命中区 44px ---------- */
+  .icon-btn{position:relative;width:34px;height:34px;border-radius:min(var(--r),10px);
+    transition:background-color var(--dur-fast) var(--ease)}
+  .icon-btn::after{content:"";position:absolute;inset:-5px;border-radius:calc(min(var(--r),10px) + 5px)}
+  .icon-btn:active{background:var(--soft)}
+
+  /* ---------- 空状态：轻量插画（内联 SVG，随主题取色） ---------- */
+  .empty{position:relative;padding-top:24px}
+  .empty::before{content:"";display:block;width:66px;height:52px;margin:0 auto 10px;
+    background-color:var(--accent-text);opacity:.34;
+    -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 52'><g fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round'><path d='M10 23h44c0 13-9 19-22 19s-22-6-22-19z'/><path d='M18 16c-2.4-4 2-6 .6-10'/><path d='M28 15c-2.4-4 2-6 .6-10'/><path d='M39 23 51 7'/></g></svg>") no-repeat center/contain;
+    mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 52'><g fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round'><path d='M10 23h44c0 13-9 19-22 19s-22-6-22-19z'/><path d='M18 16c-2.4-4 2-6 .6-10'/><path d='M28 15c-2.4-4 2-6 .6-10'/><path d='M39 23 51 7'/></g></svg>") no-repeat center/contain}
+  .empty h3{font-size:15.5px;font-weight:700;letter-spacing:.2px;color:var(--ink)}
+  .empty p{font-size:12px}
+
+  /* ---------- 动效：120–200ms，克制，不弹跳 ---------- */
+  .view{animation:viewIn var(--dur-base) var(--ease)}
+  .sheet{animation:up 200ms var(--ease)}
+  .toast{transition:opacity var(--dur-fast) var(--ease),transform var(--dur-fast) var(--ease)}
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{
+      animation-duration:.001ms!important;animation-iteration-count:1!important;
+      transition-duration:.001ms!important;scroll-behavior:auto!important}
+  }
 </style>
 </head>
 <body>
 
 <header class="topbar">
   <div class="topbar-in">
-    <div class="logo">i</div>
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" class="logo-bowl"><path d="M4.6 12.2h14.8c0 4.6-3.2 7.4-7.4 7.4S4.6 16.8 4.6 12.2z" fill="currentColor" stroke="none"/><path d="M14.4 11.6 20.2 4.6"/></svg>
+    </div>
     <div class="brand">
       <h1>i吃饭</h1>
       <p>记录 · 决定 · 聚会 · 健身</p>
     </div>
     <div class="spacer"></div>
-    <button class="btn btn-primary btn-sm" id="btnAddTop">+ 记一餐</button>
+    <button class="btn btn-primary btn-sm" id="btnAddTop">
+      <svg class="ico ico-14" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>记一餐
+    </button>
   </div>
 </header>
 
@@ -808,14 +919,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     <div class="remind hidden" id="remindBar">
       <div class="grow" id="remindText"></div>
       <button type="button" id="btnRemindGo">去记录</button>
-      <button type="button" id="btnRemindClose" aria-label="关闭">✕</button>
+      <button type="button" id="btnRemindClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
     </div>
 
     <!-- 备份提醒条（只在「我的」页显示，复用同一组件） -->
     <div class="remind hidden" id="backupRemindBar">
       <div class="grow" id="backupRemindText"></div>
       <button type="button" id="btnBackupGo">去备份</button>
-      <button type="button" id="btnBackupClose" aria-label="关闭">✕</button>
+      <button type="button" id="btnBackupClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
     </div>
 
     <!-- ================= 记录 ================= -->
@@ -871,9 +982,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <div id="panel-cal" class="hidden">
         <div class="card">
           <div class="cal-head">
-            <button class="icon-btn" id="calPrev" aria-label="上个月">‹</button>
+            <button class="icon-btn" id="calPrev" aria-label="上个月"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
             <h2 id="calTitle"></h2>
-            <button class="icon-btn" id="calNext" aria-label="下个月">›</button>
+            <button class="icon-btn" id="calNext" aria-label="下个月"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg></button>
           </div>
           <div class="cal-week">
             <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
@@ -887,9 +998,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <div class="notice hidden" id="diaryOldTip" style="margin-bottom:12px">当前为旧版数据，日记按旧记录的投影正常显示；可在「我的 → 数据」升级到新版数据结构。</div>
         <div class="card" style="padding:12px">
           <div class="diary-bar">
-            <button class="icon-btn" id="diaryPrev" aria-label="更早的月份">‹</button>
+            <button class="icon-btn" id="diaryPrev" aria-label="更早的月份"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
             <h2 id="diaryMonthTitle">全部月份</h2>
-            <button class="icon-btn" id="diaryNext" aria-label="更新的月份">›</button>
+            <button class="icon-btn" id="diaryNext" aria-label="更新的月份"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg></button>
           </div>
           <div class="diary-filters">
             <select class="input" id="diaryCat"><option value="">全部菜系</option></select>
@@ -918,8 +1029,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <div class="map-canvas-wrap" id="mapCanvasWrap">
           <canvas id="mapCanvas" aria-label="店铺散点地图"></canvas>
           <div class="map-tools">
-            <button type="button" class="icon-btn" id="mapZoomIn" aria-label="放大">＋</button>
-            <button type="button" class="icon-btn" id="mapZoomOut" aria-label="缩小">－</button>
+            <button type="button" class="icon-btn" id="mapZoomIn" aria-label="放大"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.5v11M6.5 12h11"/></svg></button>
+            <button type="button" class="icon-btn" id="mapZoomOut" aria-label="缩小"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 12h11"/></svg></button>
             <button type="button" class="btn" id="mapReset">复位</button>
           </div>
           <div class="map-note" id="mapNote">无底图 · 纯本地等距投影</div>
@@ -1464,7 +1575,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="sheet">
     <div class="sheet-head">
       <h2 id="diaryDetailTitle">到访详情</h2>
-      <button type="button" class="icon-btn" id="diaryClose" aria-label="关闭">✕</button>
+      <button type="button" class="icon-btn" id="diaryClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
     </div>
     <div id="diaryDetail"></div>
   </div>
@@ -1475,7 +1586,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="sheet">
     <div class="sheet-head">
       <h2 id="mapStoreTitle">店铺</h2>
-      <button type="button" class="icon-btn" id="mapStoreClose" aria-label="关闭">✕</button>
+      <button type="button" class="icon-btn" id="mapStoreClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
     </div>
     <div id="mapStoreBody"></div>
   </div>
@@ -1486,7 +1597,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="sheet">
     <div class="sheet-head">
       <h2 id="statDetailTitle">统计明细</h2>
-      <button type="button" class="icon-btn" id="statDetailClose" aria-label="关闭">✕</button>
+      <button type="button" class="icon-btn" id="statDetailClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
     </div>
     <div id="statDetailBody"></div>
   </div>
@@ -1495,16 +1606,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 <nav class="tabbar">
   <div class="tabbar-in">
     <button class="on" data-view="record" aria-label="记录">
-      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>记录</span>
+      <svg viewBox="0 0 24 24"><path d="M3.4 11.2h17.2c0 5.3-3.9 8.4-8.6 8.4S3.4 16.5 3.4 11.2z"/><path d="M12.9 10.5 19.2 3.8"/></svg><span>记录</span>
     </button>
     <button data-view="recommend" aria-label="推荐">
       <svg viewBox="0 0 24 24"><path d="M12 3.4l2.6 5.4 5.9.9-4.3 4.1 1 5.9L12 16.9l-5.2 2.8 1-5.9L3.5 9.7l5.9-.9z"/></svg><span>推荐</span>
     </button>
     <button data-view="pick" aria-label="抽签">
-      <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="1.2"/><circle cx="15" cy="9" r="1.2"/><circle cx="9" cy="15" r="1.2"/><circle cx="15" cy="15" r="1.2"/></svg><span>抽签</span>
+      <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3.2"/><circle cx="8.8" cy="8.8" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.2" cy="8.8" r="1.35" fill="currentColor" stroke="none"/><circle cx="8.8" cy="15.2" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.2" cy="15.2" r="1.35" fill="currentColor" stroke="none"/></svg><span>抽签</span>
     </button>
     <button data-view="more" aria-label="我的">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M4.5 20c0-3.6 3.2-6 7.5-6s7.5 2.4 7.5 6"/></svg><span>我的</span>
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M4.6 20c0-3.6 3.2-6 7.4-6s7.4 2.4 7.4 6"/></svg><span>我的</span>
     </button>
   </div>
 </nav>
@@ -1514,7 +1625,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <form class="sheet" id="recordForm" autocomplete="off">
     <div class="sheet-head">
       <h2 id="formTitle">记一餐</h2>
-      <button type="button" class="icon-btn" id="btnCloseSheet" aria-label="关闭">✕</button>
+      <button type="button" class="icon-btn" id="btnCloseSheet" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
     </div>
 
     <div class="field">
@@ -1767,7 +1878,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="modal patrol-modal" role="dialog" aria-modal="true" aria-labelledby="patrolTitle">
     <div class="sheet-head" style="margin-bottom:8px">
       <h3 id="patrolTitle">巡店清单</h3>
-      <button type="button" class="icon-btn" id="btnPatrolClose" aria-label="关闭">✕</button>
+      <button type="button" class="icon-btn" id="btnPatrolClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
     </div>
     <p class="muted" id="patrolSub">按选中的记录生成，同一家店只保留一站。</p>
     <div class="patrol-tools">
@@ -1847,7 +1958,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="tut-hint-t"><b>第一次互导？</b><span id="tutHintText">三步看懂怎么发、怎么收。</span></div>
   <div class="tut-hint-a">
     <button type="button" class="tut-hint-go" id="btnTutHintGo">看教程</button>
-    <button type="button" class="tut-hint-close" id="btnTutHintClose" aria-label="关闭提示">✕</button>
+    <button type="button" class="tut-hint-close" id="btnTutHintClose" aria-label="关闭提示"><svg class="ico ico-14" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
   </div>
 </div>
 
@@ -1880,7 +1991,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="fanziTitle">
     <div class="sheet-head" style="margin-bottom:10px">
       <h3 id="fanziTitle">分享给好友</h3>
-      <button type="button" class="icon-btn" id="btnFanziClose" aria-label="关闭">✕</button>
+      <button type="button" class="icon-btn" id="btnFanziClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
     </div>
     <p class="muted">生成 .fanzi.json 文件或 <code>#fanzi=</code> 链接；全程本机生成，不经过服务器。</p>
     <div class="field" style="margin-top:12px">
@@ -1920,7 +2031,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="modal import-modal" role="dialog" aria-modal="true" aria-labelledby="importTitle" style="padding-bottom:calc(18px + env(safe-area-inset-bottom))">
     <div class="sheet-head" style="margin-bottom:10px">
       <h3 id="importTitle">导入好友分享</h3>
-      <button type="button" class="icon-btn" id="btnImportClose" aria-label="关闭">✕</button>
+      <button type="button" class="icon-btn" id="btnImportClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
     </div>
     <div id="importStep1">
       <p class="muted" id="importLead">先预览再写入：重复默认跳过，冲突可逐条选择；导入前会保留快照，可一次性撤销。</p>
@@ -5042,15 +5153,28 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
 
   /* ================= 记录列表 ================= */
+  /* 统一图标：24 网格线性自绘，尺寸见 .ico / .ico-14 / .ico-16 / .ico-20 */
+  var ICON = {
+    edit: '<path d="M4 20l4.2-1L18 9.2a2.1 2.1 0 0 0-3-3L5.2 16 4 20z"/><path d="M13.6 6.6l3.8 3.8"/>',
+    pin: '<path d="M12 21s6.5-6.2 6.5-10.6a6.5 6.5 0 0 0-13 0C5.5 14.8 12 21 12 21z"/><circle cx="12" cy="10.3" r="2.4"/>',
+    ext: '<path d="M14 4h6v6"/><path d="M20 4l-8.6 8.6"/><path d="M18 13.5V18a2 2 0 0 1-2 2H5.5A2 2 0 0 1 3.5 18V7.5a2 2 0 0 1 2-2H10"/>',
+    eyeOff: '<path d="M4 4l16 16"/><path d="M9.7 5.4A10 10 0 0 1 12.2 5c5 0 8.7 4.4 9.6 6.4a2 2 0 0 1 0 1.2 12.6 12.6 0 0 1-2.3 3"/><path d="M6.2 8.3A12.6 12.6 0 0 0 2.6 11.6a2 2 0 0 0 0 1.2C3.5 14.8 7.2 19 12.2 19a9.6 9.6 0 0 0 4-.9"/><path d="M9.8 9.9a3 3 0 0 0 4.2 4.2"/>',
+    repeat: '<path d="M4.6 11A7.4 7.4 0 0 1 17.6 5.7"/><path d="M17.6 3.4v4.4h-4.4"/><path d="M19.4 13a7.4 7.4 0 0 1-13 5.3"/><path d="M6.4 20.6v-4.4h4.4"/>',
+    star: '<path d="M12 3.4l2.6 5.4 5.9.9-4.3 4.1 1 5.9L12 16.9l-5.2 2.8 1-5.9L3.5 9.7l5.9-.9z"/>'
+  };
+  function icon(name, cls){ return '<svg class="ico '+(cls||'ico-14')+'" viewBox="0 0 24 24" aria-hidden="true">'+ICON[name]+'</svg>'; }
+
   function recordCard(r){
     var p = perPriceOf(r);
     var s = quickScore(r);
-    var tags = ['<span class="tag">'+esc(r.visitDate||'')+'</span>'];
+    var tags = [];
+    /* 主次信息：价格、评分、菜系靠前；日期/时段/人数等辅助信息在后 */
+    tags.push('<span class="tag price">'+money(p)+'/人</span>');
+    if(num(r.rating) > 0) tags.push('<span class="tag rating">综合 '+esc(r.rating)+'</span>');
+    if(r.category) tags.push('<span class="tag">'+esc(r.category)+'</span>');
+    tags.push('<span class="tag">'+esc(r.visitDate||'')+'</span>');
     if(r.mealType) tags.push('<span class="tag">'+esc(MEAL_LABEL[r.mealType])+'</span>');
     tags.push('<span class="tag">'+esc(r.people||1)+' 人</span>');
-    tags.push('<span class="tag price">'+money(p)+'/人</span>');
-    if(r.category) tags.push('<span class="tag">'+esc(r.category)+'</span>');
-    if(num(r.rating) > 0) tags.push('<span class="tag rating">综合 '+esc(r.rating)+'</span>');
     if(r.scene) tags.push('<span class="tag">'+esc(SCENE_LABEL[r.scene]||r.scene)+'</span>');
     (r.tags||[]).forEach(function(t){ tags.push('<span class="tag">'+esc(t)+'</span>'); });
     if(r.kcal || r.protein){
@@ -5084,12 +5208,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         ? '<img class="thumb" data-photo="'+esc(r.photoId)+'" loading="lazy" decoding="async" alt="到访照片">'
         : (r.photo ? '<img class="thumb" src="'+esc(r.photo)+'" loading="lazy" decoding="async" alt="到访照片">' : ''))+
       '<div class="actions">'+
-        '<button class="btn btn-sm" data-act="edit" data-id="'+esc(r.id)+'">编辑</button>'+
-        '<button class="btn btn-sm btn-soft" data-act="map" data-id="'+esc(r.id)+'" title="点击在高德打开，长按可选高德/百度">地图</button>'+
-        '<button class="btn btn-sm btn-soft" data-act="jump" data-id="'+esc(r.id)+'">打开平台</button>'+
-        '<button class="btn btn-sm btn-danger" data-act="black" data-id="'+esc(r.id)+'">不再推荐</button>'+
+        '<button class="btn btn-sm" data-act="edit" data-id="'+esc(r.id)+'">'+icon('edit')+'编辑</button>'+
+        '<button class="btn btn-sm btn-soft" data-act="map" data-id="'+esc(r.id)+'" title="点击在高德打开，长按可选高德/百度">'+icon('pin')+'地图</button>'+
+        '<button class="btn btn-sm btn-soft" data-act="jump" data-id="'+esc(r.id)+'">'+icon('ext')+'打开平台</button>'+
+        '<button class="btn btn-sm btn-danger" data-act="black" data-id="'+esc(r.id)+'">'+icon('eyeOff')+'不再推荐</button>'+
       '</div>'+
-      '<button class="btn btn-soft btn-block btn-lg" data-act="again" data-id="'+esc(r.id)+'" style="margin-top:9px">再来一次</button>'+
+      '<button class="btn btn-soft btn-block btn-lg" data-act="again" data-id="'+esc(r.id)+'" style="margin-top:9px">'+icon('repeat','ico-16')+'再来一次</button>'+
     '</article>';
   }
 
@@ -12750,7 +12874,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function backupErrorModal(msg, title){
     openBackupModal(
       '<div class="sheet-head" style="margin-bottom:8px"><h3>' + esc(title || '无法恢复') + '</h3>' +
-        '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+        '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
       '<p class="muted">' + esc(msg || '未知错误') + '</p>' +
       '<p class="dist-note">原数据没有被修改；可重新选择文件或先用「导出 JSON」确认本机数据。</p>' +
       '<div class="actions" style="margin-top:12px"><button class="btn btn-block" data-act="close">关闭</button></div>'
@@ -12762,7 +12886,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var last = backupLast();
       var html =
         '<div class="sheet-head" style="margin-bottom:8px"><h3>完整备份</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
         '<p class="muted">把所有记录、配置与照片打包成一个 <b>.fandazi-backup.json</b> 文件，只保存到你选择的位置，不上传服务器。</p>' +
         '<div class="stats" style="margin-top:10px">' +
           '<div class="stat"><b>' + est.records + '</b><span>条记录</span></div>' +
@@ -12787,7 +12911,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     generateBackupFile().then(function(res){
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>备份已生成</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
         '<p class="muted">' + esc(res.name) + ' · ' + fmtBytes(res.size) + ' · 用时 ' + fmtMs(res.ms) + '</p>' +
         '<p class="dist-note">记录 ' + res.records + ' 条、照片 ' + res.photos + ' 张（' + fmtBytes(res.photoBytes) + '）。浏览器下载到下载目录；APK 内会调起系统分享面板，选「保存到文件」即可。</p>' +
         '<p class="muted" style="margin-top:8px">上次备份时间已更新为：' + backupAgoText(backupLast()) + '</p>' +
@@ -12809,7 +12933,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       obj.photos.forEach(function(p){ totalPhotoBytes += p.dataUrl.length; });
       var html =
         '<div class="sheet-head" style="margin-bottom:8px"><h3>恢复完整备份</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
         '<p class="muted">备份时间 ' + esc(backupDateText(obj.exportedAt)) + ' · 数据结构 version ' + num(obj.schemaVersion) + '（当前 ' + db.version + '）</p>' +
         '<div class="stats" style="margin-top:10px">' +
           '<div class="stat"><b>' + norm.records.length + '</b><span>条记录</span></div>' +
@@ -12848,7 +12972,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       pendingRestore = null;
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>恢复完成</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
         '<p class="muted">' + (res.replaced ? '已完整替换为备份内容' : '合并完成') + '：写入 ' + res.added + ' 条，跳过 ' + res.skipped + ' 条，恢复照片 ' + res.photos + ' 张（' + fmtBytes(res.photoBytes) + '），用时 ' + fmtMs(res.ms) + '。</p>' +
         '<p class="dist-note">' + (res.feedbackApplied ? '推荐反馈已按备份还原（' + res.feedback + ' 条，不按记录去重）。' : '该备份不含反馈段（旧版本备份），本机反馈保持不变。') + '</p>' +
         '<p class="dist-note">' + (res.profileApplied ? '「我的口味」手动设置已还原（提升 ' + res.profileBoost + ' 项 / 拉黑 ' + res.profileBlock + ' 项 / 上限 ' + (res.profileBudget ? '¥' + res.profileBudget : '未设置') + '）。' : '该备份不含口味设置段（旧版本备份），本机口味设置保持不变。') + '</p>' +
@@ -12874,7 +12998,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return restoreSnapshotById(snap.id).then(function(res){
         openBackupModal(
           '<div class="sheet-head" style="margin-bottom:8px"><h3>已恢复</h3>' +
-            '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+            '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
           '<p class="muted">已回到 ' + esc(backupDateText(res.at)) + ' 的恢复点：' + res.records + ' 条记录，照片引用 ' + res.photos + ' 张。</p>' +
           '<div class="actions" style="margin-top:12px"><button class="btn btn-block" data-act="close">完成</button></div>'
         );
@@ -13006,7 +13130,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var deltaText = (delta >= 0 ? '+' : '−') + fmtBytes(Math.abs(delta)) + (p.v1Bytes ? '（' + (delta >= 0 ? '+' : '−') + pct + '%）' : '');
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>升级到新版数据</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
         '<div class="stats">' +
           '<div class="stat"><b>' + p.records + '</b><span>条记录</span></div>' +
           '<div class="stat"><b>' + p.shops + '</b><span>家店铺</span></div>' +
@@ -13039,7 +13163,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         : '没有孤儿照片';
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>已升级到新版数据</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
         '<div class="stats">' +
           '<div class="stat"><b>' + res.addedVisits + '</b><span>新增到访</span></div>' +
           '<div class="stat"><b>' + res.skippedVisits + '</b><span>跳过重复</span></div>' +
@@ -13070,7 +13194,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     generateBackupFile().then(function(res){
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>备份已完成</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
         '<p class="muted">' + esc(res.name) + ' · ' + fmtBytes(res.size) + ' · 用时 ' + fmtMs(res.ms) + '</p>' +
         '<p class="dist-note">记录 ' + res.records + ' 条、照片 ' + res.photos + ' 张已打包；现在可以安全地继续升级。</p>' +
         '<div class="actions" style="margin-top:12px">' +
@@ -13107,7 +13231,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var p = v2RevertPlan(), c = p.config;
     openBackupModal(
       '<div class="sheet-head" style="margin-bottom:8px"><h3>回到旧版数据</h3>' +
-        '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+        '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
       '<p class="muted">会删除新版数据（fandazi.v2）与迁移标记，回到迁移前的旧版数据。</p>' +
       '<div class="stats" style="margin-top:10px">' +
         '<div class="stat"><b>' + p.lostVisits + '</b><span>条迁移后新增会丢失</span></div>' +
@@ -13153,7 +13277,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     setTimeout(function(){
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>已回到旧版数据</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
         '<p class="muted">当前使用旧版数据：' + num(res.records) + ' 条记录。</p>' +
         '<p class="dist-note">迁移后新增的 ' + num(res.lostVisits) + ' 条到访已按预期移除；旧版数据 fandazi.v1 未被改动；照片仍在（IndexedDB 未删除）。</p>' +
         '<p class="dist-note">新版模式下改过的设置 / 黑名单 / 想去 / 投票 / 常用地点也回到迁移前的版本，这是设计。</p>' +
@@ -13183,7 +13307,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     v2LiveStatus().then(function(st){
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>重建新版数据</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
         '<p class="muted">按当前记录重新计算店铺聚合与照片引用，用于修复不一致（例如某张照片被误删）。</p>' +
         '<p class="dist-note">影响范围：只重写新版数据（fandazi.v2）；旧版数据 fandazi.v1 与 IndexedDB 照片都不动；不会删除记录，也不会补回已不存在的照片。</p>' +
         '<p class="dist-note">当前：' + st.shops + ' 家店 / ' + st.visits + ' 条到访 / 孤儿照片 ' + st.orphans + ' 张；预计耗时约 ' + v2EstimateMs(st.visits) + ' ms。</p>' +
@@ -13207,7 +13331,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         var after = v2Status();
         openBackupModal(
           '<div class="sheet-head" style="margin-bottom:8px"><h3>重建完成</h3>' +
-            '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+            '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
           '<div class="stats">' +
             '<div class="stat"><b>' + before.shops + ' → ' + after.shops + '</b><span>店铺数</span></div>' +
             '<div class="stat"><b>' + before.visits + ' → ' + after.visits + '</b><span>到访数</span></div>' +
@@ -13272,7 +13396,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     restoreSnapshotById(id).then(function(res){
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>已恢复</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
         '<p class="muted">已回到 ' + esc(backupDateText(res.at)) + ' 的恢复点：' + res.records + ' 条记录，照片引用 ' + res.photos + ' 张。</p>' +
         '<div class="actions" style="margin-top:12px"><button class="btn btn-block" data-act="close">完成</button></div>'
       );
