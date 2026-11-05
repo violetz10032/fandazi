@@ -15537,7 +15537,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     return false;
   }
-  var backArmed = false, backSelf = false;
+  var backArmed = false, backSelf = false, nativeBackAt = 0, nativeBackBound = false;
   function syncBackGuard(){
     try{
       if(!MASK_CLOSERS) return;
@@ -15550,23 +15550,38 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   window.addEventListener('popstate', function(){
     if(backSelf){ backSelf = false; return; }
+    /* 原生返回键已处理过同一次手势：history 若同时回退，只吞掉这一条，不再执行第二遍 */
+    if(nativeBackAt && Date.now() - nativeBackAt < 400){
+      nativeBackAt = 0; backArmed = false;
+      setTimeout(syncBackGuard, 0);
+      return;
+    }
     backArmed = false;
     if(backOneLevel()){ /* 已关闭一层 */ }
     setTimeout(syncBackGuard, 0);
   });
   function bindNativeBack(){
+    if(nativeBackBound) return true;
     try{
       var C = window.Capacitor;
-      if(!C || !C.isNativePlatform || !C.isNativePlatform()) return;
-      if(!C.Plugins || !C.Plugins.App || !C.Plugins.App.addListener) return;
+      if(!C || !C.isNativePlatform || !C.isNativePlatform()) return false;
+      if(!C.Plugins || !C.Plugins.App || typeof C.Plugins.App.addListener !== 'function') return false;
+      nativeBackBound = true;
       C.Plugins.App.addListener('backButton', function(){
-        if(!backOneLevel()){
+        nativeBackAt = Date.now();
+        var handled = backOneLevel();
+        if(!handled){
           try{ C.Plugins.App.exitApp(); }catch(e){}
+          return;
         }
+        setTimeout(syncBackGuard, 0);
       });
-    }catch(e){}
+      return true;
+    }catch(e){ return false; }
   }
   bindNativeBack();
+  /* 原生桥偶尔晚于首屏脚本就绪：补一次 deviceready 重试，网页版无此事件也无副作用 */
+  try{ document.addEventListener('deviceready', bindNativeBack); }catch(e){}
   /* 弹层是通过切换 .hidden 打开的，showView/showPanel 覆盖不到：监听 class 变化补齐守卫 */
   var backSyncTimer = null;
   function queueBackSync(){

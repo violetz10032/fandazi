@@ -105,7 +105,7 @@ Artifact 只保留 **14 天**，过期后重新跑一次工作流即可。
 ```
 android-app/
 ├── capacitor.config.json     # appId com.fandazi.app，appName i吃饭，webDir=www
-├── package.json              # Capacitor 6.2.3 + @capacitor/filesystem/@capacitor/share 6.0.4
+├── package.json              # Capacitor 6.2.3 + @capacitor/app、@capacitor/filesystem、@capacitor/share 6.x
 ├── scripts/copy-www.js       # 从仓库根同步 index.html、manifest、sw.js、icons 到 www/
 ├── www/                      # WebView 加载的本地资产（由脚本同步，勿手改）
 └── android/                  # Capacitor 生成的 Android 工程（Gradle + 原生壳）
@@ -127,7 +127,7 @@ cd android && ./gradlew assembleDebug
 
 ### 签名与分发限制
 
-- 当前是 **debug 签名**（Gradle 自动用 debug keystore 签名，`applicationId` = `com.fandazi.app`，`versionName` 1.0.1、`versionCode` 2）。
+- 当前是 **debug 签名**（Gradle 自动用 debug keystore 签名，`applicationId` = `com.fandazi.app`，`versionName` 1.0.2、`versionCode` 3）。
 - debug APK **只能自己装**：需要手动允许「未知来源」，也不能上传 Google Play / 国内应用商店，部分国产 ROM 会额外提示风险。
 - 真要正式发布，需要自己的 keystore + `release` 构建类型，并把 keystore 以 GitHub Secrets（base64）形式注入 CI，`./gradlew assembleRelease` 后再用 `apksigner` 校验；keystore 文件本身绝不能进仓库。
 
@@ -149,6 +149,22 @@ APK 内接了 `@capacitor/filesystem` + `@capacitor/share`：**CSV / JSON / 文�
 | 系统分享（清单/好友包） | `navigator.share`（手机浏览器支持） | Capacitor Share 原生分享面板 |
 | 剪贴板复制 | Clipboard API / `execCommand` 兜底 | 同左（`https://localhost` 属安全上下文） |
 
+### 系统返回键（v1.0.2 起已接管）
+
+APK 内接了 `@capacitor/app`（6.0.3），Android 的物理/手势返回键不再直接退出，而是复用网页版的返回层级：
+
+- **有弹层**：先关最上层弹层（分享 / 导出 / 教程 / 照片预览等，按 z-index 取最上层，同层取后开的）；
+- **在子视图**：从日历 / 地图 / 聚餐等面板退回列表或「今日推荐」；
+- **都在最外层**：才调用 `App.exitApp()` 退出应用。
+
+实现要点（`index.html` 的「返回层级」一段）：
+
+- 能力探测：只有 `window.Capacitor.isNativePlatform() === true` 且 `Plugins.App.addListener` 存在时才绑定；网页版 / 无插件环境下完全不注册，继续走原来的 `history` + `popstate` 分支，行为与之前一致。
+- 防双触发：原生 `backButton` 若与 WebView history 同一次手势都触发，用 400ms 时间窗只执行一次（`nativeBackAt` 标记），不会连退两级。
+- 守卫回收：原生返回关掉一层后调用 `syncBackGuard()`，与网页版的 history 守卫状态保持同步。
+
+**未真机验证**：本机没有 Android SDK/模拟器，这一条只做了代码静态检查与云端编译；物理返回键的实际手感、双击退出、以及各机型手势返回的差异需要在装机后确认（见下面自测清单）。
+
 ### 运行形态与限制
 
 - WebView 加载的是**打包在 APK 里的本地资源**（`assets/public`），首次打开不需要联网，数据同样只存在本机 WebView 的存储里。
@@ -166,6 +182,7 @@ APK 内接了 `@capacitor/filesystem` + `@capacitor/share`：**CSV / JSON / 文�
 4. 「今天吃什么」→ **分享图** → 预览页点「保存」或「分享」→ 分享面板里有 PNG（1080×1350）；
 5. 「巡店」→ **复制/分享清单** → 出现系统分享面板而不是只提示“已复制”；
 6. 任意列表 → 导出弹层 → **分享给好友（.fanzi.json）** → 能调起分享；取消一次，应无报错提示。
+7. 打开任意弹层 → 按系统返回键 → **只关掉最上层**，不退出应用；在最外层再按一次才退出。
 
 任何一步失败，在「我的 → 诊断」里能看到对应的错误记录，把错误文案发回来即可定位。
 
