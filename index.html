@@ -221,6 +221,33 @@
   .diary-kv b{font-weight:500;text-align:right;word-break:break-word}
   .diary-photo{width:100%;max-height:320px;object-fit:cover;border-radius:12px;margin:4px 0 10px;border:1px solid var(--line)}
 
+  .map-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .map-head .seg{flex:1}
+  .map-legend{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .map-legend .chip-toggle{padding:5px 10px;font-size:11px}
+  .map-legend .lg{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--ink3)}
+  .map-legend .lg i{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .map-canvas-wrap{position:relative;height:clamp(300px,52vh,520px);background:#f7f3ec;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:10px}
+  #mapCanvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+  #mapCanvas.dragging{cursor:grabbing}
+  .map-tools{position:absolute;right:9px;top:9px;display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:10px;padding:4px;box-shadow:var(--shadow)}
+  .map-tools .icon-btn{width:30px;height:30px;border-radius:8px}
+  .map-tools .btn{padding:5px 8px;font-size:11px}
+  .map-note{position:absolute;left:9px;bottom:8px;font-size:10px;color:var(--ink3);background:rgba(255,255,255,.9);padding:3px 9px;border-radius:999px}
+  .map-list-row{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;cursor:pointer;box-shadow:var(--shadow)}
+  .map-list-row .mm{flex:1;min-width:0}
+  .map-list-row b{font-size:14px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .map-list-row .meta{font-size:11px;color:var(--ink3);margin-top:2px}
+  .map-miss-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line)}
+  .map-miss-row:last-child{border-bottom:0}
+  .map-miss-row .mm{flex:1;min-width:0}
+  .map-miss-row b{font-size:13px}
+  .map-sheet-sub{font-size:12px;color:var(--ink3);margin:-6px 0 10px}
+  .map-visit{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:12px;cursor:pointer;color:var(--ink2)}
+  .map-visit:last-child{border-bottom:0}
+  .map-visit b{font-weight:500;color:var(--ink)}
+
+
   .vote-item{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px dashed var(--line)}
   .vote-item:last-child{border-bottom:0}
   .vote-score{min-width:30px;text-align:center;font-weight:800;color:var(--accent);font-size:15px}
@@ -400,6 +427,7 @@
         <button class="on" data-panel="list">列表</button>
         <button data-panel="cal">日历</button>
         <button data-panel="diary">日记</button>
+        <button data-panel="map">地图</button>
       </div>
 
       <div id="panel-list">
@@ -477,6 +505,39 @@
           <span class="hint" id="diaryHint"></span>
         </div>
         <div id="diaryBox"></div>
+      </div>
+
+      <div id="panel-map" class="hidden">
+        <div class="card" style="padding:12px">
+          <div class="map-head">
+            <div class="seg" id="mapMode">
+              <button class="on" data-map-mode="map">地图</button>
+              <button data-map-mode="list">列表</button>
+            </div>
+            <button type="button" class="btn btn-sm btn-soft" id="btnMapLocate">定位我</button>
+          </div>
+          <div class="map-legend" id="mapLegend"></div>
+        </div>
+        <div class="map-canvas-wrap" id="mapCanvasWrap">
+          <canvas id="mapCanvas" aria-label="店铺散点地图"></canvas>
+          <div class="map-tools">
+            <button type="button" class="icon-btn" id="mapZoomIn" aria-label="放大">＋</button>
+            <button type="button" class="icon-btn" id="mapZoomOut" aria-label="缩小">－</button>
+            <button type="button" class="btn" id="mapReset">复位</button>
+          </div>
+          <div class="map-note" id="mapNote">无底图 · 纯本地等距投影</div>
+        </div>
+        <div id="mapListBox" class="hidden"></div>
+        <div class="card" id="mapMissingCard">
+          <div class="section-head" style="margin:0 0 6px">
+            <h2>未填坐标 <span id="mapMissingCount">0</span> 家</h2>
+            <span class="hint">不会画到图上，也不虚构位置</span>
+          </div>
+          <div id="mapMissingList"></div>
+        </div>
+        <div class="card flat" id="mapStatCard">
+          <p class="muted" id="mapStatLine"></p>
+        </div>
       </div>
 
     </section>
@@ -957,6 +1018,17 @@
       <button type="button" class="icon-btn" id="diaryClose" aria-label="关闭">✕</button>
     </div>
     <div id="diaryDetail"></div>
+  </div>
+</div>
+
+<!-- 地图店铺详情 / 簇内列表 -->
+<div class="sheet-mask hidden" id="mapStoreMask">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="mapStoreTitle">店铺</h2>
+      <button type="button" class="icon-btn" id="mapStoreClose" aria-label="关闭">✕</button>
+    </div>
+    <div id="mapStoreBody"></div>
   </div>
 </div>
 
@@ -5505,6 +5577,7 @@
     safeRender('renderList', function(){ renderList(true); }, '#listBox');
     safeRender('renderCalendar', renderCalendar, '#calGrid');
     if(diaryState.active) safeRender('renderDiary', function(){ renderDiary(false); }, '#diaryBox');
+    if(mapView.active && activeView === 'record') safeRender('renderMap', function(){ renderMap(false); });
     safeRender('renderDailyInputs', renderDailyInputs);
     safeRender('renderDecide', renderDecide, '#decideBox');
     safeRender('renderDraw', renderDraw, '#drawBox');
@@ -5548,6 +5621,7 @@
       safeRender('renderList', function(){ renderList(false); }, '#listBox');
       safeRender('renderCalendar', renderCalendar, '#calGrid');
       if(diaryState.active) safeRender('renderDiary', function(){ renderDiary(false); }, '#diaryBox');
+      if(mapView.active) safeRender('renderMap', function(){ renderMap(false); });
     }
     if(name === 'recommend'){
       safeRender('renderDailyInputs', renderDailyInputs);
@@ -5577,10 +5651,13 @@
       $('#panel-list').classList.toggle('hidden', panel !== 'list');
       $('#panel-cal').classList.toggle('hidden', panel !== 'cal');
       $('#panel-diary').classList.toggle('hidden', panel !== 'diary');
+      $('#panel-map').classList.toggle('hidden', panel !== 'map');
       $$('#recordSeg button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-panel') === panel); });
       if(panel === 'cal') renderCalendar();
       diaryState.active = (panel === 'diary');
+      mapView.active = (panel === 'map');
       if(panel === 'diary') renderDiary(true);
+      if(panel === 'map') renderMap(true);
     }else if(group === 'recommend' || group === 'decide'){
       recoPanel = panel || 'daily';
       ['daily','party','fitness','friend'].forEach(function(k){
@@ -6053,6 +6130,642 @@
     $('#formMapBaidu').href = has ? mapLinkOf(info, 'baidu', false, info.fromPlace) : 'https://map.baidu.com/';
     $('#formMapAmap').classList.toggle('hidden', !has);
     $('#formMapBaidu').classList.toggle('hidden', !has);
+  }
+
+  /* ================= 地图视图（无底图散点图，纯本地投影） =================
+   * 红线：不接任何地图 SDK、不申请 Key、不发任何外部请求。
+   * 分层：
+   *   1) MAP_BASE_LAYER —— 只负责“底图”。默认 blank 画浅色网格与比例尺；
+   *      将来接真实瓦片，只需在这里注册一个新 layer（并在 draw 里用 view.project 对齐），
+   *      下面的投影 / 簇合并 / 命中 / 缩放平移 / 点选全部不用改。
+   *   2) 本文件其余地图代码 —— 只负责“画点”，坐标全部来自记录里的 lat/lng 或用户点按钮取到的一次定位。
+   * 坐标来源：记录字段（手填，或用「用当前位置填入店铺坐标」写进同一字段）；
+   * 距离：只有“我的位置 + 店铺坐标”同时存在时才算实距，否则标注手填，不虚构。
+   */
+  var MAP_CLUSTER_PX = 26;          /* 屏幕距离阈值：≤26px 即合并为一个簇 */
+  var MAP_KM_PER_DEG = 111.32;      /* 纬度 1° ≈ 111.32 km */
+  var MAP_LAYER_ID = 'blank';
+  var MAP_BASE_LAYER = {
+    blank: {
+      id: 'blank',
+      label: '无底图（纯本地投影）',
+      /* view: {w,h,scale,project,unproject} */
+      draw: function(ctx, view){
+        ctx.fillStyle = '#f7f3ec';
+        ctx.fillRect(0, 0, view.w, view.h);
+        var steps = [10, 5, 2, 1, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005];
+        var step = steps[steps.length-1];
+        for(var i=0;i<steps.length;i++){
+          step = steps[i];
+          if(step * view.scale >= 56) break;
+        }
+        var tl = view.unproject(0, 0), br = view.unproject(view.w, view.h);
+        var latMin = Math.min(tl.lat, br.lat), latMax = Math.max(tl.lat, br.lat);
+        var lngMin = Math.min(tl.lng, br.lng), lngMax = Math.max(tl.lng, br.lng);
+        ctx.strokeStyle = 'rgba(120,105,90,.13)';
+        ctx.lineWidth = 1;
+        var la = Math.floor(latMin/step)*step;
+        for(; la <= latMax; la += step){
+          var y = view.project(la, lngMin).y;
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(view.w, y); ctx.stroke();
+        }
+        var ln = Math.floor(lngMin/step)*step;
+        for(; ln <= lngMax; ln += step){
+          var x = view.project(latMin, ln).x;
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, view.h); ctx.stroke();
+        }
+        mapDrawScaleBar(ctx, view);
+      }
+    }
+  };
+
+  function mapDrawScaleBar(ctx, view){
+    var pxPerKm = view.scale / MAP_KM_PER_DEG;
+    var opts = [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200];
+    var km = opts[opts.length-1];
+    for(var i=0;i<opts.length;i++){
+      km = opts[i];
+      if(km * pxPerKm >= 44) break;
+    }
+    var len = km * pxPerKm;
+    var x = view.w - len - 13, y = view.h - 13;
+    if(x < 6) return;
+    ctx.strokeStyle = 'rgba(107,97,90,.55)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y); ctx.lineTo(x + len, y);
+    ctx.moveTo(x, y - 4); ctx.lineTo(x, y + 2);
+    ctx.moveTo(x + len, y - 4); ctx.lineTo(x + len, y + 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(107,97,90,.8)';
+    ctx.font = '10px -apple-system, "PingFang SC", sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(km < 1 ? Math.round(km*1000)+' m' : km+' km', x + len, y - 5);
+  }
+
+  var MAP_PAL = {
+    visits: { lo:[244, 203, 168], hi:[217, 72, 15] },
+    rating: { lo:[201, 214, 205], hi:[47, 140, 90] }
+  };
+
+  var mapView = {
+    active: false, mode: 'map', measure: 'visits', sort: 'dist',
+    cam: { cx:0, cy:0, scale:300, baseScale:300, fitted:false },
+    size: { w:0, h:0, dpr:1 }, cos: 1,
+    points: [], missing: [], clusters: [], labels: [],
+    selected: '', sheetKey: '', lastHit: null,
+    drawMs: 0, firstDrawMs: null, lastFitMs: 0, lastRenderMs: 0
+  };
+  var mapPtr = { ids:[], pos:{}, down:false, sx:0, sy:0, moved:0, dragging:false, pinch:null, pinched:false };
+
+  function mapStoresFiltered(){
+    var qEl = $('#q'), cEl = $('#catFilter'), rEl = $('#ratingFilter');
+    var q = String(qEl ? qEl.value : '').trim().toLowerCase();
+    var cat = cEl ? cEl.value : '';
+    var minRate = rEl ? num(rEl.value) : 0;
+    return getStores().filter(function(s){
+      if(cat && String(s.category || '') !== cat) return false;
+      if(minRate > 0 && num(s.rating) < minRate) return false;
+      if(q){
+        var hay = [s.name, s.city, s.area, s.address, s.category, (s.tags||[]).join(' '), s.latest ? s.latest.note : '']
+          .join(' ').toLowerCase();
+        if(hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+  }
+  function mapPoints(){
+    return mapStoresFiltered().map(function(s){
+      var c = storeCoord(s);
+      if(!c) return null;
+      return {
+        key: s.key, name: s.name, city: s.city, area: s.area, address: s.address,
+        lat: c.lat, lng: c.lng, visits: num(s.visits), rating: num(s.rating), store: s
+      };
+    }).filter(Boolean);
+  }
+  function mapMissingStores(){
+    return mapStoresFiltered().filter(function(s){ return !storeCoord(s); });
+  }
+  function mapCos(){
+    var list = mapView.points, sum = 0, n = 0;
+    list.forEach(function(p){ sum += p.lat; n++; });
+    var lat = n ? sum/n : (geoLast() ? geoLast().lat : 31.2);
+    return Math.max(0.2, Math.cos(lat * Math.PI/180));
+  }
+  function mapResize(){
+    var wrap = $('#mapCanvasWrap'), cv = $('#mapCanvas');
+    if(!wrap || !cv) return false;
+    var w = cv.clientWidth, h = cv.clientHeight;
+    var dpr = Math.min(3, window.devicePixelRatio || 1);
+    if(!w || !h) return false;
+    var changed = mapView.size.w !== w || mapView.size.h !== h || mapView.size.dpr !== dpr;
+    mapView.size = { w:w, h:h, dpr:dpr };
+    if(changed || cv.width !== Math.round(w*dpr) || cv.height !== Math.round(h*dpr)){
+      cv.width = Math.round(w*dpr);
+      cv.height = Math.round(h*dpr);
+    }
+    return changed;
+  }
+  function mapProject(lat, lng){
+    var cam = mapView.cam, w = mapView.size.w, h = mapView.size.h, c = mapView.cos || 1;
+    return {
+      x: w/2 + (lng*c - cam.cx) * cam.scale,
+      y: h/2 + (-lat - cam.cy) * cam.scale
+    };
+  }
+  function mapUnproject(x, y){
+    var cam = mapView.cam, w = mapView.size.w, h = mapView.size.h, c = mapView.cos || 1;
+    return {
+      lat: -(cam.cy + (y - h/2)/cam.scale),
+      lng: (cam.cx + (x - w/2)/cam.scale)/c
+    };
+  }
+  function mapFit(){
+    var t0 = nowMs();
+    mapView.cos = mapCos();
+    var pts = mapView.points;
+    var box = null;
+    pts.forEach(function(p){
+      var wx = p.lng * mapView.cos, wy = -p.lat;
+      if(!box) box = { minX:wx, maxX:wx, minY:wy, maxY:wy };
+      else{
+        box.minX = Math.min(box.minX, wx); box.maxX = Math.max(box.maxX, wx);
+        box.minY = Math.min(box.minY, wy); box.maxY = Math.max(box.maxY, wy);
+      }
+    });
+    var w = mapView.size.w, h = mapView.size.h;
+    if(!box){
+      var me = geoLast();
+      if(me){
+        var mx = me.lng * mapView.cos, my = -me.lat;
+        box = { minX:mx, maxX:mx, minY:my, maxY:my };
+      }
+    }
+    if(!box){
+      mapView.cam = { cx:0, cy:0, scale:300, baseScale:300, fitted:true };
+      mapView.lastFitMs = nowMs() - t0;
+      return mapView.cam;
+    }
+    var pad = 30;
+    var spanX = box.maxX - box.minX, spanY = box.maxY - box.minY;
+    var s;
+    if(spanX < 1e-5 && spanY < 1e-5) s = 2000;
+    else s = Math.min((Math.max(1, w - pad*2))/Math.max(spanX, 1e-6), (Math.max(1, h - pad*2))/Math.max(spanY, 1e-6));
+    if(!isFinite(s) || s <= 0) s = 2000;
+    s = clamp(s, 20, 250000);
+    mapView.cam = {
+      cx: (box.minX + box.maxX)/2, cy: (box.minY + box.maxY)/2,
+      scale: s, baseScale: s, fitted: true
+    };
+    mapView.lastFitMs = nowMs() - t0;
+    return mapView.cam;
+  }
+  function mapRadiusOf(p){
+    if(mapView.measure === 'rating') return 5.5 + (num(p.rating) > 0 ? clamp(num(p.rating)/5, 0, 1) * 8 : 1.5);
+    return 5.5 + Math.min(8, Math.sqrt(Math.max(1, num(p.visits))) * 3);
+  }
+  function mapColorOf(n, pal){
+    var a = pal.lo, b = pal.hi, t = clamp(n, 0, 1);
+    return 'rgb(' + Math.round(a[0] + (b[0]-a[0])*t) + ',' +
+      Math.round(a[1] + (b[1]-a[1])*t) + ',' +
+      Math.round(a[2] + (b[2]-a[2])*t) + ')';
+  }
+  /* 屏幕空间贪心聚簇：同坐标或 ≤26px 的店合并，保证可点中 */
+  function mapComputeClusters(){
+    var th = MAP_CLUSTER_PX;
+    var list = [];
+    mapView.points.forEach(function(p){
+      var xy = mapProject(p.lat, p.lng);
+      var found = null;
+      for(var i=0;i<list.length;i++){
+        var c = list[i];
+        var dx = xy.x - c.ax, dy = xy.y - c.ay;
+        if(dx*dx + dy*dy <= th*th){ found = c; break; }
+      }
+      if(!found){
+        found = { ax:xy.x, ay:xy.y, sx:0, sy:0, pts:[], count:0, visits:0, ratings:[], maxR:0 };
+        list.push(found);
+      }
+      found.sx += xy.x; found.sy += xy.y;
+      found.pts.push(p); found.count++;
+      found.visits += num(p.visits);
+      if(num(p.rating) > 0) found.ratings.push(num(p.rating));
+      found.maxR = Math.max(found.maxR, mapRadiusOf(p));
+    });
+    list.forEach(function(c){
+      c.x = c.sx / c.count;
+      c.y = c.sy / c.count;
+      c.norm = mapView.measure === 'rating'
+        ? (c.ratings.length ? clamp((c.ratings.reduce(function(a,b){ return a+b; }, 0)/c.ratings.length)/5, 0, 1) : 0.1)
+        : clamp((c.visits - 1)/5, 0, 1);
+      c.r = Math.max(9, c.maxR) + (c.count > 1 ? 3 : 0);
+      c.id = c.pts.map(function(p){ return p.key; }).sort().join('|');
+    });
+    return list;
+  }
+  function mapDraw(){
+    var t0 = nowMs();
+    var cv = $('#mapCanvas');
+    if(!cv) return mapView;
+    mapResize();
+    if(!mapView.size.w || !mapView.size.h) return mapView;
+    mapView.cos = mapCos();
+    if(!mapView.cam.fitted) mapFit();
+    mapView.clusters = mapComputeClusters();
+    var size = mapView.size, cam = mapView.cam;
+    var ctx = cv.getContext('2d');
+    if(!ctx) return mapView;
+    ctx.setTransform(size.dpr, 0, 0, size.dpr, 0, 0);
+    var view = {
+      w: size.w, h: size.h, scale: cam.scale, cos: mapView.cos, cam: cam,
+      project: mapProject, unproject: mapUnproject
+    };
+    ctx.clearRect(0, 0, size.w, size.h);
+    var layer = MAP_BASE_LAYER[MAP_LAYER_ID] || MAP_BASE_LAYER.blank;
+    try{ layer.draw(ctx, view); }catch(e){ logError('地图底图', e); }
+
+    /* 我的位置 + 1/3/5/10 km 同心圈（只在用户点过定位时才有） */
+    var me = geoLast();
+    if(me){
+      var mp = mapProject(me.lat, me.lng);
+      var pxPerKm = cam.scale / MAP_KM_PER_DEG;
+      [1, 3, 5, 10].forEach(function(km){
+        var r = km * pxPerKm;
+        if(r < 3 || r > Math.max(size.w, size.h) * 4) return;
+        ctx.beginPath();
+        ctx.arc(mp.x, mp.y, r, 0, Math.PI*2);
+        ctx.strokeStyle = km === 1 ? 'rgba(232,89,12,.42)' : 'rgba(232,89,12,.20)';
+        ctx.lineWidth = 1;
+        if(km > 1) ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        if(r > 26 && r < Math.max(size.w, size.h) * 1.4){
+          ctx.fillStyle = 'rgba(140,110,85,.75)';
+          ctx.font = '10px -apple-system, "PingFang SC", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(km + ' km', mp.x, mp.y - r + 11);
+        }
+      });
+      ctx.beginPath(); ctx.arc(mp.x, mp.y, 5.5, 0, Math.PI*2);
+      ctx.fillStyle = '#e8590c'; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
+      ctx.fillStyle = '#b8460a';
+      ctx.font = '600 10px -apple-system, "PingFang SC", sans-serif';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText('我', mp.x + 8, mp.y);
+    }
+
+    var pal = MAP_PAL[mapView.measure] || MAP_PAL.visits;
+    var labels = [];
+    mapView.clusters.forEach(function(c){
+      var col = mapColorOf(c.norm, pal);
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r, 0, Math.PI*2);
+      ctx.fillStyle = col;
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,.85)';
+      ctx.stroke();
+      if(mapView.selected === c.id){
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.r + 4, 0, Math.PI*2);
+        ctx.strokeStyle = '#e8590c';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      if(c.count > 1){
+        ctx.fillStyle = '#fff';
+        ctx.font = '600 11px -apple-system, "PingFang SC", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(c.count), c.x, c.y + 0.5);
+        labels.push({ x:Math.round(c.x*10)/10, y:Math.round(c.y*10)/10, text:String(c.count), keys:c.pts.map(function(p){ return p.key; }) });
+      }
+    });
+    mapView.labels = labels;
+
+    if(!mapView.points.length){
+      ctx.fillStyle = 'rgba(107,97,90,.8)';
+      ctx.font = '13px -apple-system, "PingFang SC", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(db.records.length ? '当前筛选下没有填了坐标的店铺' : '还没有记录', size.w/2, size.h/2 - 8);
+      ctx.fillStyle = 'rgba(154,143,134,.9)';
+      ctx.font = '11px -apple-system, "PingFang SC", sans-serif';
+      ctx.fillText('坐标只来自记录手填或你点「定位我」取到的一次位置', size.w/2, size.h/2 + 14);
+    }
+    mapView.drawMs = nowMs() - t0;
+    if(mapView.firstDrawMs == null) mapView.firstDrawMs = mapView.drawMs;
+    return mapView;
+  }
+  function mapClusterInfo(c){
+    if(!c) return null;
+    return {
+      id: c.id, count: c.count, x: Math.round(c.x*10)/10, y: Math.round(c.y*10)/10,
+      r: Math.round(c.r*10)/10, visits: c.visits,
+      keys: c.pts.map(function(p){ return p.key; }),
+      names: c.pts.map(function(p){ return p.name; })
+    };
+  }
+  function mapHitAt(x, y){
+    var best = null, bestD = 1e9;
+    mapView.clusters.forEach(function(c){
+      var dx = c.x - x, dy = c.y - y;
+      var d = Math.sqrt(dx*dx + dy*dy);
+      if(d <= c.r + 7 && d < bestD){ bestD = d; best = c; }
+    });
+    mapView.lastHit = best;
+    return best;
+  }
+  function mapZoomAt(x, y, factor){
+    var cam = mapView.cam, w = mapView.size.w, h = mapView.size.h;
+    var minS = Math.max(4, cam.baseScale/10);
+    var maxS = Math.max(1200, cam.baseScale*14);
+    var ns = clamp(cam.scale * factor, minS, maxS);
+    if(!isFinite(ns) || ns === cam.scale) return cam.scale;
+    var wx = cam.cx + (x - w/2)/cam.scale;
+    var wy = cam.cy + (y - h/2)/cam.scale;
+    cam.cx = wx - (x - w/2)/ns;
+    cam.cy = wy - (y - h/2)/ns;
+    cam.scale = ns;
+    cam.fitted = true;
+    return ns;
+  }
+  function mapZoomBy(f){
+    mapZoomAt(mapView.size.w/2, mapView.size.h/2, f);
+    mapDraw();
+    renderMapStat();
+    return mapView.cam.scale;
+  }
+  function mapPanByPx(dx, dy){
+    var cam = mapView.cam;
+    cam.cx -= dx/cam.scale;
+    cam.cy -= dy/cam.scale;
+    cam.fitted = true;
+  }
+  function mapResetView(){
+    mapView.cam.fitted = false;
+    mapView.selected = '';
+    mapDraw();
+    renderMapStat();
+    toast('已复位到全部点范围');
+    return mapView.cam.scale;
+  }
+
+  function mapStatText(){
+    var total = getStores().length;
+    var pts = mapView.points.length;
+    var miss = mapView.missing.length;
+    var clusters = mapView.clusters.length;
+    var multi = mapView.clusters.filter(function(c){ return c.count > 1; }).length;
+    return '共 '+total+' 家 · 有坐标 '+pts+' 家 · 未填坐标 '+miss+' 家 · '+
+      clusters+' 个标记'+(multi ? '（其中 '+multi+' 个为合并簇）' : '')+
+      ' · 首绘 '+(mapView.firstDrawMs == null ? '—' : fmtMs(mapView.firstDrawMs))+
+      ' / 重绘 '+fmtMs(mapView.drawMs);
+  }
+  function renderMapStat(){
+    var el = $('#mapStatLine');
+    if(el) el.textContent = mapStatText();
+  }
+  function renderMapLegend(){
+    var pal = MAP_PAL[mapView.measure] || MAP_PAL.visits;
+    var mid = mapColorOf(0.5, pal);
+    var html =
+      '<button type="button" class="chip-toggle'+(mapView.measure === 'visits' ? ' on' : '')+'" data-map-measure="visits">到访次数</button>'+
+      '<button type="button" class="chip-toggle'+(mapView.measure === 'rating' ? ' on' : '')+'" data-map-measure="rating">综合评分</button>'+
+      '<span class="lg">小<i style="background:'+mapColorOf(0, pal)+'"></i><i style="background:'+mid+'"></i><i style="background:'+mapColorOf(1, pal)+'"></i>大</span>'+
+      '<span class="lg">'+(mapView.measure === 'rating' ? '颜色/大小 = 综合评分（未评分最浅）' : '颜色/大小 = 到访次数（1 次最浅）')+'</span>';
+    $('#mapLegend').innerHTML = html;
+  }
+  function renderMapMissing(){
+    var list = mapView.missing;
+    $('#mapMissingCount').textContent = String(list.length);
+    var box = $('#mapMissingList');
+    if(!list.length){
+      box.innerHTML = '<p class="muted">全部店铺都填了坐标，没有虚构位置。</p>';
+      return;
+    }
+    var shown = list.slice(0, 60);
+    box.innerHTML = shown.map(function(s){
+      var meta = [s.city, s.area].filter(Boolean).join(' · ') || '未填城市/商圈';
+      var rec = s.latest || s.records[0];
+      return '<div class="map-miss-row"><div class="mm"><b>'+esc(s.name)+'</b>'+
+        '<p class="meta">'+esc(meta)+' · 到访 '+s.visits+' 次</p></div>'+
+        '<button type="button" class="btn btn-sm btn-soft" data-map-fix="'+esc(rec ? rec.id : '')+'">补坐标</button></div>';
+    }).join('') + (list.length > shown.length
+      ? '<p class="muted" style="margin-top:8px">另有 '+(list.length - shown.length)+' 家未列出；可用列表页搜索后补坐标，或稍后再看。</p>'
+      : '');
+  }
+  function mapListRows(){
+    var list = mapStoresFiltered();
+    if(mapView.sort === 'visits') list.sort(function(a,b){ return num(b.visits)-num(a.visits); });
+    else if(mapView.sort === 'rating') list.sort(function(a,b){ return num(b.rating)-num(a.rating); });
+    else{
+      list.sort(function(a,b){
+        var ka = storeKm(a), kb = storeKm(b);
+        if(ka == null && kb == null) return num(b.visits)-num(a.visits);
+        if(ka == null) return 1;
+        if(kb == null) return -1;
+        return ka - kb;
+      });
+    }
+    return list;
+  }
+  function renderMapList(){
+    var box = $('#mapListBox');
+    if(!box) return;
+    var rows = mapListRows();
+    var head = '<div class="card flat" style="padding:10px 12px;margin-bottom:10px">'+
+      '<div class="chips">'+
+        '<button type="button" class="chip-toggle'+(mapView.sort==='dist'?' on':'')+'" data-map-sort="dist">按距离</button>'+
+        '<button type="button" class="chip-toggle'+(mapView.sort==='visits'?' on':'')+'" data-map-sort="visits">按到访</button>'+
+        '<button type="button" class="chip-toggle'+(mapView.sort==='rating'?' on':'')+'" data-map-sort="rating">按评分</button>'+
+      '</div>'+
+      '<p class="muted" style="margin-top:8px">筛选沿用列表页的搜索 / 品类 / 评分；距离只有「我的位置 + 店铺坐标」同时存在才按实距，否则标注手填。</p>'+
+    '</div>';
+    if(!rows.length){
+      box.innerHTML = head + '<div class="empty card flat"><h3>没有匹配的店铺</h3><p>换个关键词，或清空列表页的筛选条件。</p></div>';
+      return;
+    }
+    var html = rows.slice(0, 300).map(function(s){
+      var coord = storeCoord(s);
+      var km = storeKm(s), src = storeKmSrc(s);
+      var meta = [
+        s.visits + ' 次到访',
+        num(s.rating) > 0 ? '评分 '+s.rating : '未评分',
+        km != null ? ('距我约 '+distText(km)+'（'+(src === 'geo' ? '定位' : '手填')+'）') : '未填距离',
+        coord ? '有坐标' : '未填坐标'
+      ].join(' · ');
+      return '<div class="map-list-row" data-map-open="'+esc(s.key)+'">'+
+        '<div class="mm"><b>'+esc(s.name)+'</b><p class="meta">'+esc(meta)+'</p></div>'+
+        '<span class="muted">›</span></div>';
+    }).join('');
+    box.innerHTML = head + html + (rows.length > 300
+      ? '<p class="muted" style="text-align:center">共 '+rows.length+' 家，列表按排序显示前 300 家；其余用搜索或地图找。</p>' : '');
+  }
+  function renderMap(force){
+    var t0 = nowMs();
+    mapView.points = mapPoints();
+    mapView.missing = mapMissingStores();
+    var changed = mapResize();
+    if(force === true || changed) mapView.cam.fitted = false;
+    if(mapView.size.w && mapView.size.h) mapDraw();
+    else mapView.clusters = [];
+    renderMapLegend();
+    renderMapMissing();
+    if(mapView.mode === 'list'){
+      $('#mapStatLine').textContent = '共 '+getStores().length+' 家 · 有坐标 '+mapView.points.length+
+        ' 家 · 未填坐标 '+mapView.missing.length+' 家 · 列表视图';
+      renderMapList();
+    }else{
+      renderMapStat();
+    }
+    mapView.lastRenderMs = nowMs() - t0;
+    return {
+      active: mapView.active, mode: mapView.mode, points: mapView.points.length,
+      missing: mapView.missing.length, clusters: mapView.clusters.length,
+      drawMs: mapView.drawMs, firstDrawMs: mapView.firstDrawMs, ms: mapView.lastRenderMs
+    };
+  }
+
+  /* 店铺 / 簇详情 sheet */
+  function mapStoreByKey(key){
+    return getStores().filter(function(s){ return s.key === key; })[0] || null;
+  }
+  function mapSheetOpen(){
+    return !$('#mapStoreMask').classList.contains('hidden');
+  }
+  function openMapStoreSheet(key){
+    var s = mapStoreByKey(key);
+    if(!s){ toast('这家店的数据已变化，请刷新地图'); return null; }
+    var c = storeCoord(s);
+    var info = mapInfoOf(s.latest || { name:s.name, city:s.city, area:s.area, address:s.address, lng:c?c.lng:'', lat:c?c.lat:'' });
+    if(c){ info.lng = c.lng; info.lat = c.lat; }
+    info.name = s.name;
+    info.city = s.city || info.city;
+    info.area = s.area || info.area;
+    info.address = s.address || info.address;
+    mapView.sheetKey = key;
+    mapView.selected = '';
+    var recs = (s.records || []).slice().sort(function(a,b){ return String(b.visitDate||'').localeCompare(String(a.visitDate||'')); });
+    var visits = recs.slice(0, 6).map(function(r){
+      return '<div class="map-visit" data-map-visit="'+esc(r.id)+'"><b>'+esc(diaryUnknown(r) ? '日期未知' : r.visitDate)+'</b>'+
+        '<span>'+esc([num(r.rating)>0?'评分 '+r.rating:'未评分', (r.people||1)+' 人', money(perPriceOf(r))+'/人'].join(' · '))+
+        ' <span class="muted">›</span></span></div>';
+    }).join('');
+    var dims = s.ratings || {};
+    var dimText = ['taste','env','service','value'].map(function(k){
+      return num(dims[k]) > 0 ? (DIARY_DIM[k]||k)+' '+num(dims[k]) : '';
+    }).filter(Boolean).join(' · ');
+    var body =
+      '<p class="map-sheet-sub">'+esc([s.city, s.area].filter(Boolean).join(' · ') || '未填位置')+
+        ' · 到访 '+s.visits+' 次'+(c ? '' : ' · <span class="tag warn">未填坐标</span>')+'</p>'+
+      '<div class="card flat" style="padding:4px 12px;margin-bottom:12px">'+
+        diaryKv('地址', esc(s.address || '未填'))+
+        diaryKv('综合评分', num(s.rating) > 0 ? esc(s.rating) : '未评分')+
+        diaryKv('四维评分', esc(dimText || '未填'))+
+        diaryKv('人均', perPriceOf(s.latest || {}) > 0 ? money(perPriceOf(s.latest)) : '未记录')+
+        diaryKv('最近到访', esc(s.lastVisit || '未记录'))+
+        diaryKv('距离', hasKm(s) ? esc(kmLine(s)) : '未填')+
+        diaryKv('坐标', c ? esc(c.lng+', '+c.lat) : '未填（不画到图上，也不编造位置）')+
+        diaryKv('菜系 / 标签', esc([s.category, (s.tags||[]).join('、')].filter(Boolean).join(' · ') || '未填'))+
+      '</div>'+
+      (visits ? '<div class="card flat" style="padding:10px 12px;margin-bottom:12px"><p class="muted" style="margin-bottom:2px">最近到访（点开看该次详情）</p>'+visits+'</div>' : '')+
+      '<div class="actions" style="margin-top:0">'+
+        '<a class="btn btn-soft" href="'+esc(mapLinkOf(info, 'amap', false, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">高德'+(c?'定点':'搜索')+'</a>'+
+        '<a class="btn" href="'+esc(mapLinkOf(info, 'baidu', false, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">百度搜索</a>'+
+        (c ? '<a class="btn" href="'+esc(amapNavUrl(info, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">导航</a>' : '')+
+        '<button type="button" class="btn" data-map-fix="'+esc(recs[0] ? recs[0].id : '')+'">'+(c?'改坐标':'补坐标')+'</button>'+
+        '<button type="button" class="btn" data-map-close="1">关闭</button>'+
+      '</div>';
+    $('#mapStoreTitle').textContent = s.name;
+    $('#mapStoreBody').innerHTML = body;
+    $('#mapStoreMask').classList.remove('hidden');
+    return mapSheetInfo();
+  }
+  function openMapClusterSheet(cluster){
+    if(!cluster || !cluster.count) return null;
+    mapView.sheetKey = '';
+    mapView.selected = cluster.id;
+    var rows = cluster.pts.map(function(p){
+      var s = p.store;
+      return '<div class="map-list-row" data-map-open="'+esc(p.key)+'">'+
+        '<div class="mm"><b>'+esc(p.name)+'</b><p class="meta">'+
+          esc([p.city, p.area].filter(Boolean).join(' · ') || '未填位置')+' · 到访 '+p.visits+' 次 · '+
+          (num(p.rating)>0 ? '评分 '+p.rating : '未评分')+'</p></div><span class="muted">›</span></div>';
+    }).join('');
+    $('#mapStoreTitle').textContent = '同一位置 '+cluster.count+' 家店';
+    $('#mapStoreBody').innerHTML =
+      '<p class="map-sheet-sub">这 '+cluster.count+' 家店坐标相同或相距不到 '+MAP_CLUSTER_PX+' 像素，合并成一个标记；点开分别看详情。</p>'+
+      rows+
+      '<div class="actions" style="margin-top:12px"><button type="button" class="btn" data-map-close="1">关闭</button></div>';
+    $('#mapStoreMask').classList.remove('hidden');
+    mapDraw();
+    return mapSheetInfo();
+  }
+  function mapSheetInfo(){
+    var d = $('#mapStoreBody');
+    return {
+      open: mapSheetOpen(), title: $('#mapStoreTitle').textContent, key: mapView.sheetKey,
+      text: d ? d.innerText : '', html: d ? d.innerHTML : '',
+      links: d ? Array.prototype.map.call(d.querySelectorAll('a[target="_blank"]'), function(a){
+        return { href: a.getAttribute('href'), rel: a.getAttribute('rel') || '' };
+      }) : []
+    };
+  }
+  function closeMapStoreSheet(){
+    $('#mapStoreMask').classList.add('hidden');
+    mapView.sheetKey = '';
+    mapDraw();
+  }
+  function mapSetMode(mode){
+    mapView.mode = mode === 'list' ? 'list' : 'map';
+    $$('#mapMode button').forEach(function(b){
+      b.classList.toggle('on', b.getAttribute('data-map-mode') === mapView.mode);
+    });
+    $('#mapCanvasWrap').classList.toggle('hidden', mapView.mode !== 'map');
+    $('#mapListBox').classList.toggle('hidden', mapView.mode !== 'list');
+    if(!mapView.active) return mapView.mode;
+    if(mapView.mode === 'map') renderMap(false);
+    else renderMapList();
+    return mapView.mode;
+  }
+  function mapOnClick(x, y){
+    var c = mapHitAt(x, y);
+    if(!c){
+      mapView.selected = '';
+      mapDraw();
+      return null;
+    }
+    mapView.selected = c.id;
+    if(c.count === 1) openMapStoreSheet(c.pts[0].key);
+    else openMapClusterSheet(c);
+    mapDraw();
+    return mapClusterInfo(c);
+  }
+  function mapCanvasPoint(e){
+    var cv = $('#mapCanvas'), r = cv.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  function mapPinchInfo(){
+    var ids = mapPtr.ids;
+    if(ids.length < 2) return null;
+    var a = mapPtr.pos[ids[0]], b = mapPtr.pos[ids[1]];
+    if(!a || !b) return null;
+    var cv = $('#mapCanvas'), r = cv.getBoundingClientRect();
+    return {
+      dist: Math.sqrt((a.x-b.x)*(a.x-b.x) + (a.y-b.y)*(a.y-b.y)),
+      mid: { x: (a.x+b.x)/2 - r.left, y: (a.y+b.y)/2 - r.top }
+    };
+  }
+  function mapSetBaseLayer(id){
+    if(!MAP_BASE_LAYER[id]) return false;
+    MAP_LAYER_ID = id;
+    if(mapView.active) mapDraw();
+    return true;
   }
 
   /* ---- 常用地点坐标 ---- */
@@ -10259,6 +10972,133 @@
     else if(act === 'del'){ closeDiaryDetail(); deleteRecord(id); }
   });
 
+  /* 地图视图 */
+  $$('#mapMode button').forEach(function(b){
+    b.addEventListener('click', function(){ mapSetMode(b.getAttribute('data-map-mode')); });
+  });
+  $('#mapLegend').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-map-measure]') : null;
+    if(!b) return;
+    mapView.measure = b.getAttribute('data-map-measure') === 'rating' ? 'rating' : 'visits';
+    mapDraw();
+    renderMapLegend();
+    renderMapStat();
+  });
+  $('#btnMapLocate').addEventListener('click', function(){
+    var btn = this, bad = geoSupport();
+    if(bad){ toast(geoMsg(bad)); return; }
+    btn.disabled = true; btn.textContent = '定位中…';
+    locateMe(function(g){
+      btn.disabled = false; btn.textContent = '定位我';
+      mapDraw(); renderMapStat();
+      toast('已定位 ±'+Math.round(g.acc || 0)+'m：地图画出「我」与 1/3/5/10 km 同心圈');
+    }, function(reason){
+      btn.disabled = false; btn.textContent = '定位我';
+      toast(geoMsg(reason));
+    });
+  });
+  $('#mapZoomIn').addEventListener('click', function(){ mapZoomBy(1.4); });
+  $('#mapZoomOut').addEventListener('click', function(){ mapZoomBy(1/1.4); });
+  $('#mapReset').addEventListener('click', mapResetView);
+  $('#mapMissingList').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-map-fix]') : null;
+    if(b && b.getAttribute('data-map-fix')) openForm(b.getAttribute('data-map-fix'));
+  });
+  $('#mapListBox').addEventListener('click', function(e){
+    var s = e.target.closest ? e.target.closest('[data-map-sort]') : null;
+    if(s){ mapView.sort = s.getAttribute('data-map-sort') || 'dist'; renderMapList(); return; }
+    var row = e.target.closest ? e.target.closest('[data-map-open]') : null;
+    if(row) openMapStoreSheet(row.getAttribute('data-map-open'));
+  });
+  $('#mapStoreClose').addEventListener('click', closeMapStoreSheet);
+  $('#mapStoreMask').addEventListener('click', function(e){ if(e.target === this) closeMapStoreSheet(); });
+  $('#mapStoreBody').addEventListener('click', function(e){
+    var visit = e.target.closest ? e.target.closest('[data-map-visit]') : null;
+    if(visit){ var id = visit.getAttribute('data-map-visit'); closeMapStoreSheet(); diaryOpenDetail(id); return; }
+    var open = e.target.closest ? e.target.closest('[data-map-open]') : null;
+    if(open){ openMapStoreSheet(open.getAttribute('data-map-open')); return; }
+    var fix = e.target.closest ? e.target.closest('[data-map-fix]') : null;
+    if(fix){ closeMapStoreSheet(); if(fix.getAttribute('data-map-fix')) openForm(fix.getAttribute('data-map-fix')); return; }
+    var close = e.target.closest ? e.target.closest('[data-map-close]') : null;
+    if(close) closeMapStoreSheet();
+  });
+
+  /* Canvas 手势：拖动平移、双指/滚轮缩放、点击命中 */
+  function mapClickFromEvent(e){
+    var p = mapCanvasPoint(e);
+    mapOnClick(p.x, p.y);
+  }
+  $('#mapCanvas').addEventListener('pointerdown', function(e){
+    if(e.pointerType === 'mouse' && e.button !== 0) return;
+    try{ this.setPointerCapture(e.pointerId); }catch(_e){}
+    mapPtr.pos[e.pointerId] = { x:e.clientX, y:e.clientY };
+    if(mapPtr.ids.indexOf(e.pointerId) < 0) mapPtr.ids.push(e.pointerId);
+    if(mapPtr.ids.length === 1){
+      mapPtr.down = true; mapPtr.moved = 0; mapPtr.dragging = false; mapPtr.pinched = false;
+      mapPtr.sx = e.clientX; mapPtr.sy = e.clientY;
+    }else{
+      mapPtr.pinched = true;
+      mapPtr.pinch = mapPinchInfo();
+    }
+    this.classList.add('dragging');
+  });
+  $('#mapCanvas').addEventListener('pointermove', function(e){
+    var prev = mapPtr.pos[e.pointerId];
+    if(!prev) return;
+    mapPtr.pos[e.pointerId] = { x:e.clientX, y:e.clientY };
+    if(mapPtr.ids.length >= 2){
+      var now = mapPinchInfo();
+      if(now && mapPtr.pinch && mapPtr.pinch.dist > 0 && now.dist > 0){
+        mapZoomAt(now.mid.x, now.mid.y, now.dist / mapPtr.pinch.dist);
+      }
+      mapPtr.pinch = now;
+      mapPtr.pinched = true;
+      mapPtr.moved = 999;
+      mapDraw();
+      return;
+    }
+    if(!mapPtr.down) return;
+    var dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+    mapPtr.moved += Math.abs(dx) + Math.abs(dy);
+    if(mapPtr.moved > 4){
+      mapPtr.dragging = true;
+      mapPanByPx(dx, dy);
+      mapDraw();
+    }
+  });
+  $('#mapCanvas').addEventListener('pointerup', function(e){
+    if(mapPtr.pos[e.pointerId]) delete mapPtr.pos[e.pointerId];
+    mapPtr.ids = mapPtr.ids.filter(function(id){ return id !== e.pointerId; });
+    try{ this.releasePointerCapture(e.pointerId); }catch(_e){}
+    if(!mapPtr.ids.length){
+      var suppress = mapPtr.dragging || mapPtr.moved > 8 || mapPtr.pinched;
+      mapPtr.down = false; mapPtr.dragging = false; mapPtr.pinch = null;
+      mapPtr.pinched = false;
+      this.classList.remove('dragging');
+      if(!suppress) mapClickFromEvent(e);
+    }else{
+      mapPtr.down = false;
+      mapPtr.pinch = mapPinchInfo();
+    }
+  });
+  $('#mapCanvas').addEventListener('pointercancel', function(e){
+    if(mapPtr.pos[e.pointerId]) delete mapPtr.pos[e.pointerId];
+    mapPtr.ids = mapPtr.ids.filter(function(id){ return id !== e.pointerId; });
+    mapPtr.down = false; mapPtr.dragging = false; mapPtr.pinch = null;
+    mapPtr.pinched = true; mapPtr.moved = 999;
+    this.classList.remove('dragging');
+  });
+  $('#mapCanvas').addEventListener('wheel', function(e){
+    if(!mapView.size.w) return;
+    e.preventDefault();
+    var p = mapCanvasPoint(e);
+    mapZoomAt(p.x, p.y, Math.exp(-e.deltaY * 0.0018));
+    mapDraw();
+  }, { passive:false });
+  window.addEventListener('resize', debounce(function(){
+    if(mapView.active && activeView === 'record') renderMap(false);
+  }, 150));
+
   /* 主要按钮 */
   $('#btnAddTop').addEventListener('click', function(){ openForm(); });
   $('#btnDecide').addEventListener('click', function(){ runDecideNow(false); });
@@ -10957,6 +11797,105 @@
       },
       close: closeDiaryDetail,
       refresh: function(){ renderDiary(true); return diaryState.lastRows; }
+    },
+    mapview: {
+      show: function(panel){
+        showPanel('record', panel || 'map');
+        renderMap(true);
+        return {
+          active: mapView.active, mode: mapView.mode, points: mapView.points.length,
+          missing: mapView.missing.length, clusters: mapView.clusters.length,
+          drawMs: mapView.drawMs, firstDrawMs: mapView.firstDrawMs, ms: mapView.lastRenderMs
+        };
+      },
+      hide: function(){ showPanel('record', 'list'); return mapView.active; },
+      state: function(){
+        return {
+          active: mapView.active, mode: mapView.mode, measure: mapView.measure, sort: mapView.sort,
+          scale: mapView.cam.scale, baseScale: mapView.cam.baseScale, cx: mapView.cam.cx, cy: mapView.cam.cy,
+          fitted: mapView.cam.fitted, selected: mapView.selected, size: mapView.size, layer: MAP_LAYER_ID
+        };
+      },
+      size: function(){
+        return {
+          w: mapView.size.w, h: mapView.size.h, dpr: mapView.size.dpr,
+          cssW: $('#mapCanvas').clientWidth, cssH: $('#mapCanvas').clientHeight,
+          canvasW: $('#mapCanvas').width, canvasH: $('#mapCanvas').height,
+          scrollW: document.documentElement.scrollWidth, clientW: document.documentElement.clientWidth
+        };
+      },
+      project: function(lat, lng){ return mapProject(num(lat), num(lng)); },
+      unproject: function(x, y){ return mapUnproject(num(x), num(y)); },
+      fit: function(){ mapView.cam.fitted = false; mapDraw(); return { scale:mapView.cam.scale, cx:mapView.cam.cx, cy:mapView.cam.cy }; },
+      clusters: function(){ return mapView.clusters.map(mapClusterInfo); },
+      labels: function(){ return mapView.labels.slice(); },
+      hitAt: function(x, y){ return mapClusterInfo(mapHitAt(num(x), num(y))); },
+      click: function(x, y){ return mapOnClick(num(x), num(y)); },
+      zoom: function(f){ return mapZoomBy(num(f) || 1.4); },
+      pan: function(dx, dy){
+        mapPanByPx(num(dx), num(dy));
+        mapDraw();
+        renderMapStat();
+        return { scale:mapView.cam.scale, cx:mapView.cam.cx, cy:mapView.cam.cy, drawMs:mapView.drawMs };
+      },
+      reset: function(){ return mapResetView(); },
+      open: function(key){ return openMapStoreSheet(key); },
+      openCluster: function(id){
+        var c = mapView.clusters.filter(function(x){ return x.id === id; })[0] || mapView.clusters[0];
+        return openMapClusterSheet(c);
+      },
+      sheet: function(){ return mapSheetInfo(); },
+      close: function(){ closeMapStoreSheet(); return true; },
+      missing: function(){
+        return mapView.missing.map(function(s){
+          return { key:s.key, name:s.name, city:s.city, area:s.area, visits:s.visits, latestId:(s.latest || s.records[0] || {}).id };
+        });
+      },
+      points: function(){
+        return mapView.points.map(function(p){
+          var xy = mapProject(p.lat, p.lng);
+          return { key:p.key, name:p.name, lat:p.lat, lng:p.lng, x:Math.round(xy.x*10)/10, y:Math.round(xy.y*10)/10, visits:p.visits, rating:p.rating };
+        });
+      },
+      list: function(){
+        return mapListRows().map(function(s){ return { key:s.key, name:s.name, km:storeKm(s), src:storeKmSrc(s), coord:!!storeCoord(s) }; });
+      },
+      listRows: function(){ return $('#mapListBox').querySelectorAll('.map-list-row').length; },
+      setSort: function(v){ mapView.sort = ['dist','visits','rating'].indexOf(v) >= 0 ? v : 'dist'; renderMapList(); return mapView.sort; },
+      setMode: function(m){ return mapSetMode(m); },
+      setMeasure: function(m){
+        mapView.measure = m === 'rating' ? 'rating' : 'visits';
+        mapDraw(); renderMapLegend(); renderMapStat();
+        return mapView.measure;
+      },
+      draw: function(){ var t0 = nowMs(); mapDraw(); return { drawMs:mapView.drawMs, totalMs:nowMs()-t0, clusters:mapView.clusters.length }; },
+      metrics: function(){
+        return {
+          drawMs:mapView.drawMs, firstDrawMs:mapView.firstDrawMs, lastRenderMs:mapView.lastRenderMs, fitMs:mapView.lastFitMs,
+          points:mapView.points.length, missing:mapView.missing.length, clusters:mapView.clusters.length, dpr:mapView.size.dpr,
+          heapMb:(performance.memory ? Math.round(performance.memory.usedJSHeapSize/1048576) : null)
+        };
+      },
+      legend: function(){ return $('#mapLegend').innerText; },
+      stat: function(){ return $('#mapStatLine').textContent; },
+      me: function(){
+        var g = geoLast();
+        if(!g) return null;
+        var xy = mapProject(g.lat, g.lng);
+        var ppk = mapView.cam.scale/MAP_KM_PER_DEG;
+        return {
+          lat:g.lat, lng:g.lng, acc:g.acc, x:Math.round(xy.x*10)/10, y:Math.round(xy.y*10)/10,
+          pxPerKm:Math.round(ppk*10)/10,
+          rings:[1, 3, 5, 10].map(function(km){ return Math.round(km*ppk*10)/10; })
+        };
+      },
+      fix: function(id){ openForm(id); return true; },
+      geo: {
+        get: function(){ return geoLast(); },
+        set: function(lat, lng, acc){ return geoSet(lat, lng, acc); },
+        clear: function(){ geoClear(); }
+      },
+      setLayer: mapSetBaseLayer
     },
     v2: {
       active: function(){ return v2Active; },
