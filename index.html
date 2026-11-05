@@ -260,6 +260,26 @@
   .stat-seg{display:inline-flex;background:var(--seg-bg);border-radius:9px;padding:3px;gap:3px;margin-bottom:6px}
   .stat-seg button{border:0;background:transparent;border-radius:7px;padding:5px 10px;font-size:11px;color:var(--ink2);cursor:pointer}
   .stat-seg button.on{background:var(--card);font-weight:600;color:var(--ink);box-shadow:0 1px 4px rgba(60,40,20,.1)}
+  /* 年度报告 */
+  .annual-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  .annual-cell{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:9px 10px;min-width:0}
+  .annual-cell b{display:block;font-size:16px;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .annual-cell span{font-size:11px;color:var(--ink3)}
+  .annual-cell .sub{display:block;font-size:11px;color:var(--ink2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .annual-mrow{display:grid;grid-template-columns:34px 1fr 38px 1fr 64px;align-items:center;gap:6px;font-size:11px;margin-bottom:5px;color:var(--ink2)}
+  .annual-mrow .m{color:var(--ink3);font-variant-numeric:tabular-nums}
+  .annual-mrow .track{height:8px;background:var(--track);border-radius:99px;overflow:hidden}
+  .annual-mrow .track>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent2),var(--accent))}
+  .annual-mrow .track.p>i{background:linear-gradient(90deg,#7cc79a,#2f8c5a)}
+  .annual-mrow .v{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .annual-hero{background:linear-gradient(180deg,var(--soft),var(--panel-2));border:1px solid var(--accent-line);border-radius:14px;padding:12px;margin-bottom:10px}
+  .annual-hero .y{font-size:28px;font-weight:800;letter-spacing:1px;line-height:1.1}
+  .annual-hero p{font-size:12px;color:var(--ink2);margin-top:4px;line-height:1.6}
+  .annual-year{display:flex;align-items:center;gap:8px;margin-top:10px}
+  .annual-year label{font-size:12px;color:var(--ink2);flex:none}
+  .annual-year select{flex:1;min-width:0;padding:8px 10px;font-size:13px}
+  .annual-actions{display:flex;gap:8px;margin-top:12px}
+  .annual-actions .btn{flex:1}
   @media(max-width:480px){
     .stat-grid{grid-template-columns:repeat(2,1fr)}
     .stat b{font-size:17px}
@@ -938,6 +958,7 @@
           <h2>统计</h2>
           <span class="hint" id="statHint"></span>
         </div>
+        <button class="btn btn-soft btn-block" id="btnAnnual" style="margin-bottom:10px">生成年度美食报告</button>
         <div class="stats-scope">
           <select class="input" id="statYear" aria-label="统计年份"></select>
           <select class="input" id="statMonth" aria-label="统计月份"></select>
@@ -1657,10 +1678,33 @@
   </div>
 </div>
 
+<!-- 年度美食报告 -->
+<div class="modal-mask hidden" id="annualMask">
+  <div class="modal" id="annualModal" style="max-width:520px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+      <div style="min-width:0">
+        <h3>年度美食报告</h3>
+        <p class="muted" id="annualSub">只统计所选年份有日期的真实记录</p>
+      </div>
+      <button class="btn btn-sm" id="btnAnnualClose">关闭</button>
+    </div>
+    <div class="annual-year">
+      <label for="annualYear">年份</label>
+      <select class="input" id="annualYear" aria-label="报告年份"></select>
+    </div>
+    <div id="annualBody" style="margin-top:12px"></div>
+    <div class="annual-actions">
+      <button class="btn btn-primary" id="btnAnnualImage">生成长图</button>
+      <button class="btn btn-soft" id="btnAnnualCopy">复制文案</button>
+    </div>
+    <p class="dist-note">长图 1080 宽、自动分页；金额只用真实记录，缺失会标注「未记录 N 次」；分享图固定浅色。</p>
+  </div>
+</div>
+
 <!-- 长图预览与保存 -->
-<div class="modal-mask hidden" id="longMask">
+<div class="modal-mask hidden" id="longMask" style="z-index:70">
   <div class="modal">
-    <h3>分享长图</h3>
+    <h3 id="longTitle">分享长图</h3>
     <p class="muted" id="longHint">1080 宽 · 每页最多 12 家</p>
     <div class="long-wrap" id="longWrap" style="margin-top:10px"></div>
     <div class="actions" style="margin-top:10px">
@@ -6000,6 +6044,376 @@
     statsState.detail = null;
   }
 
+  /* ---- 年度美食报告：只统计所选年份有日期的真实记录；缺失金额不推算 ---- */
+  var annualState = { year:0, open:false, pages:0, lastMs:0, computeMs:0, genMs:0 };
+  var annualText = '';
+  var ANNUAL_MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+
+  function annualYearList(){
+    var seen = {}, cy = String(new Date().getFullYear());
+    db.records.forEach(function(r){ var m = statsMonthOf(r); if(m) seen[m.slice(0,4)] = 1; });
+    seen[cy] = 1;
+    return Object.keys(seen).sort(function(a,b){ return parseInt(b,10) - parseInt(a,10); });
+  }
+  function annualYearRecords(year){
+    var y = String(year);
+    return db.records.filter(function(r){ var m = statsMonthOf(r); return m && m.slice(0,4) === y; });
+  }
+  function annualCompute(year){
+    var t0 = nowMs();
+    var y = parseInt(year,10) || new Date().getFullYear();
+    var recs = annualYearRecords(y);
+    var info = statsMoneyInfo(recs);
+    var stores = statsStoreRows(recs);
+    var cats = statsCatRows(recs);
+    var keys = ANNUAL_MONTHS.map(function(m){ return String(y)+'-'+m; });
+    var months = statsMonthRows(recs, keys);
+
+    var bestVisit = null;
+    stores.forEach(function(s){
+      if(!bestVisit || s.visits > bestVisit.visits || (s.visits === bestVisit.visits && s.lastDate > bestVisit.lastDate)){
+        bestVisit = s;
+      }
+    });
+    var bestRated = null;
+    stores.forEach(function(s){
+      if(s.rating == null || s.visits < 2) return;
+      if(!bestRated || s.rating > bestRated.rating || (s.rating === bestRated.rating && s.visits > bestRated.visits)){
+        bestRated = s;
+      }
+    });
+    var bestMeal = null;
+    recs.forEach(function(r){
+      var rt = num(r.rating);
+      if(rt <= 0) return;
+      var d = String(r.visitDate||'');
+      if(!bestMeal || rt > bestMeal.rating || (rt === bestMeal.rating && d > bestMeal.date)){
+        bestMeal = { id:r.id, name:String(r.name||''), date:d, rating:rt, note:String(r.note||''), photoId:r.photoId||null, people:num(r.people)||1 };
+      }
+    });
+    var dates = recs.map(function(r){ return String(r.visitDate||''); }).filter(Boolean).sort();
+    var out = {
+      year:y, records:info.total, stores:stores.length, money:info,
+      cats:cats, topCat:cats[0]||null, bestVisit:bestVisit, bestRated:bestRated, bestMeal:bestMeal,
+      months:months, storeRows:stores, firstDate:dates[0]||'', lastDate:dates[dates.length-1]||'',
+      computeMs: nowMs() - t0
+    };
+    annualState.computeMs = out.computeMs;
+    return out;
+  }
+  function annualPages(d){ return d.records ? 2 + Math.ceil(d.storeRows.length / 24) : 0; }
+
+  function annualMonthHtml(d){
+    var mv = 1, ms = 1;
+    d.months.forEach(function(m){ if(m.total > mv) mv = m.total; if(m.sum > ms) ms = m.sum; });
+    return d.months.map(function(m){
+      var vw = m.total ? Math.max(2, Math.round(m.total/mv*100)) : 0;
+      var sw = m.sum ? Math.max(2, Math.round(m.sum/ms*100)) : 0;
+      var spend = m.amountN ? money(m.sum) : (m.total ? '未记录' : '—');
+      return '<div class="annual-mrow"><span class="m">'+parseInt(m.key.slice(5,7),10)+' 月</span>'+
+        '<span class="track"><i style="width:'+vw+'%"></i></span><span class="v">'+m.total+' 次</span>'+
+        '<span class="track p"><i style="width:'+sw+'%"></i></span><span class="v">'+spend+'</span></div>';
+    }).join('');
+  }
+  function annualCellHtml(value, label, sub){
+    return '<div class="annual-cell"><span>'+esc(label)+'</span><b>'+value+'</b><span class="sub">'+esc(sub||'')+'</span></div>';
+  }
+  function annualTextOf(d){
+    if(!d.records) return '【i吃饭 · '+d.year+' 年度美食报告】\n这一年还没有记录。\n由 i吃饭 生成';
+    var lines = ['【i吃饭 · '+d.year+' 年度美食报告】',
+      '共 '+d.records+' 次到访 · '+d.stores+' 家餐厅'];
+    if(d.topCat) lines.push('最喜欢：'+d.topCat.name+'（'+d.topCat.count+' 次 · '+d.topCat.pct+'%）');
+    if(d.bestVisit) lines.push('到访最多：'+d.bestVisit.name+'（'+d.bestVisit.visits+' 次）');
+    if(d.bestRated) lines.push('最高评分：'+d.bestRated.name+'（'+d.bestRated.rating+' 分 · '+d.bestRated.visits+' 次，至少到访 2 次）');
+    lines.push('消费总额：'+(d.money.n ? money(d.money.sum) : '未记录')+'（样本 '+d.money.n+' 笔 · 未记录 '+d.money.miss+' 次）');
+    lines.push('平均每次：'+(d.money.avgVisit != null ? money(d.money.avgVisit) : '未记录'));
+    if(d.bestMeal){
+      lines.push('最满意的一餐：'+d.bestMeal.name+' · '+d.bestMeal.date+' · '+d.bestMeal.rating+' 分');
+      if(d.bestMeal.note) lines.push('「'+d.bestMeal.note+'」');
+    }
+    lines.push('数据来自本人记录，不代表平台评价');
+    lines.push('由 i吃饭 生成');
+    return lines.join('\n');
+  }
+
+  function renderAnnual(){
+    var t0 = nowMs();
+    if(!annualState.year) annualState.year = new Date().getFullYear();
+    var ys = $('#annualYear');
+    if(ys){
+      ys.innerHTML = annualYearList().map(function(y){ return '<option value="'+y+'">'+y+' 年</option>'; }).join('');
+      ys.value = String(annualState.year);
+    }
+    var d = annualCompute(annualState.year);
+    var html = '';
+    if(!d.records){
+      var others = annualYearList().filter(function(y){ return String(y) !== String(d.year) && annualYearRecords(y).length; });
+      html = '<div class="empty card flat" style="margin:0"><h3>'+d.year+' 年还没有记录</h3>'+
+        '<p>这一年没有带日期的到访，所以不生成报告长图。可以切换到有记录的年份看看。</p>'+
+        (others.length ? '<div class="actions" style="flex-wrap:wrap;justify-content:center;margin-top:10px">'+
+          others.map(function(y){ return '<button class="btn btn-sm" data-annual-year="'+y+'">'+y+' 年 · '+annualYearRecords(y).length+' 次</button>'; }).join('')+'</div>' : '')+
+        '</div>';
+    }else{
+      html += '<div class="annual-hero"><div class="y">'+d.year+'</div><p>共 <b>'+d.records+'</b> 次到访 · <b>'+d.stores+'</b> 家餐厅'+
+        (d.firstDate ? ' · '+esc(d.firstDate)+' → '+esc(d.lastDate) : '')+'</p>'+
+        '<p>只统计这一年有日期的记录；日期未知的记录不进入年度报告。</p></div>';
+      html += '<div class="annual-grid">'+
+        annualCellHtml(String(d.money.n), '金额样本', '未记录 '+d.money.miss+' 次')+
+        annualCellHtml(d.money.n ? money(d.money.sum) : '—', '年度消费', '只算真实金额')+
+        annualCellHtml(d.money.avgVisit != null ? money(d.money.avgVisit) : '—', '平均每次', '分母 '+d.money.n+' 笔')+
+        annualCellHtml(d.records+' 次 / '+d.stores+' 家', '到访与餐厅', '不同店名去重')+
+        annualCellHtml(d.topCat ? esc(d.topCat.name) : '—', '最喜欢的菜系', d.topCat ? d.topCat.count+' 次 · '+d.topCat.pct+'%' : '没有菜系')+
+        annualCellHtml(d.bestVisit ? esc(d.bestVisit.name) : '—', '到访最多餐厅', d.bestVisit ? d.bestVisit.visits+' 次' : '没有记录')+
+        annualCellHtml(d.bestRated ? esc(d.bestRated.name) : '暂无', '最高评分餐厅', d.bestRated ? d.bestRated.rating+' 分 · '+d.bestRated.visits+' 次（≥2 次）' : '没有到访 ≥2 次且有评分的店')+
+        annualCellHtml(d.money.miss+' 次', '未记录金额', '不计入总额与均值')+
+        '</div>';
+      html += '<div class="stat-sub"><h3>最满意的一餐</h3><span class="hint">评分最高</span></div>';
+      if(d.bestMeal){
+        html += '<div class="annual-hero" style="margin-bottom:0">'+
+          (d.bestMeal.photoId ? '<img data-photo="'+esc(d.bestMeal.photoId)+'" alt="这一餐的照片" style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-bottom:8px">' : '')+
+          '<b style="font-size:15px">'+esc(d.bestMeal.name)+'</b>'+
+          '<p>'+esc(d.bestMeal.date||'日期未知')+' · '+d.bestMeal.rating+' 分'+(d.bestMeal.people>1?' · '+d.bestMeal.people+' 人':'')+'</p>'+
+          (d.bestMeal.note ? '<p>「'+esc(d.bestMeal.note)+'」</p>' : '<p class="muted">没有写评价。</p>')+'</div>';
+      }else{
+        html += '<p class="stat-note">这一年没有带评分的到访。</p>';
+      }
+      html += '<div class="stat-sub"><h3>月度到访与消费</h3><span class="hint">12 个月</span></div>';
+      html += annualMonthHtml(d);
+      html += '<p class="stat-note">金额样本 <b>'+d.money.n+'</b> 笔 / 未记录 <b>'+d.money.miss+'</b> 次；缺失金额的到访不计入总额与平均每次的分母，也不按人均推算。</p>';
+    }
+    $('#annualBody').innerHTML = html;
+    hydratePhotos($('#annualBody'));
+    $('#btnAnnualImage').disabled = !d.records;
+    $('#btnAnnualImage').style.opacity = d.records ? '1' : '.55';
+    annualState.pages = annualPages(d);
+    annualState.lastMs = nowMs() - t0;
+    annualText = annualTextOf(d);
+    return d;
+  }
+  function openAnnual(){
+    if(!annualState.year) annualState.year = new Date().getFullYear();
+    annualState.open = true;
+    $('#annualMask').classList.remove('hidden');
+    return renderAnnual();
+  }
+  function closeAnnual(){
+    annualState.open = false;
+    $('#annualMask').classList.add('hidden');
+  }
+  function annualSetYear(y){
+    var n = parseInt(y, 10);
+    if(isFinite(n) && n > 0) annualState.year = n;
+    return renderAnnual();
+  }
+
+  function annualDrawHeader(ctx, W, M, d, subtitle, page, pages, HH){
+    var g = ctx.createLinearGradient(0, 0, W, HH);
+    g.addColorStop(0, '#f08c3a'); g.addColorStop(1, '#e8590c');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, HH);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(255,255,255,.97)';
+    ctx.font = '700 44px ' + SHARE_FONT;
+    ctx.fillText('i吃饭 · '+d.year+' 年度美食报告', M, 104);
+    ctx.fillStyle = 'rgba(255,255,255,.88)';
+    ctx.font = '400 26px ' + SHARE_FONT;
+    ctx.fillText(subtitle, M, 152);
+    ctx.textAlign = 'right';
+    ctx.font = '600 24px ' + SHARE_FONT;
+    ctx.fillText('第 '+(page+1)+' / '+pages+' 页', W-M, 104);
+    ctx.textAlign = 'left';
+  }
+  function annualDrawFooter(ctx, W, M, H, page, pages){
+    var fy = H - 176 + 40;
+    ctx.strokeStyle = '#eee6db'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(M, fy); ctx.lineTo(W-M, fy); ctx.stroke();
+    ctx.fillStyle = '#8a8078'; ctx.font = '500 26px ' + SHARE_FONT;
+    ctx.fillText('数据来自本人记录，不代表平台评价', M, fy+48);
+    ctx.fillStyle = '#9a8f86'; ctx.font = '400 22px ' + SHARE_FONT;
+    ctx.fillText('由 i吃饭 生成 · 金额为手填真实记录，缺失不推算 · '+todayStr(), M, fy+88);
+    ctx.textAlign = 'right'; ctx.font = '400 22px ' + SHARE_FONT;
+    ctx.fillText('第 '+(page+1)+' / '+pages+' 页', W-M, fy+88);
+    ctx.textAlign = 'left';
+  }
+  function annualDrawCard(ctx, x, y, w, h, label, value, sub){
+    ctx.save();
+    ctx.fillStyle = '#fff'; roundRectPath(ctx, x, y, w, h, 18); ctx.fill();
+    ctx.strokeStyle = '#eee6db'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#9a8f86'; ctx.font = '400 22px ' + SHARE_FONT;
+    ctx.fillText(label, x+24, y+38);
+    ctx.fillStyle = '#221d19'; ctx.font = '700 40px ' + SHARE_FONT;
+    drawWrapped(ctx, value, x+24, y+92, w-48, 44, 1);
+    ctx.fillStyle = '#6b615a'; ctx.font = '400 20px ' + SHARE_FONT;
+    drawWrapped(ctx, sub || '', x+24, y+136, w-48, 26, 1);
+  }
+
+  function drawAnnualPage(d, idx, pages){
+    var W = 1080, M = 64, HH = 260;
+    var storePer = 24;
+    var storePages = Math.ceil(d.storeRows.length / storePer);
+    var part = idx >= 2 ? idx - 2 : 0;
+    var chunk = idx >= 2 ? d.storeRows.slice(part*storePer, part*storePer+storePer) : [];
+    var H, ctx, c = document.createElement('canvas');
+    if(idx === 0) H = 1620;
+    else if(idx === 1) H = 1600;
+    else H = 260 + 70 + chunk.length*96 + 220;
+
+    c.width = W; c.height = H;
+    ctx = c.getContext('2d');
+    if(!ctx) throw new Error('no-canvas');
+    ctx.fillStyle = '#faf7f2'; ctx.fillRect(0, 0, W, H);
+
+    if(idx === 0){
+      annualDrawHeader(ctx, W, M, d, '共 '+d.records+' 次到访 · '+d.stores+' 家餐厅', 0, pages, HH);
+      ctx.fillStyle = '#221d19'; ctx.font = '700 40px ' + SHARE_FONT;
+      ctx.fillText('这一年，吃得怎么样', M, 330);
+      var cells = [
+        ['到访次数', d.records+' 次', '有日期的记录'],
+        ['不同餐厅', d.stores+' 家', '按店名去重'],
+        ['年度消费', d.money.n ? money(d.money.sum) : '—', '真实金额样本 '+d.money.n+' 笔'],
+        ['平均每次', d.money.avgVisit != null ? money(d.money.avgVisit) : '—', '分母 '+d.money.n+' 笔'],
+        ['最喜欢的菜系', d.topCat ? d.topCat.name : '—', d.topCat ? d.topCat.count+' 次 · '+d.topCat.pct+'%' : '没有菜系'],
+        ['到访最多餐厅', d.bestVisit ? d.bestVisit.name : '—', d.bestVisit ? d.bestVisit.visits+' 次'+(d.bestVisit.lastDate?' · 上次 '+d.bestVisit.lastDate:'') : '没有记录'],
+        ['最高评分餐厅', d.bestRated ? d.bestRated.name : '暂无', d.bestRated ? d.bestRated.rating+' 分 · '+d.bestRated.visits+' 次（≥2 次）' : '没有到访 ≥2 次且有评分的店'],
+        ['未记录金额', d.money.miss+' 次', '不计入总额与均值']
+      ];
+      var cw = (W-M*2-24)/2, ch = 172;
+      cells.forEach(function(cell, i){
+        var col = i % 2, row = Math.floor(i/2);
+        annualDrawCard(ctx, M+col*(cw+24), 370+row*(ch+20), cw, ch, cell[0], cell[1], cell[2]);
+      });
+      var by = 370 + Math.ceil(cells.length/2)*(ch+20) + 18;
+      ctx.save();
+      ctx.fillStyle = '#fff'; roundRectPath(ctx, M, by, W-M*2, 258, 20); ctx.fill();
+      ctx.strokeStyle = '#eee6db'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = '#b8460a'; ctx.font = '600 24px ' + SHARE_FONT;
+      ctx.fillText('最满意的一餐', M+24, by+44);
+      if(d.bestMeal){
+        ctx.fillStyle = '#221d19'; ctx.font = '700 36px ' + SHARE_FONT;
+        drawWrapped(ctx, d.bestMeal.name, M+24, by+96, W-M*2-48, 42, 1);
+        ctx.fillStyle = '#6b615a'; ctx.font = '400 24px ' + SHARE_FONT;
+        ctx.fillText((d.bestMeal.date||'日期未知')+' · '+d.bestMeal.rating+' 分'+(d.bestMeal.people>1?' · '+d.bestMeal.people+' 人':''), M+24, by+134);
+        ctx.fillStyle = '#8a4b0f'; ctx.font = '400 22px ' + SHARE_FONT;
+        drawWrapped(ctx, d.bestMeal.note ? '「'+d.bestMeal.note+'」' : '没有写评价。', M+24, by+180, W-M*2-48, 28, 2);
+      }else{
+        ctx.fillStyle = '#9a8f86'; ctx.font = '400 24px ' + SHARE_FONT;
+        ctx.fillText('这一年没有带评分的到访。', M+24, by+100);
+      }
+      annualDrawFooter(ctx, W, M, H, 0, pages);
+    }else if(idx === 1){
+      annualDrawHeader(ctx, W, M, d, '月度到访与消费 · 12 个月', 1, pages, HH);
+      ctx.fillStyle = '#221d19'; ctx.font = '700 36px ' + SHARE_FONT;
+      ctx.fillText('月度到访与消费', M, 330);
+      ctx.fillStyle = '#9a8f86'; ctx.font = '400 22px ' + SHARE_FONT;
+      ctx.fillText('左条为到访次数，右条为真实金额（未记录不画条）', M, 366);
+      var mv = 1, ms = 1;
+      d.months.forEach(function(m){ if(m.total > mv) mv = m.total; if(m.sum > ms) ms = m.sum; });
+      var ry = 410;
+      d.months.forEach(function(m){
+        ctx.textAlign = 'left'; ctx.fillStyle = '#6b615a'; ctx.font = '500 24px ' + SHARE_FONT;
+        ctx.fillText(String(parseInt(m.key.slice(5,7),10))+' 月', M, ry+20);
+        ctx.fillStyle = '#f1eae0'; roundRectPath(ctx, M+92, ry+2, 300, 18, 9); ctx.fill();
+        var vw = m.total ? Math.max(4, Math.round(m.total/mv*300)) : 0;
+        if(vw){ ctx.fillStyle = '#e8590c'; roundRectPath(ctx, M+92, ry+2, vw, 18, 9); ctx.fill(); }
+        ctx.fillStyle = '#6b615a'; ctx.font = '400 22px ' + SHARE_FONT;
+        ctx.fillText(m.total+' 次', M+404, ry+20);
+        ctx.fillStyle = '#f1eae0'; roundRectPath(ctx, M+500, ry+2, 280, 18, 9); ctx.fill();
+        var sw = m.sum ? Math.max(4, Math.round(m.sum/ms*280)) : 0;
+        if(sw){ ctx.fillStyle = '#2f8c5a'; roundRectPath(ctx, M+500, ry+2, sw, 18, 9); ctx.fill(); }
+        ctx.textAlign = 'right'; ctx.fillStyle = m.amountN ? '#221d19' : '#9a8f86';
+        ctx.font = '500 22px ' + SHARE_FONT;
+        ctx.fillText(m.amountN ? money(m.sum) : (m.total ? '未记录' : '—'), W-M, ry+20);
+        ctx.textAlign = 'left';
+        ry += 90;
+      });
+      annualDrawFooter(ctx, W, M, H, 1, pages);
+    }else{
+      annualDrawHeader(ctx, W, M, d, '这一年在吃过的店 · 第 '+(part+1)+' / '+storePages+' 部分', idx, pages, HH);
+      ctx.fillStyle = '#221d19'; ctx.font = '700 36px ' + SHARE_FONT;
+      ctx.fillText('这一年在吃过的店', M, 330);
+      ctx.fillStyle = '#9a8f86'; ctx.font = '400 22px ' + SHARE_FONT;
+      ctx.fillText('共 '+d.storeRows.length+' 家 · 只列出有店名的记录', M, 366);
+      var sy = 402;
+      chunk.forEach(function(s, i){
+        var n = part*storePer + i + 1;
+        ctx.fillStyle = (i%2 ? '#fff' : '#fdfbf8');
+        roundRectPath(ctx, M, sy, W-M*2, 88, 12); ctx.fill();
+        ctx.strokeStyle = '#f3ece2'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = '#9a8f86'; ctx.font = '500 24px ' + SHARE_FONT;
+        ctx.textAlign = 'left';
+        ctx.fillText(String(n), M+18, sy+52);
+        ctx.fillStyle = '#221d19'; ctx.font = '600 30px ' + SHARE_FONT;
+        drawWrapped(ctx, s.name, M+70, sy+52, 400, 34, 1);
+        ctx.fillStyle = '#6b615a'; ctx.font = '400 22px ' + SHARE_FONT;
+        ctx.fillText(s.city||'未填城市', M+490, sy+52);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#e8590c'; ctx.font = '600 26px ' + SHARE_FONT;
+        ctx.fillText(s.visits+' 次', W-M-190, sy+52);
+        ctx.fillStyle = '#6b615a'; ctx.font = '400 22px ' + SHARE_FONT;
+        ctx.fillText(s.amountN ? money(s.sum) : '未记录', W-M-90, sy+52);
+        ctx.fillStyle = '#9a8f86'; ctx.font = '400 20px ' + SHARE_FONT;
+        ctx.fillText(s.rating != null ? s.rating+' 分' : '未评分', W-M, sy+52);
+        ctx.textAlign = 'left';
+        sy += 96;
+      });
+      annualDrawFooter(ctx, W, M, H, idx, pages);
+    }
+    return c;
+  }
+
+  function generateAnnualImages(){
+    if(longGenerating) return false;
+    var d = annualCompute(annualState.year || new Date().getFullYear());
+    if(!d.records){ toast('这一年还没有记录，先切换年份'); return false; }
+    longText = annualTextOf(d);
+    var pages = annualPages(d);
+    annualState.pages = pages;
+    var wrap = $('#longWrap');
+    longUrls.forEach(function(u){ URL.revokeObjectURL(u); });
+    longUrls = []; longBlobs = [];
+    longGenerating = true;
+    wrap.innerHTML = '';
+    $('#longTitle').textContent = d.year+' 年度报告长图';
+    $('#longHint').textContent = '正在生成 0/'+pages+' 页…';
+    openLongMask();
+    var t0 = nowMs();
+    function nextPage(i){
+      if(i >= pages){
+        longGenerating = false;
+        annualState.genMs = nowMs() - t0;
+        $('#longHint').textContent = pages+' 页 · '+d.records+' 次到访 · 生成用时 '+fmtMs(annualState.genMs);
+        return;
+      }
+      var canvas;
+      try{ canvas = drawAnnualPage(d, i, pages); }
+      catch(e){
+        logError('年度长图绘制', e);
+        longGenerating = false;
+        $('#longHint').textContent = '绘图失败，可改用复制文案';
+        return;
+      }
+      canvas.toBlob(function(blob){
+        if(blob){
+          longBlobs.push({ blob: blob, name:'i吃饭-年度报告-'+d.year+'-'+(i+1)+'.png' });
+          var img = document.createElement('img');
+          var url = URL.createObjectURL(blob);
+          longUrls.push(url);
+          img.src = url; img.alt = '第 '+(i+1)+' 页';
+          $('#longWrap').appendChild(img);
+        }
+        canvas.width = 0; canvas.height = 0;
+        $('#longHint').textContent = '正在生成 '+(i+1)+'/'+pages+' 页…';
+        setTimeout(function(){ nextPage(i+1); }, 0);
+      }, 'image/png');
+    }
+    nextPage(0);
+    return true;
+  }
+  function openLongMask(){ $('#longMask').classList.remove('hidden'); }
+
+
   function renderWishlist(){
     if(!db.wishlist.length){
       $('#wishBox').innerHTML = '<p class="muted">还没有想去的店。加到清单后，每日推荐也会考虑它们。</p>';
@@ -8825,6 +9239,8 @@
     if(!records.length){ toast('没有选中记录'); return; }
     var per = 12, pages = Math.ceil(records.length / per);
     var wrap = $('#longWrap');
+    longText = buildShareList(records, opts);
+    $('#longTitle').textContent = '分享长图';
     longUrls.forEach(function(u){ URL.revokeObjectURL(u); });
     longUrls = [];
     longBlobs = [];
@@ -11817,6 +12233,16 @@
   });
   $('#statYear').addEventListener('change', function(){ statsSet({ year:this.value }); });
   $('#statMonth').addEventListener('change', function(){ statsSet({ month:this.value }); });
+  $('#btnAnnual').addEventListener('click', openAnnual);
+  $('#btnAnnualClose').addEventListener('click', closeAnnual);
+  $('#annualMask').addEventListener('click', function(e){ if(e.target === this) closeAnnual(); });
+  $('#annualYear').addEventListener('change', function(){ annualSetYear(this.value); });
+  $('#annualBody').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-annual-year]') : null;
+    if(b) annualSetYear(b.getAttribute('data-annual-year'));
+  });
+  $('#btnAnnualImage').addEventListener('click', function(){ generateAnnualImages(); });
+  $('#btnAnnualCopy').addEventListener('click', function(){ copyText(annualText); });
   $('#statBox').addEventListener('click', function(e){
     var trend = e.target.closest ? e.target.closest('[data-stat-trend]') : null;
     if(trend){ statsSet({ trend:trend.getAttribute('data-stat-trend') }); return; }
@@ -12652,6 +13078,40 @@
       missing: function(){
         return statsPeriodRecords().filter(function(r){ return statsAmount(r) == null; })
           .map(function(r){ return { id:r.id, name:r.name, date:r.visitDate || '' }; });
+      }
+    },
+    annual: {
+      show: function(){
+        var d = openAnnual();
+        return { year:d.year, records:d.records, stores:d.stores, pages:annualState.pages, ms:annualState.lastMs };
+      },
+      close: closeAnnual,
+      state: function(){
+        return { open:annualState.open, year:annualState.year, pages:annualState.pages, lastMs:annualState.lastMs,
+          computeMs:annualState.computeMs, genMs:annualState.genMs, text:annualText,
+          body:$('#annualBody') ? $('#annualBody').innerText : '' };
+      },
+      setYear: function(y){ annualSetYear(y); return annualState.year; },
+      years: function(){ return annualYearList(); },
+      compute: function(y){ return JSON.parse(JSON.stringify(annualCompute(y || annualState.year))); },
+      text: function(){ return annualText; },
+      generate: function(){ return generateAnnualImages(); },
+      blobs: function(){ return longBlobs.map(function(b){ return { name:b.name, size:b.blob.size }; }); },
+      pageMeta: function(i){
+        var d = annualCompute(annualState.year);
+        if(!d.records) return null;
+        var pages = annualPages(d);
+        var c = drawAnnualPage(d, i, pages);
+        var ctx = c.getContext('2d');
+        var px = function(x, y){ var a = ctx.getImageData(x, y, 1, 1).data; return [a[0], a[1], a[2]]; };
+        var meta = { index:i, w:c.width, h:c.height, pages:pages, top:px(2,2), bottom:px(2, c.height-2) };
+        c.width = 0; c.height = 0;
+        return meta;
+      },
+      longOpen: function(){ return !$('#longMask').classList.contains('hidden'); },
+      closeLong: closeLongImages,
+      controls: function(){
+        return { imageDisabled:$('#btnAnnualImage').disabled, yearValue:$('#annualYear').value, yearOptions:$('#annualYear').options.length };
       }
     },
     v2: {
