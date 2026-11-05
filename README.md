@@ -4,6 +4,8 @@
 
 单页应用，**零构建、零依赖、零 CDN、零后端**；所有记录、评分、照片只存在你自己的设备上，不抓取任何平台数据。
 
+**在线使用**：<https://violetz10032.github.io/fandazi/>（HTTPS，可直接安装为桌面/手机应用）
+
 ---
 
 ## 是什么
@@ -29,7 +31,7 @@
 ## 本地运行
 
 ```bash
-git clone https://github.com/<owner>/fandazi.git
+git clone https://github.com/violetz10032/fandazi.git
 cd fandazi
 python -m http.server 8765
 # 打开 http://localhost:8765/index.html
@@ -53,6 +55,8 @@ python -m http.server 8765
 2. Source 选择 **Deploy from a branch**，分支选 `main`、目录选 `/ (root)`，保存；
 3. 等待约 1 分钟，访问 `https://<owner>.github.io/fandazi/`；
 4. 地址栏出现安装图标（Chrome/Edge）或「安装应用」菜单项，点击即可安装；iPhone/iPad 用 Safari「分享 → 添加到主屏幕」。
+
+本项目已按上述配置开启 Pages（`main` + `/ (root)`，legacy 构建），当前地址 <https://violetz10032.github.io/fandazi/>；后续往 `main` 推送会自动重新发布。
 
 部署要点：
 
