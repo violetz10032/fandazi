@@ -50,6 +50,17 @@ python -m http.server 8765
 
 > `http://` 局域网 IP（如 `http://192.168.x.x:8765`）不是安全上下文，浏览器会禁用 Service Worker 与安装入口。手机安装请用 HTTPS 部署。
 
+### 本地自动化测试（headless Chrome）防坑：可能触发 Windows 登录失败并锁账户
+
+本地 CDP 测试会启动无头 Chrome。若每次测试都用 `%TEMP%` 下带时间戳的一次性 `--user-data-dir`，Chrome 的凭据/扩展初始化会反复触发 Windows 集成认证失败；短时间累计 10 次即可能把当前账户锁 10 分钟（表现为「电脑崩溃/重启」）。必须遵守：
+
+- **固定 profile + 单实例复用**：统一走 `.tmp/cdp-harness.js`，每个套件用固定目录 `.tmp/profiles/<suite>`（p0 / back / p1 各自独立，不共用同一个 profile 同时跑），**跑前清空、跑后 teardown 删除**；测试进程内只 `ensureBrowser()` 一次，套件之间开新标签页隔离，不要反复 `launch`。
+- **禁用扩展与后台组件**：启动参数包含 `--disable-extensions`、`--disable-component-extensions-with-background-pages`、`--disable-features=MediaRouter`、`--disable-sync`、`--disable-background-networking`（迅雷等 BHO 扩展 `xl_ext_chrome.exe` 会被疑似触发凭据重试）。
+- **禁止常驻**：每个脚本结束必须 `Browser.close()` 并确认 CDP 端口关闭，不留常驻进程/端口。
+- **启动前与运行中做只读锁定检测**：用 `OpenInputDesktop` 判断当前是否在安全桌面（锁屏 / 全屏 UAC），命中就中止，不要叠加启动；不要用 `LogonUI` 进程判断（解锁后它可能残留，会误报）。
+- **临时 profile 必须 teardown**：跑完立即删除本套件的 `.tmp/profiles/<suite>`（历史遗留 `%TEMP%\fz-*` 也要在确认后清理），否则一次几百 MB、几十次就是 GB 级垃圾。
+
+
 ## 部署为可安装应用（GitHub Pages）
 
 仓库本身就是一个可直接发布的静态站点，无需构建：
@@ -305,6 +316,42 @@ APK 内接了 `@capacitor/filesystem` + `@capacitor/share`：**CSV / JSON / 文�
 说明：吸底栏出现后保存不再需要下滑，完成一条记录只剩「入口 → 选店 → 保存」3 次点击（表单打开后 2 次）；整条记录仍在 1 秒量级，远低于 30 秒目标。
 
 未真机验证的部分：真机触感与键盘弹出、APK 内的表现（`@capacitor/app` 未装、未在真机跑）。照片管理、连续记录、语音不在本段。
+
+## 照片（P1：店铺 / 到店 / 菜品）
+
+### 三类照片分开
+
+- 记录表单里的照片分三组：**店铺照片**（门头、菜单、环境）、**到店照片**（小票、桌面、排队）、**菜品照片**。每组独立添加、独立设封面。
+- 每组都支持**相机 / 相册**（`accept="image/*"`，`multiple` 多选）；照片只存在本机 IndexedDB，不随任何导出/分享上传。
+- 同一张照片只属于一个分类；组内可排序，**第一张即封面**（列表卡片优先显示封面）。
+
+### 添加、预览、编辑
+
+- 添加后立即在表单内显示缩略图；点击缩略图打开大图预览层（`#photoViewMask`，参与返回层级，返回键 / ✕ / 点遮罩都能关）。
+- 预览层支持：上一张 / 下一张、看原图（1:1 不缩放，可拖动查看）、设为封面、左移 / 右移、替换、删除。
+- **批量模式**：点「批量」进入多选，勾选后可一次删除；退出批量前不会执行删除。
+- 表单里删除照片是**延迟生效**的：点 ✕ 只从本次表单移除，取消表单不会丢图；只有点「保存」才真正清理无引用的照片。
+
+### 压缩与加载策略
+
+- 照片入库前用 canvas 双档压缩：原图 ≤1280px、JPEG q≈0.72；缩略图 ≤240px、q≈0.6。列表/表单优先读缩略图，只有打开预览「看原图」才读全图，避免一次性解码全部原图。
+- `photoGetThumb()` 优先返回 `thumb`，旧数据没有缩略图时回退全图；`hydratePhotos()` 按 `data-thumb="1"` 懒加载。
+
+### 删除、引用与孤儿
+
+- 记录里的照片以 `photos: [{ id, cat }]` 存储，同时保留 `photoIds` 与旧字段 `photoId`（兼容旧记录 / 旧导出）。
+- 删除记录时**按引用计数**清理：同一张照片若仍被其它记录引用，不会被误删；只有没有任何记录引用时才从 IndexedDB 删除。
+- **孤儿照片只报告、不自动删**：「我的 → 诊断」里显示「孤儿照片 N 张（有文件、无记录引用）· 只报告不自动删除」。
+- `migrate()` 会把 `photos / photoIds / photoId` 一起归一化保留（此前只保留 `photoId`，会导致重载后多图丢失，已修）。
+
+### 与 v2 的映射
+
+- v2 的 `visitOfRecord` 会写 `photos / photoIds`，`recordFromVisit` 会还原 `photos / photoIds / photoId`；`V2_MAPPED_KEYS` 已包含这些字段，v2 读写不会丢分类信息。
+
+### 未真机验证
+
+- Android 真机上的相机/相册选择器、WebView 内大图预览的内存表现、系统分享面板（照片不进分享）**未真机验证**；本轮验证均在 375×812 headless Chrome 完成。
+- 本轮实测（新脚手架：固定 profile + 单实例 + 禁用扩展）：P1 **21/21**；回归：返回层级 **44/44**、P0 **28/28**。
 
 ## 备份与恢复
 

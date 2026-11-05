@@ -449,6 +449,26 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .photo-preview{width:64px;height:64px;border-radius:10px;border:1px dashed var(--line);background:var(--bg-2);display:grid;place-items:center;overflow:hidden;color:var(--ink3);font-size:11px}
   .photo-preview img{width:100%;height:100%;object-fit:cover}
 
+  /* P1 照片：店铺 / 到店 / 菜品 三组，缩略图网格 + 预览层 */
+  .photo-groups{display:flex;flex-direction:column;gap:10px}
+  .pg-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+  .pg-title{font-size:12px;color:var(--ink2);font-weight:600}
+  .pg-title b{color:var(--ink3);font-weight:600;margin-left:4px}
+  .pg-btns{display:flex;gap:6px}
+  .pg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:8px}
+  .pg-empty{font-size:12px;color:var(--ink3);border:1px dashed var(--line);border-radius:10px;padding:10px;text-align:center}
+  .ph-tile{position:relative;aspect-ratio:1/1;border-radius:10px;overflow:hidden;background:var(--bg-2);border:1px solid var(--line)}
+  .ph-tile.sel{outline:2px solid var(--accent);outline-offset:-2px}
+  .ph-tile img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+  .ph-x{position:absolute;top:0;right:0;border:0;background:rgba(0,0,0,.55);color:#fff;width:22px;height:22px;font-size:12px;line-height:1;border-radius:0 0 0 8px;cursor:pointer;padding:0}
+  .ph-cover{position:absolute;left:0;bottom:0;background:var(--accent);color:var(--accent-ink);font-size:10px;padding:1px 5px;border-radius:0 6px 0 0}
+  .ph-chk{position:absolute;top:3px;left:3px;width:18px;height:18px;margin:0}
+  .pgb-bar{display:flex;gap:8px;align-items:center;margin-top:8px}
+  .pv-stage{background:var(--canvas);border-radius:12px;display:grid;place-items:center;overflow:auto;max-height:52vh;min-height:150px}
+  .pv-stage img{max-width:100%;max-height:52vh;object-fit:contain;display:block}
+  .pv-stage img.orig{max-width:none;max-height:none;object-fit:initial}
+  .pv-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+
   details.more{border:1px dashed var(--line);border-radius:12px;padding:10px 12px;margin:12px 0;background:var(--panel-2)}
   details.more summary{font-size:13px;color:var(--ink2);cursor:pointer;font-weight:600}
   details.more[open] summary{margin-bottom:10px}
@@ -1955,15 +1975,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
     <div class="field">
       <label>照片（可选，压缩后存本机）</label>
-      <div class="photo-row">
-        <div class="photo-preview" id="photoPreview">未选择</div>
-        <div>
-          <button type="button" class="btn btn-sm" id="btnPickPhoto">选择图片</button>
-          <button type="button" class="btn btn-sm" id="btnClearPhoto">移除</button>
-          <div class="muted" style="margin-top:4px">仅本机保存，不会上传</div>
-        </div>
-      </div>
-      <input type="file" id="filePhoto" accept="image/*" class="hidden">
+      <div class="photo-groups" id="photoGroups"></div>
+      <p class="muted" style="margin-top:6px">店铺 / 到店 / 菜品分开；支持相机与相册、多选；仅本机保存，不会上传</p>
+      <input type="file" id="filePhoto" accept="image/*" multiple class="hidden">
+      <input type="file" id="filePhotoReplace" accept="image/*" class="hidden">
     </div>
 
     <div class="actions" id="formActions" style="margin-top:16px">
@@ -1976,6 +1991,25 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <button type="button" class="btn btn-primary" id="btnQuickSave">保存</button>
     </div>
   </form>
+</div>
+
+<!-- 照片预览层（P1）：大图 / 上下一张 / 设封面 / 排序 / 替换 / 删除 / 看原图 -->
+<div class="modal-mask hidden" id="photoViewMask">
+  <div class="modal" style="max-width:520px">
+    <div class="sheet-head"><h2 id="pvTitle">照片</h2><button type="button" class="icon-btn" id="pvClose" aria-label="关闭">✕</button></div>
+    <div class="pv-stage"><img id="pvImg" alt="照片预览"></div>
+    <p class="muted" id="pvMeta" style="margin-top:8px"></p>
+    <div class="pv-actions">
+      <button type="button" class="btn btn-sm" id="pvPrev">上一张</button>
+      <button type="button" class="btn btn-sm" id="pvNext">下一张</button>
+      <button type="button" class="btn btn-sm btn-soft" id="pvCover">设为封面</button>
+      <button type="button" class="btn btn-sm btn-soft" id="pvLeft">前移</button>
+      <button type="button" class="btn btn-sm btn-soft" id="pvRight">后移</button>
+      <button type="button" class="btn btn-sm btn-soft" id="pvReplace">替换</button>
+      <button type="button" class="btn btn-sm btn-soft" id="pvOrig">看原图</button>
+      <button type="button" class="btn btn-sm btn-danger" id="pvDelete">删除</button>
+    </div>
+  </div>
 </div>
 
 <!-- 跳转弹层 -->
@@ -2538,6 +2572,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             note: s(r.note),
             photo: s(r.photo) || null,
             photoId: s(r.photoId) || null,
+            photoIds: Array.isArray(r.photoIds) ? r.photoIds.map(s).filter(Boolean) : [],
+            photos: (function(){
+              var ph = [];
+              if(Array.isArray(r.photos)){
+                ph = r.photos.map(function(p){
+                  var cat = p && p.cat;
+                  return { id: s(p && p.id), cat: (cat === 'store' || cat === 'dish') ? cat : 'visit' };
+                }).filter(function(p){ return !!p.id; });
+              }
+              if(!ph.length && r.photoId) ph = [{ id: s(r.photoId), cat: 'visit' }];
+              return ph;
+            })(),
             createdAt: s(r.createdAt),
             updatedAt: s(r.updatedAt),
             mealType: ['breakfast','lunch','tea','dinner','night'].indexOf(r.mealType) >= 0 ? r.mealType : '',
@@ -2619,7 +2665,22 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   */
   var V2_DATE_SENTINEL = '2000-01-01';
   /* visit 上已有独立字段的键，不再重复放进 legacy */
-  var V2_MAPPED_KEYS = ['id','name','city','visitDate','totalPrice','people','rating','note','photoId','importedFrom','createdAt','updatedAt','dishes','wantReturn','dateEstimated'];
+  var V2_MAPPED_KEYS = ['id','name','city','visitDate','totalPrice','people','rating','note','photoId','photoIds','photos','importedFrom','createdAt','updatedAt','dishes','wantReturn','dateEstimated'];
+
+  /* 照片顺序与分类（纯函数，record / visit 通用；第一张即封面） */
+  function photosOfRecord(r){
+    if(!r) return [];
+    if(Array.isArray(r.photos) && r.photos.length){
+      return r.photos.map(function(p){
+        return { id:String((p && p.id) || ''), cat:String((p && p.cat) || 'visit') };
+      }).filter(function(p){ return p.id; });
+    }
+    if(Array.isArray(r.photoIds) && r.photoIds.length){
+      return r.photoIds.map(function(pid){ return { id:String(pid), cat:'visit' }; }).filter(function(p){ return p.id; });
+    }
+    return r.photoId ? [{ id:String(r.photoId), cat:'visit' }] : [];
+  }
+  function photoIdsOfRecord(r){ return photosOfRecord(r).map(function(p){ return p.id; }); }
 
   function cloneJson(v){ return v == null ? v : JSON.parse(JSON.stringify(v)); }
   function imul32(a, b){
@@ -2661,7 +2722,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       people: Math.max(1, Math.round(num(r.people) || 1)),
       rating: num(r.rating) > 0 ? Math.min(5, num(r.rating)) : null,
       note: String(r.note == null ? '' : r.note),
-      photoIds: r.photoId ? [String(r.photoId)] : [],
+      photoIds: photoIdsOfRecord(r),
+      photos: photosOfRecord(r),
       importedFrom: String(r.importedFrom || ''),
       createdAt: String(r.createdAt || ''),
       updatedAt: String(r.updatedAt || ''),
@@ -2700,7 +2762,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     c.rating = v.rating == null ? null : num(v.rating);
     c.note = String(v.note == null ? '' : v.note);
     c.photo = c.photo ? String(c.photo) : null;
-    c.photoId = (v.photoIds && v.photoIds.length) ? String(v.photoIds[0]) : null;
+    var ph = photosOfRecord(v);
+    c.photos = ph;
+    c.photoIds = ph.map(function(p){ return p.id; });
+    c.photoId = ph.length ? ph[0].id : null;
     c.createdAt = String(v.createdAt || '');
     c.updatedAt = String(v.updatedAt || '');
     c.mealType = c.mealType || '';
@@ -3278,10 +3343,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return d.transaction(SNAPSHOT_STORE, mode).objectStore(SNAPSHOT_STORE);
     });
   }
-  function photoPut(id, dataUrl){
+  function photoPut(id, dataUrl, thumb, dims){
     return photoStore('readwrite').then(function(store){
       return new Promise(function(resolve, reject){
-        var req = store.put({ id:id, dataUrl:dataUrl, bytes:dataUrl.length, at:Date.now() });
+        var rec = { id:id, dataUrl:dataUrl, bytes:dataUrl.length + (thumb ? thumb.length : 0), at:Date.now() };
+        if(thumb) rec.thumb = thumb;
+        if(dims){ rec.w = num(dims.w) || 0; rec.h = num(dims.h) || 0; }
+        var req = store.put(rec);
         req.onsuccess = function(){ resolve(id); };
         req.onerror = function(){ reject(req.error); };
       });
@@ -3295,6 +3363,31 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         req.onerror = function(){ reject(req.error); };
       });
     });
+  }
+  /* 缩略图优先：有 thumb 用 thumb，旧数据没有就退回全图 */
+  function photoGetThumb(id){
+    return photoStore('readonly').then(function(store){
+      return new Promise(function(resolve, reject){
+        var req = store.get(id);
+        req.onsuccess = function(){
+          var v = req.result;
+          resolve(v ? (v.thumb || v.dataUrl || null) : null);
+        };
+        req.onerror = function(){ reject(req.error); };
+      });
+    });
+  }
+  function photoGetMeta(id){
+    return photoStore('readonly').then(function(store){
+      return new Promise(function(resolve){
+        var req = store.get(id);
+        req.onsuccess = function(){
+          var v = req.result;
+          resolve(v ? { w:num(v.w), h:num(v.h), bytes:num(v.bytes), hasThumb:!!v.thumb } : null);
+        };
+        req.onerror = function(){ resolve(null); };
+      });
+    }).catch(function(){ return null; });
   }
   function photoDelete(id){
     return photoStore('readwrite').then(function(store){
@@ -3326,7 +3419,48 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }).catch(function(){ return photoStatsCache; });
   }
   function recordPhotoCount(){
-    return db.records.filter(function(r){ return !!(r.photoId || r.photo); }).length;
+    return db.records.filter(function(r){ return recordPhotoIds(r).length > 0 || !!r.photo; }).length;
+  }
+  /* 一条记录的全部照片 id（新结构 photos[{id,cat}] → 旧 photoId / photoIds 兼容） */
+  function recordPhotoIds(r){
+    return photoIdsOfRecord(r);
+  }
+  function photoReferencedBy(pid, exceptRecordId){
+    if(!pid) return false;
+    return db.records.some(function(r){
+      if(exceptRecordId && r.id === exceptRecordId) return false;
+      return recordPhotoIds(r).indexOf(String(pid)) >= 0;
+    });
+  }
+  /* 删照片 / 删记录时只删没有任何记录再引用的照片，避免误删别人的图 */
+  function releasePhoto(pid, exceptRecordId){
+    if(!pid) return Promise.resolve(false);
+    if(photoReferencedBy(pid, exceptRecordId)) return Promise.resolve(false);
+    delete photoCache[pid];
+    delete photoCache[pid + '#t'];
+    return photoDelete(pid);
+  }
+  /* 孤儿照片：IndexedDB 里有、但没有任何记录引用。只报告，不自动删 */
+  function orphanPhotoIds(){
+    var used = {};
+    db.records.forEach(function(r){ recordPhotoIds(r).forEach(function(pid){ used[pid] = 1; }); });
+    return openPhotoDb().then(function(d){
+      return new Promise(function(resolve){
+        var out = [];
+        try{
+          var tx = d.transaction(PHOTO_STORE, 'readonly');
+          var req = tx.objectStore(PHOTO_STORE).getAll();
+          req.onsuccess = function(){
+            (req.result || []).forEach(function(v){
+              if(v && v.id && !used[String(v.id)]) out.push(String(v.id));
+            });
+          };
+          req.onerror = function(){};
+          tx.oncomplete = function(){ resolve(out); };
+          tx.onabort = function(){ resolve(out); };
+        }catch(e){ resolve([]); }
+      });
+    }).catch(function(){ return []; });
   }
   function hydratePhotos(root){
     var imgs = $$('img[data-photo]', root || document);
@@ -3334,10 +3468,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     imgs.forEach(function(img){
       var pid = img.getAttribute('data-photo');
       if(!pid) return;
-      if(photoCache[pid]){ img.src = photoCache[pid]; return; }
-      photoGet(pid).then(function(url){
+      var thumb = img.getAttribute('data-thumb') === '1';
+      var key = thumb ? pid + '#t' : pid;
+      if(photoCache[key]){ img.src = photoCache[key]; return; }
+      var load = thumb ? photoGetThumb(pid) : photoGet(pid);
+      load.then(function(url){
         if(!url) return;
-        photoCache[pid] = url;
+        photoCache[key] = url;
         img.src = url;
       }).catch(function(e){ logError('照片读取', e); });
     });
@@ -3359,24 +3496,185 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       }).catch(function(e){ logError('存档照片读取', e); show(null); });
     });
   }
-  function storeFormPhoto(dataUrl){
-    formPhoto = dataUrl;
-    if(!idbSupported()){ formPhotoId = null; return; }
-    if(!formPhotoId && recordPhotoCount() >= PHOTO_LIMIT){
-      toast('照片已达 '+PHOTO_LIMIT+' 张上限，可先清理旧照片');
+  /* ================= P1 照片：店铺 / 到店 / 菜品 三类 ================= */
+  var PHOTO_CATS = [{ k:'store', label:'店铺照片' }, { k:'visit', label:'到店照片' }, { k:'dish', label:'菜品照片' }];
+  var formPhotos = [];        /* [{id,cat}]，顺序即展示顺序，第一张是封面 */
+  var formPendingDelete = []; /* 保存时才真正从 IndexedDB 删除，取消表单不丢图 */
+  var photoBatch = { cat:null, ids:{} };
+  var pvState = { id:null, ids:[] };
+  var pvReplaceId = null;     /* 预览层「替换」的目标 */
+
+  function photoCatLabel(k){
+    for(var i = 0; i < PHOTO_CATS.length; i++){ if(PHOTO_CATS[i].k === k) return PHOTO_CATS[i].label; }
+    return '照片';
+  }
+  /* 压缩：全图长边 ≤1280（看原图用），缩略图长边 ≤240（列表/表单用） */
+  function compressFile(file, done, fail){
+    if(!file) return;
+    if(file.size > 12 * 1024 * 1024){ fail('图片太大，换一张小一点的（超过 12 MB）'); return; }
+    var fr = new FileReader();
+    fr.onload = function(){
+      var img = new Image();
+      img.onload = function(){
+        try{
+          function at(max, q){
+            var w = img.width, h = img.height;
+            if(w > max || h > max){ var k = Math.min(max / w, max / h); w = Math.round(w * k); h = Math.round(h * k); }
+            w = Math.max(1, w); h = Math.max(1, h);
+            var c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            c.getContext('2d').drawImage(img, 0, 0, w, h);
+            return { url: c.toDataURL('image/jpeg', q), w: w, h: h };
+          }
+          var full = at(1280, .72), thumb = at(240, .6);
+          done({ full: full.url, thumb: thumb.url, w: full.w, h: full.h });
+        }catch(e){ fail('图片处理失败，换一张试试'); }
+      };
+      img.onerror = function(){ fail('无法读取这张图片（HEIC 等格式请先转成 JPG）'); };
+      img.src = fr.result;
+    };
+    fr.onerror = function(){ fail('读取文件失败'); };
+    fr.readAsDataURL(file);
+  }
+  function addPhotoFiles(files, cat){
+    var list = [].slice.call(files || []);
+    if(!list.length) return;
+    if(formPhotos.length >= PHOTO_LIMIT){ toast('单条记录最多 '+PHOTO_LIMIT+' 张照片'); return; }
+    if(list.length > PHOTO_LIMIT - formPhotos.length) list = list.slice(0, PHOTO_LIMIT - formPhotos.length);
+    var i = 0, added = 0;
+    function step(){
+      if(i >= list.length){
+        paintPhotoGroups();
+        if(added) toast('已添加 '+added+' 张（压缩后仅存本机）');
+        return;
+      }
+      var f = list[i++];
+      compressFile(f, function(res){
+        if(!idbSupported()){
+          formPhoto = res.full;
+          toast('当前环境不支持 IndexedDB，只保留 1 张照片随记录保存');
+          step();
+          return;
+        }
+        if(photoStatsCache.bytes + res.full.length > PHOTO_MAX_BYTES){
+          toast('照片总量已超 '+fmtBytes(PHOTO_MAX_BYTES)+'，建议先清理旧照片');
+          step();
+          return;
+        }
+        var pid = 'p' + newId('');
+        photoPut(pid, res.full, res.thumb, { w:res.w, h:res.h }).then(function(){
+          formPhotos.push({ id:pid, cat:cat || 'visit' });
+          added++;
+          photoStats();
+          step();
+        }).catch(function(e){
+          logError('照片写入', e);
+          toast('照片未能写入 IndexedDB');
+          step();
+        });
+      }, function(msg){ toast(msg); step(); });
     }
-    if(photoStatsCache.bytes + dataUrl.length > PHOTO_MAX_BYTES){
-      toast('照片总量已超 '+fmtBytes(PHOTO_MAX_BYTES)+'，建议先清理旧照片');
-    }
-    var pid = formPhotoId || ('p'+newId(''));
-    formPhotoId = pid;
-    photoPut(pid, dataUrl).then(function(){
-      photoStats();
-    }).catch(function(e){
-      logError('照片写入', e);
-      formPhotoId = null;
-      toast('照片未能写入 IndexedDB，将随记录保存在 localStorage');
+    step();
+  }
+  function paintPhotoGroups(){
+    var box = $('#photoGroups');
+    if(!box) return;
+    var html = PHOTO_CATS.map(function(c){
+      var items = formPhotos.filter(function(p){ return p.cat === c.k; });
+      var batch = photoBatch.cat === c.k;
+      var selN = items.filter(function(p){ return photoBatch.ids[p.id]; }).length;
+      var tiles = items.map(function(p){
+        var cover = formPhotos[0] && formPhotos[0].id === p.id;
+        var on = batch && photoBatch.ids[p.id];
+        return '<div class="ph-tile'+(on ? ' sel' : '')+'" data-pid="'+esc(p.id)+'">'+
+          '<img data-photo="'+esc(p.id)+'" data-thumb="1" alt="'+esc(c.label)+'" loading="lazy" decoding="async">'+
+          (cover ? '<span class="ph-cover">封面</span>' : '')+
+          (batch ? '<input type="checkbox" class="ph-chk" data-phchk="'+esc(p.id)+'"'+(on ? ' checked' : '')+' aria-label="选择照片">' : '')+
+          (batch ? '' : '<button type="button" class="ph-x" data-phx="'+esc(p.id)+'" aria-label="移除">✕</button>')+
+        '</div>';
+      }).join('');
+      return '<div class="pg" data-pg="'+c.k+'">'+
+        '<div class="pg-head"><span class="pg-title">'+c.label+'<b>'+items.length+'</b></span>'+
+        '<span class="pg-btns">'+
+          (items.length && !batch ? '<button type="button" class="btn btn-sm" data-pgbatch="'+c.k+'">批量</button>' : '')+
+          (batch ? '<button type="button" class="btn btn-sm" data-pgbatch="'+c.k+'">完成</button>' : '<button type="button" class="btn btn-sm btn-soft" data-pgadd="'+c.k+'">+ 添加</button>')+
+        '</span></div>'+
+        (tiles ? '<div class="pg-grid">'+tiles+'</div>' : '<div class="pg-empty">'+(batch ? '这组没有照片' : '还没有'+c.label+'，点「+ 添加」选择')+'</div>')+
+        (batch ? '<div class="pgb-bar"><button type="button" class="btn btn-sm" data-pgball="'+c.k+'">'+(selN >= items.length && items.length ? '取消全选' : '全选')+'</button>'+
+          '<button type="button" class="btn btn-sm btn-danger" data-pgbdel="'+c.k+'">删除所选（'+selN+'）</button></div>' : '')+
+      '</div>';
+    }).join('');
+    box.innerHTML = html;
+    hydratePhotos(box);
+  }
+  function removeFormPhoto(pid){
+    var had = formPhotos.some(function(p){ return p.id === pid; });
+    if(!had) return;
+    formPhotos = formPhotos.filter(function(p){ return p.id !== pid; });
+    if(formPendingDelete.indexOf(pid) < 0) formPendingDelete.push(pid);
+    photoBatch.ids = {};
+    if(pvState.id === pid) closePhotoView();
+    paintPhotoGroups();
+  }
+  function moveFormPhoto(pid, dir){
+    var i = formPhotos.map(function(p){ return p.id; }).indexOf(pid);
+    if(i < 0) return false;
+    var cat = formPhotos[i].cat;
+    var same = formPhotos.filter(function(p){ return p.cat === cat; });
+    var at = same.map(function(p){ return p.id; }).indexOf(pid);
+    var other = same[at + dir];
+    if(!other) return false;
+    var a = formPhotos.indexOf(formPhotos[i]);
+    var b = formPhotos.map(function(p){ return p.id; }).indexOf(other.id);
+    var t = formPhotos[a];
+    formPhotos[a] = formPhotos[b];
+    formPhotos[b] = t;
+    return true;
+  }
+  function setFormCover(pid){
+    var i = formPhotos.map(function(p){ return p.id; }).indexOf(pid);
+    if(i <= 0) return false;
+    var item = formPhotos.splice(i, 1)[0];
+    formPhotos.unshift(item);
+    return true;
+  }
+  function paintPhotoView(){
+    var ids = formPhotos.map(function(p){ return p.id; });
+    if(!ids.length){ closePhotoView(); return; }
+    if(ids.indexOf(pvState.id) < 0) pvState.id = ids[0];
+    pvState.ids = ids;
+    var idx = ids.indexOf(pvState.id);
+    var p = formPhotos[idx];
+    $('#pvTitle').textContent = photoCatLabel(p.cat) + ' · ' + (idx + 1) + '/' + ids.length;
+    $('#pvImg').classList.remove('orig');
+    $('#pvOrig').textContent = '看原图';
+    $('#pvImg').src = '';
+    photoGet(pvState.id).then(function(url){ if(url) $('#pvImg').src = url; });
+    photoGetMeta(pvState.id).then(function(m){
+      var bits = [];
+      if(m && m.w) bits.push(m.w + '×' + m.h);
+      if(m && m.bytes) bits.push(fmtBytes(m.bytes));
+      if(idx === 0) bits.push('当前封面');
+      bits.push('已压缩，原图长边 ≤1280');
+      $('#pvMeta').textContent = bits.join(' · ');
     });
+    $('#pvCover').classList.toggle('hidden', idx === 0);
+    $('#pvLeft').disabled = idx === 0;
+    $('#pvRight').disabled = idx === ids.length - 1;
+  }
+  function openPhotoView(pid){
+    if(!pid) return;
+    pvState.id = pid;
+    paintPhotoView();
+    $('#photoViewMask').classList.remove('hidden');
+    try{ syncBackGuard(); }catch(e){}
+  }
+  function closePhotoView(){
+    var el = $('#photoViewMask');
+    if(el) el.classList.add('hidden');
+    $('#pvImg').src = '';
+    pvState.id = null;
+    try{ syncBackGuard(); }catch(e){}
   }
   function moveLegacyPhotos(){
     if(!idbSupported()) return;
@@ -4677,8 +4975,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
   /* ================= 运行时状态 ================= */
   var activeView = 'record';
-  var formPhoto = null;
-  var formPhotoId = null;
+  var formPhoto = null;      /* 旧数据里内嵌在 localStorage 的单张图（无 ID） */
+  var formPhotoId = null;    /* 已废弃：保留仅为兼容旧引用 */
   var editingId = null;
   var formTags = [];
   var formFitMeals = [];
@@ -5352,7 +5650,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       (r.address ? '<p class="addr">'+esc(r.address)+'</p>' : '')+
       (r.note ? '<p class="desc">'+esc(r.note)+'</p>' : '')+
       (r.photoId
-        ? '<img class="thumb" data-photo="'+esc(r.photoId)+'" loading="lazy" decoding="async" alt="到访照片">'
+        ? '<img class="thumb" data-photo="'+esc(r.photoId)+'" data-thumb="1" loading="lazy" decoding="async" alt="到访照片">'
         : (r.photo ? '<img class="thumb" src="'+esc(r.photo)+'" loading="lazy" decoding="async" alt="到访照片">' : ''))+
       '<div class="actions">'+
         '<button class="btn btn-sm" data-act="edit" data-id="'+esc(r.id)+'">'+icon('edit')+'编辑</button>'+
@@ -5572,7 +5870,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       ? '<span class="diary-date unk">日期未知</span>'
       : '<span class="diary-date" data-diary-day="'+esc(r.visitDate)+'" title="只看这一天">'+esc(String(r.visitDate).slice(5))+'</span>';
     var thumb = r.photoId
-      ? '<img class="diary-thumb" data-photo="'+esc(r.photoId)+'" loading="lazy" decoding="async" alt="到访照片">'
+      ? '<img class="diary-thumb" data-photo="'+esc(r.photoId)+'" data-thumb="1" loading="lazy" decoding="async" alt="到访照片">'
       : (r.photo
         ? '<img class="diary-thumb" src="'+esc(r.photo)+'" loading="lazy" decoding="async" alt="到访照片">'
         : '<div class="diary-thumb no">无照片</div>');
@@ -8468,10 +8766,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '</div>'+
       '<p class="muted">localStorage '+fmtBytes(rawLen)+'（轻量字段）· 照片 '+recordPhotoCount()+' 张 / IndexedDB '+photoStatsCache.count+' 张 '+fmtBytes(photoStatsCache.bytes)+'</p>'+
       '<p class="muted" style="margin-top:4px">帮我决定 '+fmtMs(decideMs)+' · 抽签 '+fmtMs(drawMs)+' · 单页渲染上限 30 条，滚动加载</p>'+
+      '<p class="muted" id="diagOrphan" style="margin-top:4px">孤儿照片检查中…</p>'+
       (rawLen > 3.5*1024*1024 ? '<p class="notice" style="margin-top:8px">本机存储接近 5 MB 上限，建议先导出备份并清理照片。</p>' : '')+
       '<div class="log" style="margin-top:10px">'+(errs.length
         ? errs.map(function(e, i){ return (i+1)+'. '+esc(e.t.slice(11,19))+' ['+esc(e.where)+'] '+esc(e.msg); }).join('\n')
         : '最近没有错误记录')+'</div>';
+    orphanPhotoIds().then(function(ids){
+      var el = $('#diagOrphan');
+      if(!el) return;
+      el.textContent = ids.length
+        ? '孤儿照片 '+ids.length+' 张（有文件、无记录引用）· 只报告不自动删除'
+        : '孤儿照片 0 张（所有照片都有记录引用）';
+    });
   }
 
   var THEME_KEY = 'fandazi.theme';
@@ -8755,13 +9061,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     editingId = null;
     formPhoto = null;
     formPhotoId = null;
+    formPhotos = [];
+    formPendingDelete = [];
+    photoBatch = { cat:null, ids:{} };
+    closePhotoView();
     formTags = [];
     formFitMeals = [];
-  }
-  function paintPhoto(){
-    var box = $('#photoPreview');
-    if(formPhoto) box.innerHTML = '<img src="'+esc(formPhoto)+'" alt="预览">';
-    else box.textContent = '未选择';
   }
   function paintTags(){
     var box = $('#tagChips');
@@ -8790,6 +9095,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     editingId = id || null;
     formPhoto = null;
     formPhotoId = null;
+    formPhotos = [];
+    formPendingDelete = [];
+    photoBatch = { cat:null, ids:{} };
+    pvState = { id:null, ids:[] };
     formTags = [];
     formFitMeals = [];
     formDateTouched = false;
@@ -8840,20 +9149,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#f-r-srv').value = num(dims.service) > 0 ? dims.service : '';
     $('#f-r-val').value = num(dims.value) > 0 ? dims.value : '';
 
-    if(r && r.photoId){
-      formPhotoId = r.photoId;
-      photoGet(r.photoId).then(function(url){
-        if(!url) return;
-        photoCache[r.photoId] = url;
-        formPhoto = url;
-        paintPhoto();
-      }).catch(function(e){ logError('照片预览', e); });
-    }else if(r && r.photo){
-      formPhoto = r.photo;
+    if(r){
+      var ph = photosOfRecord(r);
+      formPhotos = ph.map(function(p){ return { id:p.id, cat:p.cat }; });
+      if(!formPhotos.length && r.photo) formPhoto = r.photo;
     }
     if(r && Array.isArray(r.tags)) formTags = r.tags.slice();
     if(src && Array.isArray(src.tags)) formTags = src.tags.slice();
-    paintPhoto(); paintTags();
+    paintPhotoGroups(); paintTags();
     updateFormMapLinks();
     $('#btnDeleteInForm').classList.toggle('hidden', !r);
     /* 编辑时不显示选店面板，避免误把记录改挂到别的店 */
@@ -9252,8 +9555,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       category: catV,
       rating: rating,
       note: $('#f-note').value.trim(),
-      photo: formPhotoId ? null : (formPhoto || null),
-      photoId: formPhotoId || null,
+      photos: formPhotos.map(function(p){ return { id:p.id, cat:p.cat }; }),
+      photoIds: formPhotos.map(function(p){ return p.id; }),
+      photoId: formPhotos.length ? formPhotos[0].id : null,
+      photo: (formPhotos.length || !formPhoto) ? null : formPhoto,
       createdAt: now, updatedAt: now,
       mealType: $('#f-meal').value || '',
       scene: $('#f-scene').value || '',
@@ -9271,7 +9576,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var old = db.records.filter(function(x){ return x.id === editingId; })[0];
       if(old){
         rec.createdAt = old.createdAt || now;
-        if(old.photoId && old.photoId !== rec.photoId) photoDelete(old.photoId);
+        /* 移除的照片不在这里删：保存后统一按「是否还有记录引用」判断 */
       }
       db.records = db.records.map(function(x){ return x.id === editingId ? rec : x; });
       toast('已更新「'+name+'」');
@@ -9280,6 +9585,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       toast('已记录「'+name+'」');
       savedNew = true;
     }
+    /* 本次移除、且没有任何记录再引用的照片才真正从 IndexedDB 删除 */
+    formPendingDelete.forEach(function(pid){ releasePhoto(pid, null); });
+    formPendingDelete = [];
     if(!db.settings.city && rec.city) db.settings.city = rec.city;
     /* 记住上次用的人数/场景/模式（可在「我的 → 记录默认」关闭） */
     if(savedNew && db.settings.rememberDefaults !== false){
@@ -9316,7 +9624,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!r) return;
     if(!confirm('删除「'+r.name+'」这条记录？此操作不可撤销。')) return;
     db.records = db.records.filter(function(x){ return x.id !== id; });
-    if(r.photoId) photoDelete(r.photoId);
+    /* 只删没有任何其它记录再引用的照片 */
+    recordPhotoIds(r).forEach(function(pid){ releasePhoto(pid, null); });
     closeForm();
     save();
     toast('已删除');
@@ -13972,32 +14281,29 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     toast('已添加忌口：'+v);
   }
 
-  function handlePhoto(file){
-    if(!file) return;
-    if(file.size > 12 * 1024 * 1024){ toast('图片太大，换一张小一点的'); return; }
-    var fr = new FileReader();
-    fr.onload = function(){
-      var img = new Image();
-      img.onload = function(){
-        var max = 360, w = img.width, h = img.height;
-        if(w > max || h > max){
-          var k = Math.min(max / w, max / h);
-          w = Math.round(w * k);
-          h = Math.round(h * k);
-        }
-        var c = document.createElement('canvas');
-        c.width = w; c.height = h;
-        try{
-          c.getContext('2d').drawImage(img, 0, 0, w, h);
-          storeFormPhoto(c.toDataURL('image/jpeg', 0.66));
-          paintPhoto();
-          toast('照片已压缩至 '+w+'×'+h+'，仅存本机');
-        }catch(e){ toast('图片处理失败，换一张试试'); }
-      };
-      img.onerror = function(){ toast('无法读取这张图片'); };
-      img.src = fr.result;
-    };
-    fr.readAsDataURL(file);
+  /* 照片选择：可多选；replaceId 非空表示「替换」而不是新增 */
+  function handlePhotoFiles(files, cat, replaceId){
+    var list = [].slice.call(files || []);
+    if(!list.length) return;
+    if(replaceId){
+      var idx = formPhotos.map(function(p){ return p.id; }).indexOf(replaceId);
+      if(idx < 0) return;
+      compressFile(list[0], function(res){
+        var pid = 'p' + newId('');
+        photoPut(pid, res.full, res.thumb, { w:res.w, h:res.h }).then(function(){
+          var catNow = formPhotos[idx].cat;
+          formPhotos[idx] = { id:pid, cat:catNow };
+          if(formPendingDelete.indexOf(replaceId) < 0) formPendingDelete.push(replaceId);
+          photoStats();
+          paintPhotoGroups();
+          if(pvState.id === replaceId){ pvState.id = pid; }
+          if(!$('#photoViewMask').classList.contains('hidden')) paintPhotoView();
+          toast('已替换这张照片');
+        }).catch(function(e){ logError('照片替换', e); toast('照片未能写入 IndexedDB'); });
+      }, function(msg){ toast(msg); });
+      return;
+    }
+    addPhotoFiles(list, cat);
   }
 
   function addFormTag(){
@@ -14927,11 +15233,104 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   $('#f-tag').addEventListener('keydown', function(e){
     if(e.key === 'Enter'){ e.preventDefault(); addFormTag(); }
   });
-  $('#btnPickPhoto').addEventListener('click', function(){ $('#filePhoto').click(); });
-  $('#btnClearPhoto').addEventListener('click', function(){ formPhoto = null; formPhotoId = null; paintPhoto(); });
+  /* P1 照片：分组添加 / 多选 / 批量删除 / 预览层 */
+  var photoAddCat = 'visit';
+  $('#photoGroups').addEventListener('click', function(e){
+    if(!e.target.closest) return;
+    var add = e.target.closest('[data-pgadd]');
+    if(add){
+      photoAddCat = add.getAttribute('data-pgadd') || 'visit';
+      $('#filePhoto').click();
+      return;
+    }
+    var batchBtn = e.target.closest('[data-pgbatch]');
+    if(batchBtn){
+      var ck = batchBtn.getAttribute('data-pgbatch');
+      photoBatch = (photoBatch.cat === ck) ? { cat:null, ids:{} } : { cat:ck, ids:{} };
+      paintPhotoGroups();
+      return;
+    }
+    var all = e.target.closest('[data-pgball]');
+    if(all){
+      var ck2 = all.getAttribute('data-pgball');
+      var items = formPhotos.filter(function(p){ return p.cat === ck2; });
+      var allOn = items.length && items.every(function(p){ return photoBatch.ids[p.id]; });
+      photoBatch.ids = {};
+      if(!allOn) items.forEach(function(p){ photoBatch.ids[p.id] = true; });
+      paintPhotoGroups();
+      return;
+    }
+    var del = e.target.closest('[data-pgbdel]');
+    if(del){
+      var ck3 = del.getAttribute('data-pgbdel');
+      var sel = formPhotos.filter(function(p){ return p.cat === ck3 && photoBatch.ids[p.id]; });
+      if(!sel.length){ toast('先勾选要删除的照片'); return; }
+      if(!confirm('删除所选 '+sel.length+' 张'+photoCatLabel(ck3)+'？')) return;
+      sel.forEach(function(p){
+        formPhotos = formPhotos.filter(function(x){ return x.id !== p.id; });
+        if(formPendingDelete.indexOf(p.id) < 0) formPendingDelete.push(p.id);
+      });
+      photoBatch = { cat:null, ids:{} };
+      paintPhotoGroups();
+      return;
+    }
+    var chk = e.target.closest('[data-phchk]');
+    if(chk){
+      var pid0 = chk.getAttribute('data-phchk');
+      if(chk.checked) photoBatch.ids[pid0] = true; else delete photoBatch.ids[pid0];
+      paintPhotoGroups();
+      return;
+    }
+    var x = e.target.closest('[data-phx]');
+    if(x){
+      removeFormPhoto(x.getAttribute('data-phx'));
+      return;
+    }
+    var tile = e.target.closest('.ph-tile');
+    if(tile && photoBatch.cat){ return; }
+    if(tile) openPhotoView(tile.getAttribute('data-pid'));
+  });
   $('#filePhoto').addEventListener('change', function(e){
-    handlePhoto(e.target.files && e.target.files[0]);
+    handlePhotoFiles(e.target.files, photoAddCat, null);
     e.target.value = '';
+  });
+  $('#filePhotoReplace').addEventListener('change', function(e){
+    var target = pvReplaceId || pvState.id;
+    handlePhotoFiles(e.target.files, 'visit', target);
+    pvReplaceId = null;
+    e.target.value = '';
+  });
+  $('#pvClose').addEventListener('click', closePhotoView);
+  $('#pvPrev').addEventListener('click', function(){
+    var i = pvState.ids.indexOf(pvState.id);
+    if(i > 0){ pvState.id = pvState.ids[i - 1]; paintPhotoView(); }
+  });
+  $('#pvNext').addEventListener('click', function(){
+    var i = pvState.ids.indexOf(pvState.id);
+    if(i >= 0 && i < pvState.ids.length - 1){ pvState.id = pvState.ids[i + 1]; paintPhotoView(); }
+  });
+  $('#pvCover').addEventListener('click', function(){
+    if(setFormCover(pvState.id)){ paintPhotoView(); paintPhotoGroups(); toast('已设为封面'); }
+  });
+  $('#pvLeft').addEventListener('click', function(){
+    if(moveFormPhoto(pvState.id, -1)){ paintPhotoView(); paintPhotoGroups(); }
+  });
+  $('#pvRight').addEventListener('click', function(){
+    if(moveFormPhoto(pvState.id, 1)){ paintPhotoView(); paintPhotoGroups(); }
+  });
+  $('#pvReplace').addEventListener('click', function(){
+    pvReplaceId = pvState.id;
+    $('#filePhotoReplace').click();
+  });
+  $('#pvOrig').addEventListener('click', function(){
+    var img = $('#pvImg');
+    var on = img.classList.toggle('orig');
+    $('#pvOrig').textContent = on ? '适应屏幕' : '看原图';
+  });
+  $('#pvDelete').addEventListener('click', function(){
+    if(!pvState.id) return;
+    if(!confirm('删除这张照片？')) return;
+    removeFormPhoto(pvState.id);
   });
 
   /* 记录体验 2.0 · P0：模式 / 选店 / 预填 / 快速保存后续动作 / 记录默认 */
@@ -15095,6 +15494,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     annualArchMask: closeAnnualArchivePreview,
     longMask: closeLongImages,
     imgMask: closeShareImage,
+    photoViewMask: closePhotoView,
     guideMask: closeGuide,
     tutMask: closeTutorial
   };
@@ -15233,6 +15633,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     party: function(){ var t0 = nowMs(); $('#btnParty').click(); return nowMs() - t0; },
     friend: function(){ var t0 = nowMs(); $('#btnFriend').click(); return nowMs() - t0; },
     cards: function(){ return $('#listBox').querySelectorAll('.rec-card').length; },
+    orphanIds: function(){ return orphanPhotoIds(); },
+    diagMore: function(){ renderMore(); return true; },
     view: function(name){ showView(name); },
     panel: function(name, group){ showPanel(group || 'recommend', name); },
     nearDaily: function(on){
