@@ -935,6 +935,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .snap-entry b{font-size:14px}
   .snap-entry p{margin:2px 0 0;font-size:12px;color:var(--ink3);line-height:1.5}
   .snap-entry .btn{flex:none;min-height:44px;white-space:nowrap}
+
+  /* ---------- 记录体验 2.0 · 吸底保存栏（快速 / 补录 / 顺手记） ----------
+     轻量模式隐藏表单末尾的原保存行，改由底部 sticky 保存条；完整模式保持原位。
+     吸底条参与文档流（sticky，非 fixed），滚到底时自然停在内容之后，不会永久遮住最后一项；
+     自带安全区 padding，键盘弹起时随可视高度收缩，不额外注册 history 守卫。 */
+  #recordForm[data-mode="quick"] #formActions,
+  #recordForm[data-mode="backfill"] #formActions,
+  #recordForm[data-mode="snap"] #formActions{display:none!important}
+  .quick-save-bar{position:sticky;bottom:0;z-index:6;display:flex;align-items:center;gap:10px;
+    margin-top:14px;padding:8px;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--r-card);box-shadow:var(--shadow-2)}
+  .quick-save-bar .qs-hint{flex:1;min-width:0;font-size:12px;line-height:1.45;color:var(--ink3)}
+  .quick-save-bar .qs-keys{display:block;font-size:11px;color:var(--ink3)}
+  .quick-save-bar .btn{flex:none;min-width:118px;min-height:44px;padding:0 18px}
+  .quick-save-bar .btn:disabled{opacity:.6}
 </style>
 </head>
 <body>
@@ -1951,10 +1966,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <input type="file" id="filePhoto" accept="image/*" class="hidden">
     </div>
 
-    <div class="actions" style="margin-top:16px">
+    <div class="actions" id="formActions" style="margin-top:16px">
       <button type="submit" class="btn btn-primary" style="flex:1;padding:12px">保存</button>
       <button type="button" class="btn" id="btnCancelForm">取消</button>
       <button type="button" class="btn btn-danger hidden" id="btnDeleteInForm">删除</button>
+    </div>
+    <div class="quick-save-bar hidden" id="quickSaveBar">
+      <div class="qs-hint">只记这一顿也行<span class="qs-keys">金额 / 评分 / 照片都可以以后补</span></div>
+      <button type="button" class="btn btn-primary" id="btnQuickSave">保存</button>
     </div>
   </form>
 </div>
@@ -8839,11 +8858,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#btnDeleteInForm').classList.toggle('hidden', !r);
     /* 编辑时不显示选店面板，避免误把记录改挂到别的店 */
     $('#pickCard').classList.toggle('hidden', !!r);
+    var focusName = false;
     if(r){
       applyFormMode('full');
+      focusName = true;
     }else{
       var nm = mode || (db.settings.defaultMode === 'full' ? 'full' : 'quick');
       applyFormMode(nm);
+      /* 轻量模式（快速 / 补录 / 顺手记）不自动聚焦店名，避免弹键盘遮挡选店面板 */
+      focusName = nm === 'full';
       if(prefill && src && src.name){
         var cand = canonicalStoreFor(src.name, src.city, src.address);
         if(cand && sameStore(src, cand)) pickedStoreKey = cand.key;
@@ -8851,7 +8874,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       paintStoreMemo();
     }
     $('#sheetMask').classList.remove('hidden');
-    setTimeout(function(){ $('#f-name').focus(); }, 60);
+    if(focusName) setTimeout(function(){ $('#f-name').focus(); }, 60);
   }
 
   /* ================= 记录体验 2.0 · P0：模式 / 选店 / 预填 / 快速保存 ================= */
@@ -9111,6 +9134,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $$('#pickChips .pick-chip').forEach(function(x){ x.classList.toggle('on', x.getAttribute('data-tab') === pickTab); });
     paintPicker();
     paintStoreMemo();
+    /* 轻量模式（快速 / 补录 / 顺手记）用吸底保存条；完整模式保留表单末尾的保存/取消 */
+    var light = mode === 'quick' || mode === 'backfill' || mode === 'snap';
+    var doneOpen = !$('#saveDoneBox').classList.contains('hidden');
+    $('#quickSaveBar').classList.toggle('hidden', !light || doneOpen);
   }
   function openQuickSnap(){
     openForm(null, null, 'snap');
@@ -9273,6 +9300,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         ? ('未填：' + miss.join(' / ') + '；这些会保持为空或「未评价」，不会生成虚假评分。可以现在完善，也可以以后从历史里补。')
         : '这一条信息已完整记录，可以继续完善或直接返回首页。';
       $('#saveDoneBox').classList.remove('hidden');
+      $('#quickSaveBar').classList.add('hidden');
       try{ $('#saveDoneBox').scrollIntoView({ block:'nearest' }); }catch(e){}
       formSaving = false;
       save();
@@ -14958,6 +14986,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   $('#f-date').addEventListener('input', function(){ formDateTouched = true; });
   $('#f-meal').addEventListener('change', function(){ formMealTouched = true; });
   $('#btnSnapRecord').addEventListener('click', openQuickSnap);
+  $('#btnQuickSave').addEventListener('click', function(){
+    if(formSaving) return;
+    var f = $('#recordForm');
+    if(f.requestSubmit) f.requestSubmit(); else saveRecord();
+  });
   $('#btnDoneHome').addEventListener('click', function(){
     closeForm();
     showView('record');
