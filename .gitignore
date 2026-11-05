@@ -13,3 +13,8 @@ desktop.ini
 .screenshots/
 .trae-html-share-packages/
 syntax_tmp.js
+
+# Capacitor / Android：node_modules 与构建产物不入库（android/ 内的嵌套 .gitignore 已覆盖 build/ 与 .gradle/）
+android-app/node_modules/
+android-app/android/local.properties
+android-app/android/app/src/main/assets/public/

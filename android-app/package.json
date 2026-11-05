@@ -1,0 +1,18 @@
+{
+  "name": "fandazi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "饭搭子 Android 壳（Capacitor WebView）",
+  "scripts": {
+    "sync:www": "node scripts/copy-www.js",
+    "sync:android": "npm run sync:www && npx cap sync android",
+    "open:android": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "6.2.3",
+    "@capacitor/core": "6.2.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "6.2.3"
+  }
+}
