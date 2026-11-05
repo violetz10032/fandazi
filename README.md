@@ -91,7 +91,7 @@ Artifact 只保留 **14 天**，过期后重新跑一次工作流即可。
 ```
 android-app/
 ├── capacitor.config.json     # appId com.fandazi.app，appName 饭搭子，webDir=www
-├── package.json              # Capacitor 6.2.3（对应 AGP 8.2.1 / JDK 17 / compileSdk 34）
+├── package.json              # Capacitor 6.2.3 + @capacitor/filesystem/@capacitor/share 6.0.4
 ├── scripts/copy-www.js       # 从仓库根同步 index.html、manifest、sw.js、icons 到 www/
 ├── www/                      # WebView 加载的本地资产（由脚本同步，勿手改）
 └── android/                  # Capacitor 生成的 Android 工程（Gradle + 原生壳）
@@ -113,17 +113,47 @@ cd android && ./gradlew assembleDebug
 
 ### 签名与分发限制
 
-- 当前是 **debug 签名**（Gradle 自动用 debug keystore 签名，`applicationId` = `com.fandazi.app`，`versionName` 1.0、`versionCode` 1）。
+- 当前是 **debug 签名**（Gradle 自动用 debug keystore 签名，`applicationId` = `com.fandazi.app`，`versionName` 1.0.1、`versionCode` 2）。
 - debug APK **只能自己装**：需要手动允许「未知来源」，也不能上传 Google Play / 国内应用商店，部分国产 ROM 会额外提示风险。
 - 真要正式发布，需要自己的 keystore + `release` 构建类型，并把 keystore 以 GitHub Secrets（base64）形式注入 CI，`./gradlew assembleRelease` 后再用 `apksigner` 校验；keystore 文件本身绝不能进仓库。
+
+### 导出与分享（v1.0.1 起已支持）
+
+APK 内接了 `@capacitor/filesystem` + `@capacitor/share`：**CSV / JSON / 文本导出、分享图、长图、好友 `.fanzi.json` 分享、巡店清单分享**都会先写入应用缓存目录（`Directory.Cache`），再调起系统分享面板；在面板里选「保存到文件 / 下载」即可落到 Android 下载目录，也可以直接发给微信等应用。
+
+实现方式（`index.html` 里的“Capacitor 原生桥接”一段）：
+
+- 能力探测用 `window.Capacitor.isNativePlatform() === true`，并确认 `Plugins.Filesystem`、`Plugins.Share` 存在；**不看 UA**。
+- 原生分支：`Filesystem.writeFile({ directory:'CACHE' })` → `Filesystem.getUri()` → `Share.share({ files:[uri] })`；纯文本走 `Share.share({ text })`。
+- 网页版分支：仍然是原来的 `<a download>` + Blob 与 `navigator.share`，**代码路径原样保留**，行为与 v1 一致。
+- 用户取消分享面板（cancel）不报错也不弹失败提示；真失败会 toast 写明原因，并记到「我的 → 诊断」错误日志。
+
+| 操作 | 网页版 / 在线地址 | APK（WebView） |
+| --- | --- | --- |
+| 导出 CSV / JSON | 浏览器直接下载到下载目录 | 分享面板 → 手动选「保存到文件/下载」 |
+| 保存分享图 / 长图 | 直接下载 PNG | 分享面板 → 保存或直接发给别人 |
+| 系统分享（清单/好友包） | `navigator.share`（手机浏览器支持） | Capacitor Share 原生分享面板 |
+| 剪贴板复制 | Clipboard API / `execCommand` 兜底 | 同左（`https://localhost` 属安全上下文） |
 
 ### 运行形态与限制
 
 - WebView 加载的是**打包在 APK 里的本地资源**（`assets/public`），首次打开不需要联网，数据同样只存在本机 WebView 的存储里。
 - 已确认 APK 内包含 `assets/public/index.html`、`icons/`、`manifest.webmanifest`、`sw.js`；资源全部是 `./` 相对路径，因此在 `file://`、WebView 本地资源、GitHub Pages 子路径下都能找到图标与清单。
+- FileProvider 用 `${applicationId}.fileprovider`（`com.fandazi.app.fileprovider`），`file_paths.xml` 已覆盖 `cache-path`、`files-path`、`external-path`，与 Share 插件读取的文件 URI 一致。
 - Service Worker 在 Capacitor 默认的 `https://localhost` 源下是可选的：注册失败只会在「我的 → 诊断」里记一条日志，不会白屏（页面是纯静态资源）。
-- **未在真机上验证的部分**：CSV/JSON 导出与分享图用的是 `<a download>` + Blob、`navigator.share`，Android WebView 一般不支持这两个能力，点按钮可能没有反应。如果要用，建议仍在浏览器里打开在线地址导出；要让 APK 内也支持，需要额外接入 `@capacitor/filesystem` + `@capacitor/share` 插件，属于后续工作。
+- **仍需真机确认的部分**：本机没有 Android SDK/模拟器，所以“导出→分享面板→保存到下载”这一条链路只做了静态检查与云端编译，**没有在真机点过按钮**。装机后请按下面的自测清单走一遍。
 - APK 与在线 PWA 是**两份独立的数据**：APK 里的记录不会同步到网页版，反之亦然。想迁移就用「我的 → 数据 → 导出 JSON」再在另一侧导入。
+
+### APK 自测清单（装机后 1 分钟）
+
+1. 打开应用 →「我的」→「数据」→ **导出 JSON**：应弹出系统分享面板，里面能看到 `饭搭子-美食记录-<日期>.json`；
+2. 在分享面板选「保存到文件」或「下载」→ 到文件管理器确认文件存在、用文本编辑器能打开；
+3. 「我的」→「数据」→ **导出 CSV** → 同上，确认有中文表头（BOM 不应乱码）；
+4. 「今天吃什么」→ **分享图** → 预览页点「保存」或「分享」→ 分享面板里有 PNG（1080×1350）；
+5. 「巡店」→ **复制/分享清单** → 出现系统分享面板而不是只提示“已复制”；
+6. 任意列表 → 导出弹层 → **分享给好友（.fanzi.json）** → 能调起分享；取消一次，应无报错提示。
+
+任何一步失败，在「我的 → 诊断」里能看到对应的错误记录，把错误文案发回来即可定位。
 
 ## 功能清单
 

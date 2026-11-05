@@ -4039,6 +4039,12 @@
   }
   function sharePatrol(){
     var text = patrolText();
+    if(capNative() && capPlugin('Share')){
+      nativeShareText(text, '巡店清单')
+        .then(function(){ toast('已调起系统分享'); })
+        .catch(function(e){ if(nativeCanceled(e)) return; copyText(text); });
+      return;
+    }
     if(navigator.share){
       navigator.share({ title:'巡店清单', text:text }).catch(function(err){
         if(err && err.name === 'AbortError') return;
@@ -4070,8 +4076,78 @@
   }
   function closeShare(){ $('#shareMask').classList.add('hidden'); }
 
-  /* ================= 统计与数据 ================= */
+  /* ================= Capacitor 原生桥接 =================
+   * 只在 APK（Capacitor WebView）里生效：用 Filesystem 写入缓存目录，再调系统分享面板。
+   * 浏览器/网页版 capNative() 返回 false，全部走原来的 <a download> + navigator.share，行为不变。
+   */
+  function capNative(){
+    try{
+      var c = window.Capacitor;
+      return !!(c && typeof c.isNativePlatform === 'function' && c.isNativePlatform() === true);
+    }catch(e){ return false; }
+  }
+  function capPlugin(name){
+    try{
+      var p = window.Capacitor && window.Capacitor.Plugins;
+      return (p && p[name]) || null;
+    }catch(e){ return null; }
+  }
+  function nativeFileBridge(){
+    return capNative() && !!capPlugin('Filesystem') && !!capPlugin('Share');
+  }
+  function utf8Base64(str){
+    var bytes = new TextEncoder().encode(String(str));
+    var bin = '', i;
+    for(i = 0; i < bytes.length; i += 8192){
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+    }
+    return btoa(bin);
+  }
+  function blobBase64(blob, cb){
+    try{
+      var r = new FileReader();
+      r.onload = function(){
+        var s = String(r.result || '');
+        var cut = s.indexOf(',');
+        cb(cut >= 0 ? s.slice(cut + 1) : '');
+      };
+      r.onerror = function(){ cb(''); };
+      r.readAsDataURL(blob);
+    }catch(e){ cb(''); }
+  }
+  function nativeShareFile(filename, base64, mime, title){
+    var FS = capPlugin('Filesystem'), Share = capPlugin('Share');
+    if(!FS || !Share) return Promise.reject(new Error('原生插件不可用'));
+    if(!base64) return Promise.reject(new Error('文件内容为空'));
+    return FS.writeFile({ path: filename, data: base64, directory: 'CACHE', recursive: true })
+      .then(function(){ return FS.getUri({ path: filename, directory: 'CACHE' }); })
+      .then(function(res){
+        var uri = (res && res.uri) || '';
+        if(!uri) throw new Error('无法取得文件地址');
+        return Share.share({ title: title || '饭搭子', text: mime === 'image/png' ? '数据来自本人记录' : '', files: [uri], dialogTitle: title || '饭搭子' });
+      });
+  }
+  function nativeShareText(text, title){
+    var Share = capPlugin('Share');
+    if(!Share) return Promise.reject(new Error('原生插件不可用'));
+    return Share.share({ title: title || '饭搭子', text: text, dialogTitle: title || '饭搭子' });
+  }
+  function nativeFailMsg(where, e, action){
+    logError(where, e);
+    var msg = (e && (e.message || e.errorMessage)) || '';
+    toast(action + '失败' + (msg ? '：' + String(msg).slice(0, 40) : '，请重试'));
+  }
+  function nativeCanceled(e){
+    var m = (e && (e.message || e.errorMessage)) || '';
+    return /cancel|取消/i.test(String(m));
+  }
   function download(filename, content, mime){
+    if(nativeFileBridge()){
+      nativeShareFile(filename, utf8Base64(content), mime || 'text/plain', '导出 · 饭搭子')
+        .then(function(){ toast('已生成文件，请在弹出的分享面板里保存或发送'); })
+        .catch(function(e){ nativeFailMsg('导出文件', e, '导出'); });
+      return;
+    }
     var blob = new Blob([content], { type:(mime||'text/plain')+';charset=utf-8' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
@@ -4531,6 +4607,24 @@
   }
   function saveShareImage(){
     var kind = shareImage && shareImage.data ? shareImage.data.kind : 'daily';
+    var imgName = '饭搭子-'+todayStr()+'-'+(kind === 'draw' ? '抽签' : (kind === 'friend' ? '朋友推荐' : '推荐'))+'.png';
+    if(nativeFileBridge()){
+      shareImageBlob(function(blob){
+        if(!blob){
+          var txt0 = shareImageText(kind);
+          if(txt0) copyText(txt0);
+          toast('保存失败，已改为复制文字');
+          return;
+        }
+        blobBase64(blob, function(b64){
+          if(!b64){ toast('保存失败，请改用文字分享'); return; }
+          nativeShareFile(imgName, b64, 'image/png', '保存分享图')
+            .then(function(){ toast('已生成图片，请在分享面板里保存'); })
+            .catch(function(e){ nativeFailMsg('保存分享图', e, '保存'); });
+        });
+      });
+      return;
+    }
     shareImageBlob(function(blob){
       if(!blob){
         var txt = shareImageText(kind);
@@ -4541,13 +4635,14 @@
       var a = document.createElement('a');
       var url = URL.createObjectURL(blob);
       a.href = url;
-      a.download = '饭搭子-'+todayStr()+'-'+(kind === 'draw' ? '抽签' : (kind === 'friend' ? '朋友推荐' : '推荐'))+'.png';
+      a.download = imgName;
       document.body.appendChild(a); a.click();
       setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 500);
       toast('已保存分享图');
     });
   }
   function doShareImage(){
+    if(nativeFileBridge()){ saveShareImage(); return; }
     var kind = shareImage && shareImage.data ? shareImage.data.kind : 'daily';
     var data = shareImage && shareImage.data;
     shareImageBlob(function(blob){
@@ -5052,6 +5147,12 @@
   function shareListViaSystem(){
     var text = longText || $('#shareListText').value;
     if(!text){ toast('清单为空'); return; }
+    if(capNative() && capPlugin('Share')){
+      nativeShareText(text, '饭搭子 · 分享清单')
+        .then(function(){ toast('已调起系统分享'); })
+        .catch(function(e){ if(nativeCanceled(e)) return; copyText(text); });
+      return;
+    }
     if(navigator.share){
       try{
         navigator.share({ title:'饭搭子 · 分享清单', text:text })
@@ -5180,14 +5281,50 @@
     nextPage(0);
   }
   function downloadBlob(blob, name){
+    if(nativeFileBridge()){
+      blobBase64(blob, function(b64){
+        if(!b64){ toast('导出失败：文件内容为空'); return; }
+        nativeShareFile(name, b64, blob.type || 'application/octet-stream', '导出 · 饭搭子')
+          .then(function(){ toast('已生成文件，请在分享面板里保存或发送'); })
+          .catch(function(e){ nativeFailMsg('导出文件', e, '导出'); });
+      });
+      return;
+    }
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url; a.download = name;
     document.body.appendChild(a); a.click();
     setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 600);
   }
+  /* 批量写文件到缓存目录并拿到 content:// 地址（APK 内保存/分享长图用） */
+  function nativeShareBlobs(items, then){
+    var FS = capPlugin('Filesystem');
+    if(!FS){ then(new Error('原生插件不可用'), []); return; }
+    var uris = [], idx = 0;
+    function step(){
+      if(idx >= items.length){ then(null, uris); return; }
+      var it = items[idx++];
+      blobBase64(it.blob, function(b64){
+        if(!b64){ step(); return; }
+        FS.writeFile({ path: it.name, data: b64, directory: 'CACHE', recursive: true })
+          .then(function(){ return FS.getUri({ path: it.name, directory: 'CACHE' }); })
+          .then(function(r){ if(r && r.uri) uris.push(r.uri); step(); })
+          .catch(function(e){ logError('长图写入', e); step(); });
+      });
+    }
+    step();
+  }
   function saveLongImages(){
     if(!longBlobs.length){ toast('长图还在生成，请稍候'); return; }
+    if(nativeFileBridge()){
+      nativeShareBlobs(longBlobs.slice(0, 10), function(err, uris){
+        if(err || !uris.length){ nativeFailMsg('保存长图', err || new Error('文件写入失败'), '保存'); return; }
+        capPlugin('Share').share({ title:'饭搭子 · 长图', files: uris, dialogTitle:'保存长图' })
+          .then(function(){ toast('已生成 '+uris.length+' 张长图，请在分享面板里保存'); })
+          .catch(function(e){ if(nativeCanceled(e)) return; nativeFailMsg('保存长图', e, '保存'); });
+      });
+      return;
+    }
     var i = 0;
     function step(){
       if(i >= longBlobs.length){ toast('已保存 '+longBlobs.length+' 张长图'); return; }
@@ -5199,6 +5336,15 @@
   }
   function shareLongImages(){
     if(!longBlobs.length){ toast('长图还在生成，请稍候'); return; }
+    if(nativeFileBridge()){
+      nativeShareBlobs(longBlobs.slice(0, 10), function(err, uris){
+        if(err || !uris.length){ nativeFailMsg('分享长图', err || new Error('文件写入失败'), '分享'); return; }
+        capPlugin('Share').share({ title:'饭搭子 · 分享清单', text:longText || '数据来自本人记录，不代表平台评价', files: uris, dialogTitle:'分享清单' })
+          .then(function(){ toast('已调起系统分享'); })
+          .catch(function(e){ if(nativeCanceled(e)) return; nativeFailMsg('分享长图', e, '分享'); });
+      });
+      return;
+    }
     var files = [];
     try{
       files = longBlobs.slice(0, 10).map(function(b){
@@ -5348,6 +5494,15 @@
       var blob = new Blob([json], { type:'application/json' });
       var file = null;
       try{ file = new File([blob], name, { type:'application/json' }); }catch(e){ file = null; }
+      if(nativeFileBridge()){
+        nativeShareFile(name, utf8Base64(json), 'application/json', '好友分享')
+          .then(function(){ setFanziStatus('已调起系统分享（'+json.length+' 字符）'); })
+          .catch(function(e){
+            nativeFailMsg('好友分享', e, '分享');
+            setFanziStatus('分享失败，请重试或改用文本清单');
+          });
+        return;
+      }
       if(file && navigator.share && navigator.canShare){
         var ok = false;
         try{ ok = navigator.canShare({ files:[file] }); }catch(e){ ok = false; }
