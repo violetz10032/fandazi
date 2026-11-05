@@ -300,6 +300,9 @@
   .long-wrap{max-height:46vh;overflow:auto;background:#f3ece2;border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:8px;align-items:center}
   .long-wrap img{width:100%;max-width:320px;border-radius:6px;box-shadow:0 3px 12px rgba(80,55,30,.12)}
   .dist-note{font-size:11px;color:var(--ink3);margin-top:6px;line-height:1.6}
+  .geo-row{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+  .geo-state{font-size:11px;color:var(--ink3);line-height:1.5}
+  .geo-state.on{color:var(--green)}
   .keyboard-open .sheet{padding-bottom:16px}
 </style>
 </head>
@@ -444,13 +447,18 @@
             </div>
           </div>
           <p class="dist-note" id="dayNowHint" style="margin-top:8px">--:--</p>
+          <div class="geo-row">
+            <button type="button" class="btn btn-sm" id="btnGeoDaily">用当前位置</button>
+            <button type="button" class="btn btn-sm hidden" id="btnGeoClear">清除定位</button>
+            <span class="geo-state" id="geoDailyState">未定位：距离按手填</span>
+          </div>
           <div class="chips" style="margin-top:10px">
             <button type="button" class="chip-toggle" id="dayNearOnly">只看半径内</button>
             <button type="button" class="chip-toggle" id="daySortDist">按距离排序</button>
             <button type="button" class="chip-toggle" id="dayNowOnly">此刻营业</button>
             <button type="button" class="chip-toggle" id="dayNoRepeat">这周不重复</button>
           </div>
-          <p class="dist-note">距离、耗时、营业时间均为手填估算，不调用系统定位。</p>
+          <p class="dist-note">距离优先按店铺坐标 + 当前位置计算；没坐标的店仍用手填值，界面会标注「定位」或「手填」。耗时与营业时间仍是手填估算。</p>
           <p class="muted" id="dayRestrictHint"></p>
           <button class="btn btn-primary btn-block btn-lg" id="btnDecide" style="margin-top:12px">帮我决定</button>
         </div>
@@ -573,7 +581,7 @@
           <label>X 分钟内可达（可选）</label>
           <input class="input" type="number" id="pkMaxMin" min="0" max="180" step="5" placeholder="不限" inputmode="numeric">
         </div>
-        <p class="dist-note">距离为你手填的估算值，本应用不申请定位权限、不调用系统定位。</p>
+        <p class="dist-note">距离优先按店铺坐标 + 当前位置计算，没坐标时用你手填的估算值；定位是可选功能，不点「用当前位置」就不申请权限。</p>
         <button class="btn btn-primary btn-block btn-lg" id="btnDraw" style="margin-top:12px">抽一家</button>
         <p class="muted" style="margin-top:8px"><span id="drawMs"></span></p>
         <div id="drawBox"></div>
@@ -818,7 +826,11 @@
         <input class="input" id="f-lat" inputmode="decimal" placeholder="例如 31.2304" autocomplete="off">
       </div>
     </div>
-    <p class="dist-note">左右两个都要填或都留空。填了坐标可在地图里直接定点，导航更准确；可在高德地图长按店铺复制坐标。</p>
+    <p class="dist-note">左右两个都要填或都留空。填了坐标后，距离会按坐标 + 你的当前位置计算；也可在店里点下面的按钮直接填入当前坐标。</p>
+    <div class="geo-row" style="margin:-2px 0 10px">
+      <button type="button" class="btn btn-sm" id="btnGeoForm">用当前位置填入店铺坐标</button>
+      <span class="geo-state" id="geoFormState">仅在店里记录时使用</span>
+    </div>
     <div class="map-links" style="margin-bottom:12px">
       <a class="btn btn-sm" id="formMapAmap" href="https://uri.amap.com/" target="_blank" rel="noopener noreferrer">高德地图查看</a>
       <a class="btn btn-sm" id="formMapBaidu" href="https://map.baidu.com/" target="_blank" rel="noopener noreferrer">百度地图查看</a>
@@ -1076,7 +1088,7 @@
       <button type="button" class="guide-skip" id="btnGuideSkip">跳过</button>
     </div>
     <div class="guide-body" id="guideBody"></div>
-    <p class="guide-privacy">数据只存在这台设备，不会上传；不申请定位权限，距离与耗时均为手填估算。</p>
+    <p class="guide-privacy">数据只存在这台设备，不会上传；定位仅在你点「用当前位置」时读取一次，不后台跟踪；距离优先按坐标计算，缺坐标时用手填估算。</p>
     <div class="guide-actions">
       <button type="button" class="btn" id="btnGuidePrev">上一步</button>
       <button type="button" class="btn hidden" id="btnGuideSample">先看看示例</button>
@@ -1864,6 +1876,7 @@
       recs.forEach(function(r){ if(Array.isArray(r.tags)) tags = tags.concat(r.tags); });
       var nutritionN = recs.filter(function(r){ return num(r.kcal) > 0 || num(r.protein) > 0; }).length;
       var distRec = recs.filter(function(r){ return num(r.distanceKm) > 0; })[0];
+      var coordRec = recs.filter(function(r){ return mapHasCoords(r); })[0] || null;
       var openRec = recs.filter(function(r){ return r.openStart && r.openEnd; })[0];
       var travelRec = recs.filter(function(r){ return num(r.travelMin) > 0 || r.travelMode || r.fromPlace; })[0] || null;
       var dayRec = recs.filter(function(r){ return r.dayType && r.dayType !== 'any'; })[0];
@@ -1872,6 +1885,8 @@
       out.push({
         key: k, name: latest.name, city: latest.city, area: latest.area, address: latest.address,
         latest: latest, records: recs, visits: recs.length,
+        lat: coordRec ? coordRec.lat : null,
+        lng: coordRec ? coordRec.lng : null,
         distanceKm: distRec ? num(distRec.distanceKm) : null,
         openStart: openRec ? openRec.openStart : '',
         openEnd: openRec ? openRec.openEnd : '',
@@ -1969,7 +1984,7 @@
     };
   }
 
-  /* ---- 时间 / 距离辅助（全部基于手填数据，不调用定位） ---- */
+  /* ---- 时间 / 距离辅助（距离优先用坐标+定位，缺坐标/定位时退回手填） ---- */
   var testClock = null;   /* 仅测试钩子使用 */
   function timeCtx(){
     var d = new Date();
@@ -2000,16 +2015,141 @@
   function travelMinutesOf(store){
     var m = num(store.travelMin);
     if(m > 0) return Math.round(m);
-    var d = num(store.distanceKm);
-    if(!(d > 0)) return null;
+    var d = storeKm(store);
+    if(d == null) return null;
+    if(d === 0) return 1;
     var mode = store.travelMode || 'walk';
     var speed = { walk:12, bike:4, car:2.5 }[mode] || 12;
     return Math.max(1, Math.round(d*speed + (mode === 'car' ? 3 : 0)));
   }
   function distText(km){
+    if(km == null) return '';
     km = num(km);
-    if(!(km > 0)) return '';
+    if(km < 0) return '';
+    if(km === 0) return '不到 100 m';
     return km < 1 ? Math.round(km*1000)+' m' : km+' km';
+  }
+  /* ---- 真实定位与距离（Haversine + 本机缓存，不改数据结构） ----
+   * 缓存键 fandazi.geo.last：{lat,lng,acc,at}，只存“我的位置”，不写进记录数据。
+   * 有 lat/lng 的店：真实球面距离（1 位小数）；没坐标的店：退回 distanceKm 手填值。
+   */
+  var _geoMemo = null, _geoMemoLoaded = false;
+  function haversineKm(lat1, lng1, lat2, lng2){
+    var R = 6371.0088, rad = Math.PI/180;
+    var dLat = (lat2 - lat1)*rad, dLng = (lng2 - lng1)*rad;
+    var a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+            Math.cos(lat1*rad)*Math.cos(lat2*rad)*Math.sin(dLng/2)*Math.sin(dLng/2);
+    return R*2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+  function geoLast(){
+    if(_geoMemoLoaded) return _geoMemo;
+    _geoMemoLoaded = true; _geoMemo = null;
+    try{
+      var o = JSON.parse(localStorage.getItem('fandazi.geo.last') || 'null');
+      if(o && isFinite(num(o.lat)) && isFinite(num(o.lng)) && num(o.lat) !== 0 && num(o.lng) !== 0){
+        _geoMemo = { lat:num(o.lat), lng:num(o.lng), acc:num(o.acc), at:num(o.at) };
+      }
+    }catch(e){}
+    return _geoMemo;
+  }
+  function geoSet(lat, lng, acc){
+    var o = { lat:+num(lat).toFixed(5), lng:+num(lng).toFixed(5), acc:Math.round(num(acc)), at:Date.now() };
+    _geoMemo = o; _geoMemoLoaded = true;
+    try{ localStorage.setItem('fandazi.geo.last', JSON.stringify(o)); }catch(e){}
+    return o;
+  }
+  function geoClear(){
+    _geoMemo = null; _geoMemoLoaded = true;
+    try{ localStorage.removeItem('fandazi.geo.last'); }catch(e){}
+  }
+  function geoClock(at){
+    if(!at) return '';
+    var d = new Date(at);
+    return (d.getHours()<10?'0':'')+d.getHours()+':'+(d.getMinutes()<10?'0':'')+d.getMinutes();
+  }
+  function storeCoord(s){
+    var la = num(s.lat), ln = num(s.lng);
+    if(!isFinite(la) || !isFinite(ln) || la === 0 || ln === 0) return null;
+    if(la < -90 || la > 90 || ln < -180 || ln > 180) return null;
+    return { lat:la, lng:ln };
+  }
+  function storeRealKm(s){
+    var me = geoLast(), c = storeCoord(s);
+    if(!me || !c) return null;
+    var d = haversineKm(me.lat, me.lng, c.lat, c.lng);
+    return isFinite(d) ? Math.round(d*10)/10 : null;
+  }
+  function storeKm(s){
+    var real = storeRealKm(s);
+    if(real != null) return real;
+    var manual = num(s.distanceKm);
+    return manual > 0 ? manual : null;
+  }
+  function storeKmSrc(s){
+    if(storeRealKm(s) != null) return 'geo';
+    return num(s.distanceKm) > 0 ? 'manual' : '';
+  }
+  /* 0 也是有效真实距离（就在附近），所以不能用 > 0 判断“有没有距离” */
+  function hasKm(s){ return storeKm(s) != null; }
+  function kmSrcText(s){
+    var src = storeKmSrc(s);
+    return src === 'geo' ? '定位' : (src === 'manual' ? '手填' : '');
+  }
+  function kmLine(s){
+    var d = storeKm(s);
+    if(d == null) return '';
+    return '距我约 '+distText(d)+'（'+kmSrcText(s)+'）';
+  }
+  /* 定位：只读一次，不做后台跟踪；失败一律回退手填，不阻断界面 */
+  function geoSupport(){
+    if(!window.isSecureContext) return 'insecure';
+    if(!navigator.geolocation) return 'missing';
+    return '';
+  }
+  function geoMsg(reason){
+    var map = {
+      insecure:'当前不是安全上下文（http:// 或 file://），浏览器禁用了定位。请用 https:// 打开，或继续手填距离。',
+      missing:'当前环境不提供定位接口（例如部分 WebView / file:// 打开）。已保留手填距离。',
+      denied:'定位权限被拒绝。可在浏览器地址栏的站点权限里允许定位，或继续手填距离。',
+      timeout:'定位超时（10 秒）。可能信号较弱，请重试或继续手填距离。',
+      unavailable:'系统定位不可用（定位服务关闭或没有定位能力）。已回退到手填距离。',
+      unknown:'定位失败。已回退到手填距离。'
+    };
+    return map[reason] || map.unknown;
+  }
+  function locateMe(onOk, onFail){
+    var bad = geoSupport();
+    if(bad){ onFail(bad); return; }
+    var done = false;
+    function finish(fn, arg){ if(done) return; done = true; fn(arg); }
+    try{
+      navigator.geolocation.getCurrentPosition(function(pos){
+        var lat = num(pos.coords.latitude), lng = num(pos.coords.longitude);
+        if(!isFinite(lat) || !isFinite(lng)){ finish(onFail, 'unavailable'); return; }
+        finish(onOk, geoSet(lat, lng, pos.coords.accuracy));
+      }, function(err){
+        var code = err && err.code;
+        finish(onFail, code === 1 ? 'denied' : (code === 2 ? 'unavailable' : (code === 3 ? 'timeout' : 'unknown')));
+      }, { enableHighAccuracy:false, timeout:10000, maximumAge:0 });
+    }catch(e){
+      finish(onFail, 'unavailable');
+    }
+  }
+  function renderGeoState(){
+    var el = $('#geoDailyState'), clr = $('#btnGeoClear');
+    if(!el) return;
+    var g = geoLast();
+    if(g){
+      el.textContent = '已定位（±'+Math.round(g.acc || 0)+'m，'+geoClock(g.at)+'）· 有坐标的店按真实距离';
+      el.className = 'geo-state on';
+      if(clr) clr.classList.remove('hidden');
+      return;
+    }
+    var bad = geoSupport();
+    el.textContent = bad === 'insecure' ? '当前环境不支持定位（非 HTTPS），距离按手填' :
+                     (bad === 'missing' ? '当前环境无定位接口，距离按手填' : '未定位：距离按手填');
+    el.className = 'geo-state';
+    if(clr) clr.classList.add('hidden');
   }
   function travelLabel(store){
     var m = travelMinutesOf(store);
@@ -2080,8 +2220,8 @@
     if(openState === true) reasons.push('现在 '+ctx.clock+' 营业中（'+store.openStart+'–'+store.openEnd+'）');
     else if(openState === false) reasons.push('现在不是营业时段（'+store.openStart+'–'+store.openEnd+'）');
     else reasons.push('营业时间未填，建议出发前确认');
-    if(num(store.distanceKm) > 0 || tmin){
-      var tline = '距你约 '+(num(store.distanceKm) > 0 ? distText(store.distanceKm) : '（距离未填）');
+    if(hasKm(store) || tmin){
+      var tline = '距你约 '+(hasKm(store) ? distText(storeKm(store))+'（'+kmSrcText(store)+'）' : '（距离未填）');
       if(tmin) tline += '，'+travelLabel(store)+'，约 '+(store.fromPlace ? placeNameOf(store.fromPlace)+' 出发' : '默认地点出发');
       reasons.push(tline);
     }
@@ -2128,8 +2268,8 @@
       if(isBlack(s)){ skipped.push({name:s.name, why:'在黑名单'}); return; }
       var cf = conflictOf(s, ctx.restrictions);
       if(cf){ skipped.push({name:s.name, why:'忌口命中「'+cf+'」'}); return; }
-      var dkm = num(s.distanceKm);
-      if(dkm > 0 && (!nearestKm.km || dkm < nearestKm.km)) nearestKm = { km:dkm, name:s.name };
+      var dkm = storeKm(s);
+      if(dkm != null && (nearestKm.km === null || dkm < nearestKm.km)) nearestKm = { km:dkm, name:s.name };
       var price = num(s.perPrice);
       if(!s.isWish && price > 0 && (price < ctx.min || price > ctx.max)){
         skipped.push({name:s.name, why:'人均 ¥'+price+' 不在 ¥'+ctx.min+'–¥'+ctx.max+' 预算内'});
@@ -2151,8 +2291,8 @@
       }
       if(ctx.nearOnly){
         var radius = Math.max(0.1, num(ctx.nearKm) || 3);
-        if(!(dkm > 0 && dkm <= radius)){
-          skipped.push({name:s.name, why: dkm > 0 ? '距离 '+dkm+' km，超出 '+radius+' km' : '未填距离，无法判断 '+radius+' km 内'});
+        if(dkm == null || dkm > radius){
+          skipped.push({name:s.name, why: dkm != null ? '距离 '+dkm+' km，超出 '+radius+' km' : '未填距离，无法判断 '+radius+' km 内'});
           return;
         }
       }
@@ -2168,10 +2308,10 @@
     });
     if(ctx.sortDist){
       list.sort(function(a,b){
-        var da = num(a.store.distanceKm), db = num(b.store.distanceKm);
-        if(da > 0 && db > 0 && da !== db) return da - db;
-        if(da > 0 && !(db > 0)) return -1;
-        if(!(da > 0) && db > 0) return 1;
+        var da = storeKm(a.store), db = storeKm(b.store);
+        if(da != null && db != null && da !== db) return da - db;
+        if(da != null && db == null) return -1;
+        if(da == null && db != null) return 1;
         return b.score - a.score;
       });
     } else {
@@ -2203,8 +2343,8 @@
       if(p <= 0){ notes.push(s.name+' 未填人均，已跳过'); return; }
       if(p < min || p > max) return;
       if(nearOnly){
-        var d = num(s.distanceKm);
-        if(!(d > 0 && d <= 3)){ notes.push(s.name+' 未填距离或超出 3 km，已跳过'); return; }
+        var d = storeKm(s);
+        if(d == null || d > 3){ notes.push(s.name+' 未填距离或超出 3 km，已跳过'); return; }
       }
       if(maxTravel){
         var tm = travelMinutesOf(s);
@@ -2542,7 +2682,7 @@
       tags.push('<span class="tag dim">'+(r.kcal?num(r.kcal)+' kcal':'')+(r.protein?' · 蛋白 '+num(r.protein)+'g':'')+'</span>');
     }
     if(r.fitnessFriendly) tags.push('<span class="tag dim">健身友好</span>');
-    if(num(r.distanceKm) > 0) tags.push('<span class="tag">距我约 '+esc(distText(r.distanceKm))+'（手填）</span>');
+    if(hasKm(r)) tags.push('<span class="tag">'+esc(kmLine(r))+'</span>');
     if(num(r.travelMin) > 0 || travelMinutesOf(r)) tags.push('<span class="tag">'+esc(travelLabel(r))+'</span>');
     if(r.openStart && r.openEnd) tags.push('<span class="tag">营业 '+esc(r.openStart)+'–'+esc(r.openEnd)+'</span>');
     if(r.fitMeals && r.fitMeals.length) tags.push('<span class="tag">适合 '+esc(r.fitMeals.map(function(k){ return MEAL_LABEL[k]; }).filter(Boolean).join('、'))+'</span>');
@@ -2714,6 +2854,7 @@
     }).join('');
   }
   function renderDailyInputs(){
+    renderGeoState();
     renderTasteChips($('#tasteChips'), dailyTastes);
     var rest = db.settings.restrictions || [];
     $('#dayRestrictHint').textContent = rest.length
@@ -2758,7 +2899,7 @@
         tips.push('最近的选择：<b>'+esc(st.nearest.name)+'</b> 约 '+st.nearest.min+' 分钟（手填估算）');
       }
       if(st.nearestKm && st.nearestKm.km){
-        tips.push('最近的记录：<b>'+esc(st.nearestKm.name)+'</b> 约 '+st.nearestKm.km+' km（手填估算）');
+        tips.push('最近的记录：<b>'+esc(st.nearestKm.name)+'</b> 约 '+st.nearestKm.km+' km'+(geoLast() ? '（按坐标估算）' : '（手填估算）'));
       }
       if(!tips.length) tips.push('放宽预算，或先记几家店。');
       var flips = ['预算 ¥'+st.ctx.min+'–¥'+st.ctx.max];
@@ -2869,7 +3010,7 @@
       '① 候选 '+st.pool.length+' 家（已排除黑名单、忌口命中、未填人均）',
       '② 权重表：'+top.map(function(x){ return x.store.name+' '+x.w.toFixed(2)+'（'+Math.round(x.norm*100)+'%）'; }).join('；'),
       '③ 总权重 '+st.totalW.toFixed(2)+'，随机数 r='+st.r.toFixed(4)+' → 命中「'+st.picked.store.name+'」',
-      '④ 复核：人均 '+money(st.picked.store.perPrice)+' ∈ ['+num($('#pk-min').value)+', '+num($('#pk-max').value)+']'+(pkNear ? '，距离 ≤ 3 km（手填）' : '')+(num($('#pkMaxMin').value) > 0 ? '，耗时 ≤ '+num($('#pkMaxMin').value)+' 分钟（手填估算）' : '')
+      '④ 复核：人均 '+money(st.picked.store.perPrice)+' ∈ ['+num($('#pk-min').value)+', '+num($('#pk-max').value)+']'+(pkNear ? '，距离 ≤ 3 km（定位/手填）' : '')+(num($('#pkMaxMin').value) > 0 ? '，耗时 ≤ '+num($('#pkMaxMin').value)+' 分钟（手填估算）' : '')
     ].join('\n');
     box.innerHTML =
       '<article class="card draw-card" style="margin-top:12px">'+
@@ -2877,8 +3018,8 @@
         '<div class="draw-name">'+esc(st.picked.store.name)+'</div>'+
         '<p class="draw-price">'+money(st.picked.store.perPrice)+'/人 · '+esc(st.picked.store.category||'未分类')+' · 权重 '+st.picked.w.toFixed(2)+'</p>'+
         '<p class="meta">'+esc([st.picked.store.city,st.picked.store.area].filter(Boolean).join(' · ')||'未填位置')+'</p>'+
-        (num(st.picked.store.distanceKm) > 0 || travelMinutesOf(st.picked.store)
-          ? '<p class="meta">'+esc([num(st.picked.store.distanceKm) > 0 ? '距我约 '+distText(st.picked.store.distanceKm) : '', travelLabel(st.picked.store)].filter(Boolean).join(' · '))+'</p>'
+        (hasKm(st.picked.store) || travelMinutesOf(st.picked.store)
+          ? '<p class="meta">'+esc([hasKm(st.picked.store) ? kmLine(st.picked.store) : '', travelLabel(st.picked.store)].filter(Boolean).join(' · '))+'</p>'
           : '')+
         '<div class="actions" style="margin-top:12px">'+
           '<button class="btn" data-act="drawAgain">再抽一次</button>'+
@@ -3929,7 +4070,7 @@
   function patrolSortStops(){
     if(patrolState.mode === 'manual') return;
     patrolState.stops.sort(function(a, b){
-      var da = a.distanceKm, db2 = b.distanceKm;
+      var da = storeKm(a), db2 = storeKm(b);
       if(da === null && db2 === null) return String(a.name).localeCompare(String(b.name));
       if(da === null) return 1;
       if(db2 === null) return -1;
@@ -3967,7 +4108,7 @@
         '<div class="patrol-info">'+
           '<b>'+esc(s.name)+'</b>'+
           '<span>'+esc([s.city, s.area].filter(Boolean).join(' · ')||'未填位置')+'</span>'+
-          '<span>'+ (s.distanceKm ? '距我约 '+esc(distText(s.distanceKm)) : '未填距离')+
+          '<span>'+ (hasKm(s) ? esc(kmLine(s)) : '未填距离')+
             ' · '+ (eta ? '预计 '+esc(eta)+' 到达' : '到达时间未填') +
             (mapHasCoords(s) ? '' : ' · 需补坐标') +'</span>'+
         '</div>'+
@@ -4018,7 +4159,7 @@
       var eta = patrolEta(s);
       lines.push((i+1)+'. '+s.name+
         (s.city ? '（'+[s.city, s.area].filter(Boolean).join(' · ')+'）' : '')+
-        '｜'+(s.distanceKm ? '距我约 '+distText(s.distanceKm) : '未填距离')+
+        '｜'+(hasKm(s) ? '距我约 '+distText(storeKm(s))+'（'+kmSrcText(s)+'）' : '未填距离')+
         '｜'+(eta ? '预计 '+eta+' 到达' : '到达时间未填')+
         '｜'+patrolUrl(s));
     });
@@ -4426,7 +4567,7 @@
       title: '今天吃这个',
       name: main.store.name,
       meta: '1 人 · '+money(main.store.perPrice)+'/人'+(main.store.category ? ' · '+main.store.category : '')+
-        (num(main.store.distanceKm) > 0 ? ' · 距我约 '+distText(main.store.distanceKm)+'（手填）' : ''),
+        (hasKm(main.store) ? ' · '+kmLine(main.store) : ''),
       tag: (MEAL_LABEL[dailyState.ctx.meal]||'')+' · 适配分 '+main.score,
       place: [main.store.city, main.store.area].filter(Boolean).join(' · '),
       lines: main.reasons.slice(0, 3)
@@ -4445,7 +4586,7 @@
       lines: [
         '区间内共 '+drawState.pool.length+' 家候选，权重 '+drawState.picked.w.toFixed(2),
         '抽签结果为随机，不代表推荐排序',
-        '距离与价格均为本人手填估算'
+        '距离为手填或按坐标估算，价格均为本人手填'
       ]
     };
   }
@@ -4572,7 +4713,7 @@
     ctx.fillText('数据来自本人记录，不代表平台评价', 72, 1270);
     ctx.fillStyle = '#9a8f86';
     ctx.font = '400 22px ' + SHARE_FONT;
-    ctx.fillText('店铺、价格、距离均为手填估算 · '+todayStr(), 72, 1310);
+    ctx.fillText('店铺、价格、距离均为手填或按坐标估算 · '+todayStr(), 72, 1310);
     return c;
   }
   function shareImageText(kind){
@@ -4731,7 +4872,7 @@
           '<div><b>店名</b>必填，同城同名会合并成一家店。</div>'+
           '<div><b>人均 / 人数</b>预算与聚会方案都靠它。</div>'+
           '<div><b>适合时段</b>早餐 / 午餐 / 下午茶 / 晚餐 / 夜宵，可多选。</div>'+
-          '<div><b>距离 / 出行</b>可选，手填估算，不调用定位。</div>'+
+          '<div><b>距离 / 出行</b>可选：有坐标可点「用当前位置」按真实距离算，没坐标就手填估算。</div>'+
         '</div>'+
         '<button type="button" class="btn btn-soft btn-block" data-guide="tryRecord" style="margin-top:12px">试记一顿 →</button>';
     }
@@ -5126,7 +5267,7 @@
     var lines = ['饭搭子 · 分享清单', '共 '+records.length+' 家 · 生成 '+todayStr(), ''];
     records.forEach(function(r, i){
       var bits = [money(perPriceOf(r))+'/人'];
-      if(num(r.distanceKm) > 0) bits.push(distText(r.distanceKm)+'（手填）');
+      if(hasKm(r)) bits.push(kmLine(r));
       if(opts.rating && num(r.rating) > 0) bits.push('评分 '+num(r.rating));
       lines.push((i+1)+'. '+r.name+'｜'+bits.join('｜')+'｜'+reasonOfRecord(r, opts));
     });
@@ -5210,7 +5351,7 @@
       var bits = [money(perPriceOf(r))+'/人'];
       if((r.people||1) > 1) bits.push((r.people||1)+' 人');
       if(r.category) bits.push(r.category);
-      if(num(r.distanceKm) > 0) bits.push(distText(r.distanceKm)+'（手填）');
+      if(hasKm(r)) bits.push(kmLine(r));
       if(opts.rating && num(r.rating) > 0) bits.push('评分 '+num(r.rating));
       if(r.visitDate) bits.push(r.visitDate);
       ctx.fillStyle = '#6b615a';
@@ -5232,7 +5373,7 @@
     ctx.fillText('数据来自本人记录，不代表平台评价', M, fy+52);
     ctx.fillStyle = '#9a8f86';
     ctx.font = '400 22px ' + SHARE_FONT;
-    ctx.fillText('由「饭搭子」在本机生成 · 距离与价格均为手填估算 · '+todayStr(), M, fy+92);
+    ctx.fillText('由「饭搭子」在本机生成 · 距离为手填或按坐标估算、价格手填 · '+todayStr(), M, fy+92);
     return c;
   }
   function generateLongImages(){
@@ -6514,6 +6655,48 @@
   $$('#recoSeg button').forEach(function(b){
     b.addEventListener('click', function(){ showPanel('recommend', b.getAttribute('data-panel')); });
   });
+  /* 定位按钮：成功后只用本次读数重算距离，失败按原因提示并保留手填 */
+  $('#btnGeoDaily').addEventListener('click', function(){
+    var btn = this, bad = geoSupport();
+    if(bad){ toast(geoMsg(bad)); renderGeoState(); return; }
+    btn.disabled = true; btn.textContent = '定位中…';
+    locateMe(function(g){
+      btn.disabled = false; btn.textContent = '用当前位置';
+      renderGeoState();
+      renderAll();
+      if(dailyState) runDecideNow(false);
+      if(patrolState && patrolState.mode === 'dist'){ patrolSortStops(); renderPatrol(); }
+      toast('已定位 ±'+Math.round(g.acc || 0)+'m：有坐标的店改为真实距离，没坐标的店仍用手填');
+    }, function(reason){
+      btn.disabled = false; btn.textContent = '用当前位置';
+      renderGeoState();
+      toast(geoMsg(reason));
+    });
+  });
+  $('#btnGeoClear').addEventListener('click', function(){
+    geoClear();
+    renderGeoState();
+    renderAll();
+    if(dailyState) runDecideNow(false);
+    toast('已清除定位：距离回到手填值');
+  });
+  /* 编辑页按钮只填「这家店的坐标」，不覆盖“我的位置”缓存，避免把距离基准变成店铺本身 */
+  $('#btnGeoForm').addEventListener('click', function(){
+    var btn = this, bad = geoSupport();
+    if(bad){ toast(geoMsg(bad)); return; }
+    btn.disabled = true; btn.textContent = '定位中…';
+    locateMe(function(g){
+      btn.disabled = false; btn.textContent = '用当前位置填入店铺坐标';
+      $('#f-lng').value = g.lng.toFixed(5);
+      $('#f-lat').value = g.lat.toFixed(5);
+      var st = $('#geoFormState');
+      if(st){ st.textContent = '已填入 ±'+Math.round(g.acc || 0)+'m，请确认是否就是这家店'; st.className = 'geo-state on'; }
+      toast('已填入当前坐标；若你不在店里，请清空或手填');
+    }, function(reason){
+      btn.disabled = false; btn.textContent = '用当前位置填入店铺坐标';
+      toast(geoMsg(reason));
+    });
+  });
   $('#dayNearOnly').addEventListener('click', function(){
     dailyNear = !dailyNear;
     this.classList.toggle('on', dailyNear);
@@ -7007,6 +7190,25 @@
       }catch(e){ return { ok:false, reason:String(e && e.message || e) }; }
     },
     shareText: function(kind){ return shareImageText(kind || 'daily'); },
+    geo: function(o){
+      o = o || {};
+      if('set' in o){
+        if(o.set) geoSet(o.set.lat, o.set.lng, o.set.acc || 0); else geoClear();
+        renderGeoState();
+        renderAll();
+        if(dailyState) runDecideNow(false);
+        if(patrolState && patrolState.mode === 'dist'){ patrolSortStops(); renderPatrol(); }
+      }
+      var list = getStores().map(function(s){ return { name:s.name, km:storeKm(s), src:storeKmSrc(s), real:storeRealKm(s) }; });
+      var sorted = list.filter(function(x){ return x.km != null; }).sort(function(a, b){ return a.km - b.km; });
+      return {
+        last: geoLast(), stores: list, sorted: sorted,
+        near3: sorted.filter(function(x){ return x.km <= 3; }).map(function(x){ return x.name; })
+      };
+    },
+    haversine: function(lat1, lng1, lat2, lng2){ return haversineKm(lat1, lng1, lat2, lng2); },
+    geoMsg: function(reason){ return geoMsg(reason); },
+    geoSupport: function(){ return geoSupport(); },
     clock: function(h, m, weekend){
       testClock = (h === null || h === undefined) ? null : { h:Number(h), m:Number(m||0), weekend:weekend };
       renderDailyInputs();
