@@ -7257,6 +7257,63 @@
     });
     return added;
   }
+  /* ---- 口味手动设置段（fandazi.profile）纳入备份 ---- */
+  /* 只存「手动设置」（提升菜系 / 拉黑菜系 / 人均上限），自动画像是派生数据不落盘。 */
+  function profileBackupData(){
+    return {
+      version: PROFILE_VERSION,
+      boost: (profileManual.boost || []).slice(),
+      block: (profileManual.block || []).slice(),
+      budgetCap: profileManual.budgetCap == null ? null : num(profileManual.budgetCap)
+    };
+  }
+  /* 只校验不改写：旧备份缺失该段返回 null（保持现状）；结构非法抛错，整包拒绝。 */
+  function profileBackupValidate(pm, where){
+    if(pm == null) return null;
+    if(typeof pm !== 'object' || Array.isArray(pm)){
+      throw new Error('备份里的口味设置格式不正确（' + where + '）');
+    }
+    var out = { version: num(pm.version) || PROFILE_VERSION, boost:[], block:[], budgetCap:null };
+    var fields = [['boost', '手动提升'], ['block', '手动拉黑']];
+    for(var f = 0; f < fields.length; f++){
+      var k = fields[f][0], label = fields[f][1];
+      var arr = pm[k] == null ? [] : pm[k];
+      if(!Array.isArray(arr)) throw new Error('备份里的口味设置「' + label + '」不是列表（' + where + '）');
+      for(var i = 0; i < arr.length; i++){
+        if(typeof arr[i] !== 'string' || !arr[i].trim()){
+          throw new Error('备份里的口味设置「' + label + '」第 ' + (i+1) + ' 项无效（' + where + '）');
+        }
+        out[k].push(arr[i].trim());
+      }
+    }
+    var cap = pm.budgetCap;
+    if(cap != null && cap !== ''){
+      if(typeof cap !== 'number' || !isFinite(cap) || cap < 0){
+        throw new Error('备份里的口味设置「人均上限」无效（' + where + '）');
+      }
+      out.budgetCap = cap > 0 ? Math.round(cap) : null;
+    }
+    return out;
+  }
+  /* 还原手动口味设置；旧备份返回 applied=false，不碰本机设置（不清空）。 */
+  function applyBackupProfile(pm){
+    var norm = profileBackupValidate(pm, '恢复');
+    if(!norm) return { applied:false, legacy:true, boost:0, block:0, budgetCap:null };
+    var prev = JSON.parse(JSON.stringify(profileManual));
+    profileManual = { version:norm.version, boost:norm.boost, block:norm.block, budgetCap:norm.budgetCap };
+    try{ localStorage.setItem(PROFILE_KEY, JSON.stringify(profileManual)); }
+    catch(e){
+      profileManual = prev;
+      invalidateProfile();
+      logError('口味设置恢复', e);
+      throw new Error('空间不足：口味设置写入失败，本机数据未改动');
+    }
+    invalidateProfile();
+    return {
+      applied:true, boost:profileManual.boost.length, block:profileManual.block.length,
+      budgetCap:profileManual.budgetCap
+    };
+  }
   function backupPayloadOf(){
     return JSON.parse(JSON.stringify({
       version: db.version,
@@ -7267,6 +7324,7 @@
       places: db.places,
       localConfig: backupLocalConfig(),
       feedback: feedbackBackupData(),
+      profile: profileBackupData(),
       records: db.records
     }));
   }
@@ -7278,11 +7336,13 @@
       return {
         records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length,
         feedback: feedbackStore.items.length,
+        profileBoost: profileManual.boost.length, profileBlock: profileManual.block.length,
+        profileBudget: profileManual.budgetCap,
         photos: ps.count, photoBytes: num(ps.bytes), textBytes: text,
         sizeBytes: total, warn: total > BACKUP_WARN_BYTES
       };
     }).catch(function(){
-      return { records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length, feedback: feedbackStore.items.length, photos: 0, photoBytes: 0, textBytes: 0, sizeBytes: 0, warn: false };
+      return { records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length, feedback: feedbackStore.items.length, profileBoost: profileManual.boost.length, profileBlock: profileManual.block.length, profileBudget: profileManual.budgetCap, photos: 0, photoBytes: 0, textBytes: 0, sizeBytes: 0, warn: false };
     });
   }
   function backupPhotos(){
@@ -7339,6 +7399,9 @@
             wishlist: payload.wishlist.length, blacklist: payload.blacklist.length,
             votes: payload.votes.length, places: payload.places.length,
             feedback: payload.feedback.items.length,
+            profileBoost: payload.profile.boost.length,
+            profileBlock: payload.profile.block.length,
+            profileBudget: payload.profile.budgetCap,
             settingsKeys: Object.keys(payload.settings || {}).length,
             localConfigKeys: Object.keys(payload.localConfig || {}).length,
             photos: photos.length, photoBytes: photoBytes
@@ -7392,6 +7455,8 @@
     if(!obj.payload || !Array.isArray(obj.payload.records)) throw new Error('备份内容缺少记录列表');
     /* 反馈段：存在则校验结构，缺失（旧备份）视为「保持现状」 */
     feedbackBackupValidate(obj.payload.feedback, '恢复');
+    /* 口味手动设置段：同上，缺失（旧备份）保持本机设置 */
+    profileBackupValidate(obj.payload.profile, '恢复');
     if(!obj.checksum || !obj.checksum.value) throw new Error('备份文件缺少校验值，无法确认完整性');
     if(!Array.isArray(obj.photos)) obj.photos = [];
     for(var i = 0; i < obj.photos.length; i++){
@@ -7437,7 +7502,8 @@
         votes: db.votes,
         places: db.places,
         localConfig: backupLocalConfig(),
-        feedback: feedbackBackupData()
+        feedback: feedbackBackupData(),
+        profile: profileBackupData()
       }))
     };
     return snapshotStore('readwrite').then(function(store){
@@ -7574,9 +7640,11 @@
         ensureNeverBlacklist(next.blacklist, obj.payload.feedback);
         stats = { added:added, skipped:skipped, replaced:false };
       }
-      /* 反馈先写、数据库后写；任何一步失败都回滚反馈，保持「整包拒绝」语义 */
+      /* 反馈与口味设置先写、数据库后写；任何一步失败都回滚，保持「整包拒绝」语义 */
       var fbPrevRaw = null, fbPrevStore = JSON.parse(JSON.stringify(feedbackStore));
+      var pmPrevRaw = null, pmPrevStore = JSON.parse(JSON.stringify(profileManual));
       try{ fbPrevRaw = localStorage.getItem(FB_KEY); }catch(e){ fbPrevRaw = null; }
+      try{ pmPrevRaw = localStorage.getItem(PROFILE_KEY); }catch(e){ pmPrevRaw = null; }
       function rollbackFeedback(){
         feedbackStore = fbPrevStore;
         feedbackToday = { date: todayStr(), items: {} };
@@ -7585,14 +7653,25 @@
           else localStorage.setItem(FB_KEY, fbPrevRaw);
         }catch(_e){}
       }
+      function rollbackProfile(){
+        profileManual = pmPrevStore;
+        invalidateProfile();
+        try{
+          if(pmPrevRaw == null) localStorage.removeItem(PROFILE_KEY);
+          else localStorage.setItem(PROFILE_KEY, pmPrevRaw);
+        }catch(_e){}
+      }
       var fbResult = { applied:false, count:0 };
+      var pmResult = { applied:false, boost:0, block:0, budgetCap:null };
       var str;
       try{
+        pmResult = applyBackupProfile(obj.payload.profile);
         fbResult = applyBackupFeedback(obj.payload.feedback);
         str = JSON.stringify(next);
         commitDbString(str);
       }catch(e){
         rollbackFeedback();
+        rollbackProfile();
         throw e;
       }
       db = next;
@@ -7605,6 +7684,8 @@
         ok:true, mode:mode, added:stats.added, skipped:stats.skipped, replaced:!!stats.replaced,
         photos:obj.photos.length, photoBytes:num(obj.stats && obj.stats.photoBytes),
         feedback:fbResult.count, feedbackApplied:!!fbResult.applied,
+        profileApplied:!!pmResult.applied, profileBoost:pmResult.boost,
+        profileBlock:pmResult.block, profileBudget:pmResult.budgetCap,
         missingPhotos:countMissingPhotos(norm, photoMap), ms:Math.round(nowMs() - t0),
         snapshotId:snapRef ? snapRef.id : null
       };
@@ -7622,7 +7703,9 @@
       norm.votes = JSON.parse(JSON.stringify(Array.isArray(snap.data.votes) ? snap.data.votes : []));
       ensureNeverBlacklist(norm.blacklist, snap.data.feedback);
       var fbPrevRaw = null, fbPrevStore = JSON.parse(JSON.stringify(feedbackStore));
+      var pmPrevRaw = null, pmPrevStore = JSON.parse(JSON.stringify(profileManual));
       try{ fbPrevRaw = localStorage.getItem(FB_KEY); }catch(e){ fbPrevRaw = null; }
+      try{ pmPrevRaw = localStorage.getItem(PROFILE_KEY); }catch(e){ pmPrevRaw = null; }
       function rollbackFeedback(){
         feedbackStore = fbPrevStore;
         feedbackToday = { date: todayStr(), items: {} };
@@ -7631,14 +7714,25 @@
           else localStorage.setItem(FB_KEY, fbPrevRaw);
         }catch(_e){}
       }
+      function rollbackProfile(){
+        profileManual = pmPrevStore;
+        invalidateProfile();
+        try{
+          if(pmPrevRaw == null) localStorage.removeItem(PROFILE_KEY);
+          else localStorage.setItem(PROFILE_KEY, pmPrevRaw);
+        }catch(_e){}
+      }
       var fbResult = { applied:false, count:0 };
+      var pmResult = { applied:false, boost:0, block:0, budgetCap:null };
       var str;
       try{
+        pmResult = applyBackupProfile(snap.data.profile);
         fbResult = applyBackupFeedback(snap.data.feedback);
         str = JSON.stringify(norm);
         commitDbString(str);
       }catch(e){
         rollbackFeedback();
+        rollbackProfile();
         throw e;
       }
       db = norm;
@@ -7646,7 +7740,8 @@
       lastSavedStr = str;
       applyBackupLocalConfig(snap.data.localConfig, true);
       renderAll();
-      return { ok:true, records:db.records.length, photos:snap.photoIds ? snap.photoIds.length : 0, at:snap.at, feedback:fbResult.count, feedbackApplied:!!fbResult.applied };
+      return { ok:true, records:db.records.length, photos:snap.photoIds ? snap.photoIds.length : 0, at:snap.at, feedback:fbResult.count, feedbackApplied:!!fbResult.applied,
+        profileApplied:!!pmResult.applied, profileBoost:pmResult.boost, profileBlock:pmResult.block, profileBudget:pmResult.budgetCap };
     });
   }
 
@@ -7680,6 +7775,7 @@
         '</div>' +
         '<p class="dist-note">照片以 base64 文本内联进 JSON，体积约等于现有照片总量（' + fmtBytes(est.photoBytes) + '）加记录文本；照片压缩规则沿用每张 ≤360px、最多 80 张。</p>' +
         '<p class="dist-note">另含推荐反馈 ' + est.feedback + ' 条（想吃 / 吃腻了 / 不喜欢 / 永不推荐），随备份一起还原；反馈不按记录去重。</p>' +
+        '<p class="dist-note">另含「我的口味」手动设置：提升 ' + est.profileBoost + ' 项 / 拉黑 ' + est.profileBlock + ' 项 / 人均上限 ' + (est.profileBudget ? '¥' + est.profileBudget : '未设置') + '（自动画像不落盘，恢复后按记录重算）。</p>' +
         (est.warn ? '<p class="notice" style="margin-top:8px">体积超过 50 MB：生成与下载会占用较多内存和时间，仍可继续。低内存设备建议先清理旧照片。</p>' : '') +
         '<p class="muted" style="margin-top:8px">' + (last ? '上次备份：' + backupAgoText(last) : '还没有生成过完整备份。') + '</p>' +
         '<div class="actions" style="margin-top:14px">' +
@@ -7726,6 +7822,7 @@
         '</div>' +
         '<p class="dist-note">配置：偏好 ' + Object.keys(norm.settings || {}).length + ' 项 · 黑名单 ' + norm.blacklist.length + ' · 常用地点 ' + norm.places.length + ' · 想去 ' + norm.wishlist.length + ' · 投票 ' + (obj.payload.votes ? obj.payload.votes.length : 0) +
           ' · 反馈 ' + (obj.payload.feedback && Array.isArray(obj.payload.feedback.items) ? obj.payload.feedback.items.length : 0) +
+          ' · 口味设置 ' + (obj.payload.profile ? ((obj.payload.profile.boost || []).length + ' 提升 / ' + (obj.payload.profile.block || []).length + ' 拉黑' + (num(obj.payload.profile.budgetCap) > 0 ? ' / 上限 ¥' + Math.round(num(obj.payload.profile.budgetCap)) : '')) : '无（旧备份）') +
           '；校验值已通过（SHA-256）。' + (missing ? ' 有 ' + missing + ' 条记录引用的照片不在备份里，这些记录会保留无图状态。' : '') + '</p>' +
         '<div class="field" style="margin-top:12px"><label>恢复方式</label>' +
           '<select class="input" id="restoreMode">' +
@@ -7758,6 +7855,7 @@
           '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
         '<p class="muted">' + (res.replaced ? '已完整替换为备份内容' : '合并完成') + '：写入 ' + res.added + ' 条，跳过 ' + res.skipped + ' 条，恢复照片 ' + res.photos + ' 张（' + fmtBytes(res.photoBytes) + '），用时 ' + fmtMs(res.ms) + '。</p>' +
         '<p class="dist-note">' + (res.feedbackApplied ? '推荐反馈已按备份还原（' + res.feedback + ' 条，不按记录去重）。' : '该备份不含反馈段（旧版本备份），本机反馈保持不变。') + '</p>' +
+        '<p class="dist-note">' + (res.profileApplied ? '「我的口味」手动设置已还原（提升 ' + res.profileBoost + ' 项 / 拉黑 ' + res.profileBlock + ' 项 / 上限 ' + (res.profileBudget ? '¥' + res.profileBudget : '未设置') + '）。' : '该备份不含口味设置段（旧版本备份），本机口味设置保持不变。') + '</p>' +
         (res.missingPhotos ? '<p class="dist-note">有 ' + res.missingPhotos + ' 条记录引用的照片缺失，已保留无图状态。</p>' : '') +
         '<p class="dist-note">恢复前的本机数据已存为恢复点；若结果不对，可点下方按钮回到恢复前。</p>' +
         '<div class="actions" style="margin-top:12px">' +
@@ -9052,6 +9150,8 @@
           if(opts.records) obj.payload.records = JSON.parse(JSON.stringify(opts.records));
           if(opts.dropFeedback){ try{ delete obj.payload.feedback; }catch(e){} }
           if(opts.feedback !== undefined){ obj.payload.feedback = JSON.parse(JSON.stringify(opts.feedback)); }
+          if(opts.dropProfile){ try{ delete obj.payload.profile; }catch(e){} }
+          if(opts.profile !== undefined){ obj.payload.profile = JSON.parse(JSON.stringify(opts.profile)); }
           return backupChecksum(obj.payload, obj.photos).then(function(sum){
             obj.checksum.value = sum;
             return JSON.stringify(obj);
@@ -9152,6 +9252,13 @@
         };
       },
       manual: function(){ return JSON.parse(JSON.stringify(profileManual)); },
+      raw: function(){ try{ return localStorage.getItem(PROFILE_KEY); }catch(e){ return null; } },
+      clear: function(){
+        try{ localStorage.removeItem(PROFILE_KEY); }catch(e){}
+        profileManual = { version:PROFILE_VERSION, boost:[], block:[], budgetCap:null };
+        invalidateProfile(); renderProfile();
+        return true;
+      },
       mult: function(key){ return profileMultiplier(key); },
       reason: function(key){
         var s = profileStoreByKey(key);
