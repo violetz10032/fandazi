@@ -892,6 +892,49 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       animation-duration:.001ms!important;animation-iteration-count:1!important;
       transition-duration:.001ms!important;scroll-behavior:auto!important}
   }
+
+  /* ---------- 记录体验 2.0 · P0：入口 / 选店 / 预填 / 快速保存 ---------- */
+  #recordForm[data-mode="quick"] .full-only,
+  #recordForm[data-mode="snap"] .full-only{display:none!important}
+  #recordForm[data-mode="snap"] .snap-hide{display:none!important}
+  .form-mode{display:flex;gap:6px;margin:2px 0 10px}
+  .form-mode button{flex:1;min-height:38px;border-radius:var(--r-btn);border:1px solid var(--line);
+    background:var(--seg-bg);color:var(--ink2);font:inherit;font-size:13px;cursor:pointer}
+  .form-mode button.on{background:var(--seg-on);color:var(--ink);border-color:var(--accent-line);
+    font-weight:700;box-shadow:var(--shadow-1)}
+  .form-hint{font-size:12px;color:var(--ink3);margin:-2px 0 10px;line-height:1.6}
+  .pick-card{padding:12px;margin-bottom:12px}
+  .pick-card .section-head{margin:0 0 8px}
+  .pick-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+  .pick-chip{min-height:30px;padding:0 12px;border-radius:var(--r-pill);border:1px solid var(--line);
+    background:var(--chip);color:var(--ink2);font:inherit;font-size:12.5px;cursor:pointer}
+  .pick-chip.on{background:var(--soft);border-color:var(--accent-line);color:var(--soft-ink);font-weight:700}
+  .pick-list{display:flex;flex-direction:column;margin-top:8px}
+  .pick-row{display:flex;align-items:center;gap:8px;min-height:44px;padding:6px 2px;
+    border:0;border-bottom:1px solid var(--line);background:none;font:inherit;text-align:left;
+    color:var(--ink);cursor:pointer;width:100%}
+  .pick-row:last-child{border-bottom:0}
+  .pick-row .pick-nm{font-weight:700;font-size:14px;flex:none;max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pick-row .pick-meta{color:var(--ink3);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pick-new{color:var(--accent-text);font-weight:700}
+  .store-memo{margin-top:8px;padding:9px 10px;border-radius:var(--r-card);background:var(--panel-2);
+    border:1px dashed var(--line);font-size:12.5px;color:var(--ink2);line-height:1.7}
+  .store-memo b{color:var(--ink)}
+  .store-ref{color:var(--price-ink);font-weight:700}
+  .tag-sugg{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .tag-sugg button{min-height:28px;padding:0 10px;border-radius:var(--r-pill);border:1px solid var(--line);
+    background:var(--chip);color:var(--ink2);font:inherit;font-size:12px;cursor:pointer}
+  .save-done{margin:0 0 12px;padding:12px;border-radius:var(--r-card);background:var(--good-bg);
+    border:1px solid var(--good-line);color:var(--good-ink)}
+  .save-done h3{margin:0 0 4px;font-size:15px}
+  .save-done p{margin:0 0 10px;font-size:12.5px;line-height:1.6;color:var(--ink2)}
+  .save-done .actions{gap:8px}
+  .save-done .btn{flex:1;min-height:44px}
+  .snap-entry{display:flex;align-items:center;gap:10px;padding:12px;margin-bottom:12px}
+  .snap-entry .grow{min-width:0}
+  .snap-entry b{font-size:14px}
+  .snap-entry p{margin:2px 0 0;font-size:12px;color:var(--ink3);line-height:1.5}
+  .snap-entry .btn{flex:none;min-height:44px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -940,6 +983,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
       <div id="panel-list">
         <div class="notice" style="margin-bottom:12px">数据仅保存在本机浏览器，不上传服务器，也不含任何平台抓取数据。</div>
+        <div class="card flat snap-entry" id="snapEntry">
+          <div class="grow">
+            <b>吃完顺手记</b>
+            <p>选店 → 拍照 → 一句话，先记一笔，其余以后再补</p>
+          </div>
+          <button class="btn btn-primary btn-sm" id="btnSnapRecord" type="button">顺手记</button>
+        </div>
         <div class="card flat" style="padding:12px">
           <div class="frow">
             <input class="input" id="q" placeholder="搜索店名 / 商圈 / 标签 / 备注" inputmode="search">
@@ -1447,6 +1497,39 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
       <div class="card">
         <div class="section-head" style="margin:0 0 10px">
+          <h2>记录默认</h2>
+          <span class="hint">只影响新建记录的预填</span>
+        </div>
+        <div class="frow">
+          <div class="field">
+            <label>默认人数</label>
+            <input class="input" type="number" id="setDefPeople" min="1" max="60" inputmode="numeric">
+          </div>
+          <div class="field">
+            <label>默认场景</label>
+            <select class="input" id="setDefScene">
+              <option value="">不指定</option>
+              <option value="daily">日常一人食</option>
+              <option value="family">家庭聚餐</option>
+              <option value="friends">朋友聚会</option>
+              <option value="team">同事团建</option>
+              <option value="birthday">生日</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>默认记录模式</label>
+          <select class="input" id="setDefMode">
+            <option value="quick">快速记录（只填餐厅和日期）</option>
+            <option value="full">完整记录（全部字段）</option>
+          </select>
+        </div>
+        <label class="check"><input type="checkbox" id="setRemember"> 记住上次用的人数 / 场景 / 模式</label>
+        <p class="dist-note">关闭后每次都用上面的默认值；不会改写已有记录。</p>
+      </div>
+
+      <div class="card">
+        <div class="section-head" style="margin:0 0 10px">
           <h2>常用地点</h2>
           <span class="hint">用于「从家 / 公司出发」的距离</span>
         </div>
@@ -1628,11 +1711,44 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <button type="button" class="icon-btn" id="btnCloseSheet" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
     </div>
 
+    <div class="save-done hidden" id="saveDoneBox">
+      <h3 id="saveDoneTitle">已记录</h3>
+      <p id="saveDoneSub">没填的字段会保持为空或「未评价」，不会自动生成评分。</p>
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="btnDoneHome">完成，返回首页</button>
+        <button type="button" class="btn" id="btnDoneMore">继续完善本次记录</button>
+      </div>
+    </div>
+
+    <div class="seg form-mode" id="formModeSeg">
+      <button type="button" data-mode="quick" class="on">快速记录</button>
+      <button type="button" data-mode="full">完整记录</button>
+      <button type="button" data-mode="backfill">补录历史</button>
+    </div>
+    <p class="form-hint" id="formModeHint">只填餐厅和日期就能保存；金额、照片、一句话评价都选填。切换模式不会清空已填内容。</p>
+
+    <div class="card flat pick-card" id="pickCard">
+      <div class="section-head">
+        <h2>选餐厅</h2>
+        <span class="hint" id="pickStat"></span>
+      </div>
+      <div class="pick-chips" id="pickChips">
+        <button type="button" class="pick-chip on" data-tab="recent">最近</button>
+        <button type="button" class="pick-chip" data-tab="top">常去</button>
+        <button type="button" class="pick-chip" data-tab="fav">收藏</button>
+        <button type="button" class="pick-chip" data-tab="query">最近搜索</button>
+      </div>
+      <input class="input" id="f-storeq" placeholder="搜索店名 / 别称 / 商圈（实时）" inputmode="search" autocomplete="off">
+      <div class="pick-list" id="pickList"></div>
+      <div class="store-memo hidden" id="storeMemo"></div>
+    </div>
+
     <div class="field">
       <label>店名 <span class="req">*</span></label>
       <input class="input" id="f-name" placeholder="例如：老灶火锅" maxlength="40">
     </div>
 
+    <div class="full-only" id="formFullPlace">
     <div class="frow">
       <div class="field">
         <label>城市</label>
@@ -1675,19 +1791,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <a class="btn btn-sm" id="formMapAmap" href="https://uri.amap.com/" target="_blank" rel="noopener noreferrer">高德地图查看</a>
       <a class="btn btn-sm" id="formMapBaidu" href="https://map.baidu.com/" target="_blank" rel="noopener noreferrer">百度地图查看</a>
     </div>
+    </div>
 
-    <div class="frow">
+    <div class="frow snap-hide">
       <div class="field">
         <label>到访日期 <span class="req">*</span></label>
         <input class="input" type="date" id="f-date">
       </div>
-      <div class="field">
+      <div class="field full-only">
         <label>人数 <span class="req">*</span></label>
         <input class="input" type="number" id="f-people" min="1" max="60" value="4" inputmode="numeric">
       </div>
     </div>
+    <p class="form-hint snap-hide" id="mealSuggestHint"></p>
 
-    <div class="frow">
+    <div class="frow snap-hide">
       <div class="field">
         <label>人均价格（元）</label>
         <input class="input" type="number" id="f-per" min="0" step="1" placeholder="例如 68" inputmode="decimal">
@@ -1698,7 +1816,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       </div>
     </div>
 
-    <div class="frow">
+    <div class="frow full-only">
       <div class="field">
         <label>品类 / 菜系</label>
         <input class="input" id="f-category" list="catList" placeholder="例如：火锅" maxlength="20">
@@ -1710,7 +1828,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       </div>
     </div>
 
-    <div class="frow">
+    <div class="frow snap-hide">
       <div class="field">
         <label>时段</label>
         <select class="input" id="f-meal">
@@ -1722,7 +1840,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           <option value="night">夜宵</option>
         </select>
       </div>
-      <div class="field">
+      <div class="field full-only">
         <label>场景</label>
         <select class="input" id="f-scene">
           <option value="">不指定</option>
@@ -1735,7 +1853,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       </div>
     </div>
 
-    <details class="more">
+    <details class="more full-only">
       <summary>营业时间 / 适合时段 / 出行（可选）</summary>
       <div class="frow">
         <div class="field">
@@ -1784,7 +1902,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <p class="dist-note">营业时间、时段与出行为手填估算，不会调用系统定位；营业时间仅用于「此刻营业」筛选。</p>
     </details>
 
-    <details class="more">
+    <details class="more full-only">
       <summary>更多：标签 / 分项评分 / 营养（可选）</summary>
       <div class="field">
         <label>口味与特点标签</label>
@@ -2317,7 +2435,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var out = {
       version: 3,
       records: [],
-      settings: { city:'', tasteTags:[], restrictions:[], fitnessGoal:'maintain', lastNotified:'', notifyDenied:false, defaultPlace:'', noRepeatWeek:false },
+      settings: { city:'', tasteTags:[], restrictions:[], fitnessGoal:'maintain', lastNotified:'', notifyDenied:false, defaultPlace:'', noRepeatWeek:false,
+        defaultPeople:4, defaultScene:'', defaultMode:'quick', rememberDefaults:true, recentQueries:[] },
       blacklist: [],
       wishlist: [],
       votes: [],
@@ -2361,6 +2480,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         out.settings.notifyDenied = raw.settings.notifyDenied === true;
         out.settings.defaultPlace = s(raw.settings.defaultPlace);
         out.settings.noRepeatWeek = raw.settings.noRepeatWeek === true;
+        out.settings.defaultPeople = clamp(Math.round(nn(raw.settings.defaultPeople, 4)), 1, 60);
+        if(raw.settings.defaultScene === 'daily' || raw.settings.defaultScene === 'family' || raw.settings.defaultScene === 'friends' || raw.settings.defaultScene === 'team' || raw.settings.defaultScene === 'birthday'){
+          out.settings.defaultScene = raw.settings.defaultScene;
+        }
+        if(raw.settings.defaultMode === 'full' || raw.settings.defaultMode === 'quick') out.settings.defaultMode = raw.settings.defaultMode;
+        out.settings.rememberDefaults = raw.settings.rememberDefaults !== false;
+        if(Array.isArray(raw.settings.recentQueries)){
+          out.settings.recentQueries = raw.settings.recentQueries.map(s).filter(Boolean).slice(0, 6);
+        }
       }
       if(Array.isArray(raw.records)){
         for(i=0;i<raw.records.length;i++){
@@ -8518,6 +8646,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     safeRender('renderReminder', renderReminder);
     safeRender('renderBackupReminder', renderBackupReminder);
     safeRender('renderInstall', renderInstall);
+    safeRender('paintFormDefaults', paintFormDefaults);
     lastRenderMs = nowMs() - t0;
   }
 
@@ -8638,12 +8767,20 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }).join('');
     if(!selected) box.value = db.settings.defaultPlace || '';
   }
-  function openForm(id, prefill){
+  function openForm(id, prefill, mode){
     editingId = id || null;
     formPhoto = null;
     formPhotoId = null;
     formTags = [];
     formFitMeals = [];
+    formDateTouched = false;
+    formMealTouched = false;
+    formPeopleTouched = false;
+    formSaving = false;
+    pickedStoreKey = null;
+    pickTab = 'recent';
+    $('#saveDoneBox').classList.add('hidden');
+    $('#f-storeq').value = '';
     var r = null, src = null;
     if(id){
       r = db.records.filter(function(x){ return x.id === id; })[0] || null;
@@ -8659,13 +8796,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#f-lat').value = r && mapHasCoords(r) ? r.lat : (src && mapHasCoords(src) ? src.lat : '');
     $('#f-dist').value = r ? (num(r.distanceKm) > 0 ? r.distanceKm : '') : (src && num(src.distanceKm) > 0 ? src.distanceKm : '');
     $('#f-date').value = r ? (r.visitDate||todayStr()) : (src && src.visitDate ? src.visitDate : todayStr());
-    $('#f-people').value = r ? (r.people||4) : (src && src.people ? src.people : 4);
+    $('#f-people').value = r ? (r.people||4) : (src && src.people ? src.people : (db.settings.defaultPeople || 4));
     $('#f-per').value = r ? (num(r.perPrice) > 0 ? r.perPrice : '') : (src && src.perPrice ? src.perPrice : '');
     $('#f-total').value = r ? (num(r.totalPrice) > 0 ? r.totalPrice : '') : '';
     $('#f-category').value = r ? (r.category||'') : (src ? (src.category||'') : '');
     $('#f-rating').value = r ? (num(r.rating) > 0 ? r.rating : '') : (src && num(src.rating) > 0 ? src.rating : '');
     $('#f-meal').value = r ? (r.mealType||'') : (src ? (src.mealType||'') : '');
-    $('#f-scene').value = r ? (r.scene||'') : (src ? (src.scene||'') : '');
+    $('#f-scene').value = r ? (r.scene||'') : (src ? (src.scene||'') : (db.settings.defaultScene||''));
     $('#f-open1').value = r ? (r.openStart||'') : (src ? (src.openStart||'') : '');
     $('#f-open2').value = r ? (r.openEnd||'') : (src ? (src.openEnd||'') : '');
     $('#f-daytype').value = r ? (r.dayType||'any') : (src ? (src.dayType||'any') : 'any');
@@ -8700,8 +8837,290 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     paintPhoto(); paintTags();
     updateFormMapLinks();
     $('#btnDeleteInForm').classList.toggle('hidden', !r);
+    /* 编辑时不显示选店面板，避免误把记录改挂到别的店 */
+    $('#pickCard').classList.toggle('hidden', !!r);
+    if(r){
+      applyFormMode('full');
+    }else{
+      var nm = mode || (db.settings.defaultMode === 'full' ? 'full' : 'quick');
+      applyFormMode(nm);
+      if(prefill && src && src.name){
+        var cand = canonicalStoreFor(src.name, src.city, src.address);
+        if(cand && sameStore(src, cand)) pickedStoreKey = cand.key;
+      }
+      paintStoreMemo();
+    }
     $('#sheetMask').classList.remove('hidden');
     setTimeout(function(){ $('#f-name').focus(); }, 60);
+  }
+
+  /* ================= 记录体验 2.0 · P0：模式 / 选店 / 预填 / 快速保存 ================= */
+  var formMode = 'quick';
+  var formDateTouched = false, formMealTouched = false, formPeopleTouched = false, formSaving = false;
+  var pickTab = 'recent', pickedStoreKey = null;
+  var PICK_TAB_LABEL = { recent:'最近记录', top:'常去', fav:'收藏', query:'最近搜索' };
+
+  /* 繁体 → 简体常见字（只覆盖餐饮常见字，不追求全量繁简转换） */
+  var TW2S = { '飯':'饭','麵':'面','點':'点','館':'馆','廳':'厅','燒':'烧','鍋':'锅','雞':'鸡','鴨':'鸭','魚':'鱼','蝦':'虾','湯':'汤','續':'续','號':'号','樓':'楼','賣':'卖','臺':'台','灣':'湾','園':'园','腸':'肠','豬':'猪','東':'东','廣':'广','場':'场','裡':'里','裏':'里','黃':'黄','鹹':'咸','滷':'卤','鮮':'鲜','熱':'热','飲':'饮','產':'产','壽':'寿','鐵':'铁','闆':'板','線':'线','當':'当','漢':'汉','醬':'酱','餅':'饼','團':'团','嚴':'严','選':'选','車':'车','員':'员','開':'开','門':'门','頭':'头','體':'体','價':'价','錢':'钱','豐':'丰','齋':'斋','廚':'厨','師':'师','傳':'传','統':'统','凍':'冻','檸':'柠','紅':'红','綠':'绿','軟':'软','鹹':'咸' };
+
+  function normStoreName(v){
+    var t = String(v == null ? '' : v);
+    t = t.replace(/[\uFF01-\uFF5E]/g, function(ch){ return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); });
+    t = t.replace(/[【】]/g, function(ch){ return ch === '【' ? '[' : ']'; });
+    t = t.replace(/[\u3000]/g, ' ').replace(/\s+/g, '');
+    t = t.replace(/[（）]/g, function(ch){ return ch === '（' ? '(' : ')'; });
+    t = t.split('').map(function(ch){ return TW2S[ch] || ch; }).join('');
+    t = t.toLowerCase();
+    /* 去掉尾部括注，如「老灶火锅(人民广场店)」 */
+    for(var i = 0; i < 3; i++){
+      var cut = t.replace(/\([^()]*\)$/, '');
+      if(cut === t || cut.length < 2) break;
+      t = cut;
+    }
+    /* 去掉常见后缀，不把短名削没 */
+    var SUFFIX = /(餐厅|饭店|饭馆|餐馆|小吃店|大排档|美食店|食堂|店|restaurant)$/;
+    for(var j = 0; j < 2; j++){
+      var s2 = t.replace(SUFFIX, '');
+      if(s2 === t || s2.length < 2) break;
+      t = s2;
+    }
+    return t;
+  }
+
+  /* 同店判定：名归一化相同，且城市/地址不冲突；不同城市或不同地址绝不合并 */
+  function sameStore(a, b){
+    if(!a || !b) return false;
+    var na = normStoreName(a.name), nb = normStoreName(b.name);
+    if(!na || na !== nb) return false;
+    var ca = normStoreName(a.city || ''), cb = normStoreName(b.city || '');
+    if(ca && cb && ca !== cb) return false;
+    var aa = normStoreName(a.address || ''), ab = normStoreName(b.address || '');
+    if(aa && ab && aa !== ab) return false;
+    return true;
+  }
+
+  function storeCatSafe(s){
+    try{ var c = storeCat(s); return c === '未分类' ? '' : c; }catch(e){ return s.category || ''; }
+  }
+  function allPickStores(){
+    var seen = {}, out = [];
+    getStores().concat(wishStores()).forEach(function(s){
+      if(!s.key || seen[s.key]) return;
+      seen[s.key] = 1; out.push(s);
+    });
+    return out;
+  }
+  function storeByKey(key){
+    if(!key) return null;
+    var out = allPickStores();
+    for(var i = 0; i < out.length; i++){ if(out[i].key === key) return out[i]; }
+    return null;
+  }
+  function canonicalStoreFor(name, city, address){
+    var na = normStoreName(name);
+    if(!na) return null;
+    var cands = allPickStores().filter(function(s){ return sameStore({name:name, city:city, address:address}, s); });
+    if(!cands.length) return null;
+    /* 城市留空且同名店分布在多个城市：不猜，避免把不同城市的同名店合并 */
+    if(!normStoreName(city || '')){
+      var cities = {};
+      cands.forEach(function(s){ cities[normStoreName(s.city || '')] = 1; });
+      if(Object.keys(cities).length > 1) return null;
+    }
+    cands.sort(function(a, b){ return (b.visits || 0) - (a.visits || 0); });
+    return cands[0];
+  }
+  function pickerTabRows(tab){
+    var all = allPickStores();
+    if(tab === 'top'){
+      return all.filter(function(s){ return s.visits > 0; })
+        .sort(function(a, b){ return b.visits - a.visits || String(b.lastVisit || '').localeCompare(String(a.lastVisit || '')); })
+        .slice(0, 6);
+    }
+    if(tab === 'fav'){
+      return all.filter(function(s){ return s.isWish; }).slice(0, 8);
+    }
+    if(tab === 'query'){
+      var terms = db.settings.recentQueries || [], out = [], seen = {};
+      terms.forEach(function(q){
+        pickerSearch(q).forEach(function(s){
+          if(seen[s.key]) return; seen[s.key] = 1; out.push(s);
+        });
+      });
+      return out.slice(0, 8);
+    }
+    return all.filter(function(s){ return s.visits > 0 && s.lastVisit; })
+      .sort(function(a, b){ return String(b.lastVisit || '').localeCompare(String(a.lastVisit || '')); })
+      .slice(0, 5);
+  }
+  function pickerSearch(q){
+    var key = normStoreName(q);
+    if(!key) return [];
+    var out = [];
+    allPickStores().forEach(function(s){
+      var hay = normStoreName(s.name) + '|' + normStoreName(s.area || '') + '|' + normStoreName(s.city || '') + '|' + normStoreName(storeCatSafe(s));
+      if(hay.indexOf(key) >= 0) out.push(s);
+    });
+    out.sort(function(a, b){
+      var an = normStoreName(a.name), bn = normStoreName(b.name);
+      var ap = an.indexOf(key) === 0 ? 0 : 1, bp = bn.indexOf(key) === 0 ? 0 : 1;
+      return ap - bp || b.visits - a.visits;
+    });
+    return out.slice(0, 8);
+  }
+  function storeMetaText(s){
+    var bits = [];
+    if(s.isWish) bits.push('想去');
+    var c = storeCatSafe(s);
+    if(c) bits.push(c);
+    if(num(s.perPrice) > 0) bits.push('¥' + Math.round(num(s.perPrice)) + '/人');
+    if(num(s.rating) > 0) bits.push('综合 ' + Number(num(s.rating)).toFixed(1));
+    if(s.visits > 0) bits.push(s.visits + ' 次');
+    if(s.lastVisit) bits.push(s.lastVisit);
+    return bits.join(' · ') || '暂无档案信息';
+  }
+  function pickRowHtml(s){
+    return '<button type="button" class="pick-row" data-pick="' + esc(s.key) + '">' +
+      '<span class="pick-nm">' + esc(s.name) + '</span>' +
+      '<span class="pick-meta">' + esc(storeMetaText(s)) + '</span></button>';
+  }
+  function paintPicker(){
+    var box = $('#pickList');
+    if(!box) return;
+    var q = String($('#f-storeq').value || '').trim();
+    var rows, statTxt;
+    if(q){
+      rows = pickerSearch(q);
+      statTxt = rows.length ? ('匹配 ' + rows.length + ' 家') : '没有匹配的店';
+    }else{
+      rows = pickerTabRows(pickTab);
+      statTxt = PICK_TAB_LABEL[pickTab] + ' · ' + rows.length + ' 家';
+    }
+    $('#pickStat').textContent = statTxt;
+    var html = rows.map(pickRowHtml).join('');
+    if(q && !canonicalStoreFor(q, $('#f-city').value, $('#f-address').value)){
+      html += '<button type="button" class="pick-row" data-new="' + esc(q) + '">' +
+        '<span class="pick-nm pick-new">+ 新建「' + esc(q) + '」</span>' +
+        '<span class="pick-meta">首次保存时自动建档，不用退出页面</span></button>';
+    }
+    if(!html){
+      html = '<p class="muted" style="font-size:12.5px;margin:4px 0">' +
+        (pickTab === 'fav' ? '收藏夹还没有店，可在推荐里点「想去」。' : '还没有到访过的店，直接在下面输入店名即可。') + '</p>';
+    }
+    box.innerHTML = html;
+  }
+  /* 选店时记住搜索词，供「最近搜索」标签使用（最多 6 条，按归一化去重） */
+  function rememberQuery(q){
+    var t = String(q == null ? '' : q).trim();
+    if(!t) return;
+    var key = normStoreName(t), list = (db.settings.recentQueries || []).filter(function(x){
+      return normStoreName(x) !== key;
+    });
+    list.unshift(t);
+    db.settings.recentQueries = list.slice(0, 6);
+    save(true);
+  }
+  function suggestMeal(){
+    if(formMealTouched) return;
+    if($('#f-meal').value) return;
+    var h = new Date().getHours(), k = 'night';
+    if(h >= 5 && h < 10) k = 'breakfast';
+    else if(h >= 10 && h < 14) k = 'lunch';
+    else if(h >= 14 && h < 17) k = 'tea';
+    else if(h >= 17 && h < 21) k = 'dinner';
+    $('#f-meal').value = k;
+    $('#mealSuggestHint').textContent = '时段建议「' + (MEAL_LABEL[k] || k) + '」按当前时间给出，可改成实际时段。';
+  }
+  function paintStoreMemo(){
+    var box = $('#storeMemo');
+    if(!box) return;
+    var s = pickedStoreKey ? storeByKey(pickedStoreKey) : null;
+    if(!s){
+      var typed = $('#f-name').value.trim();
+      if(typed) s = canonicalStoreFor(typed, $('#f-city').value, $('#f-address').value);
+    }
+    if(!s){
+      box.classList.add('hidden'); box.innerHTML = ''; return;
+    }
+    var bits = ['<b>' + esc(s.name) + '</b>' + (s.city ? ' · ' + esc(s.city) : '') + (s.area ? ' · ' + esc(s.area) : '')];
+    if(s.isWish) bits.push('在「想去」清单里，还没有到访记录');
+    if(s.visits > 0){
+      bits.push('到访 <b>' + s.visits + '</b> 次' + (s.lastVisit ? '，上次 ' + esc(s.lastVisit) : ''));
+      var lb = [];
+      if(s.latest && num(s.latest.perPrice) > 0) lb.push('人均 ¥' + Math.round(num(s.latest.perPrice)));
+      if(s.latest && num(s.latest.rating) > 0) lb.push('综合 ' + Number(num(s.latest.rating)).toFixed(1));
+      if(s.latest && num(s.latest.people) > 0) lb.push(s.latest.people + ' 人');
+      if(lb.length) bits.push('上次：' + lb.join(' · '));
+      if(s.latest && s.latest.note) bits.push('上次评价：' + esc(String(s.latest.note).slice(0, 42)));
+    }
+    if(num(s.perPrice) > 0){
+      bits.push('该店历史参考 <span class="store-ref">¥' + Math.round(num(s.perPrice)) + '/人</span>（仅作参考，不会自动填成本次金额）');
+    }
+    var tags = uniq((s.tags || []).concat((s.latest && Array.isArray(s.latest.tags)) ? s.latest.tags : [])).slice(0, 6);
+    box.innerHTML = bits.map(function(x){ return '<div>' + x + '</div>'; }).join('') +
+      (tags.length ? ('<div class="tag-sugg"><span class="muted">常用标签（点一下加入本次）：</span>' +
+        tags.map(function(t){ return '<button type="button" data-sugg="' + esc(t) + '">#' + esc(t) + '</button>'; }).join('') + '</div>') : '');
+    box.classList.remove('hidden');
+  }
+  function pickStore(key){
+    var s = storeByKey(key);
+    if(!s) return;
+    pickedStoreKey = s.key;
+    $('#f-name').value = s.name;
+    if(!$('#f-city').value.trim()) $('#f-city').value = s.city || db.settings.city || '';
+    if(!$('#f-area').value.trim()) $('#f-area').value = s.area || '';
+    if(!$('#f-address').value.trim()) $('#f-address').value = s.address || '';
+    if(!$('#f-category').value.trim()) $('#f-category').value = storeCatSafe(s);
+    if(!$('#f-lng').value && num(s.lng)) $('#f-lng').value = s.lng;
+    if(!$('#f-lat').value && num(s.lat)) $('#f-lat').value = s.lat;
+    if(!$('#f-dist').value && num(s.distanceKm) > 0) $('#f-dist').value = s.distanceKm;
+    if(!formPeopleTouched){
+      $('#f-people').value = (s.visits > 0 && s.latest && num(s.latest.people) > 0) ? s.latest.people : (db.settings.defaultPeople || 4);
+    }
+    if(formMode !== 'backfill') suggestMeal();
+    paintStoreMemo();
+    updateFormMapLinks();
+  }
+  function applyFormMode(mode){
+    formMode = mode;
+    var css = mode === 'snap' ? 'snap' : (mode === 'full' ? 'full' : 'quick');
+    $('#recordForm').setAttribute('data-mode', css);
+    $$('#formModeSeg button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-mode') === mode); });
+    $('#formModeSeg').classList.toggle('hidden', mode === 'snap');
+    $('#formModeHint').classList.toggle('hidden', mode === 'snap');
+    if(mode === 'snap') $('#formTitle').textContent = '吃完顺手记';
+    else if(mode === 'backfill') $('#formTitle').textContent = editingId ? '编辑记录' : '补录一餐';
+    else if(mode === 'full') $('#formTitle').textContent = editingId ? '编辑记录' : '完整记录';
+    else $('#formTitle').textContent = editingId ? '编辑记录' : '快速记一餐';
+
+    $('#formModeHint').innerHTML = mode === 'full'
+      ? '完整记录：评分、菜品、人数、人均、明细都可填，也都可以留空。'
+      : (mode === 'backfill'
+        ? '补录历史：请选择实际到访日期，不会被今天的日期覆盖。'
+        : '只填餐厅和日期就能保存；金额、照片、一句话评价都选填。切换模式不会清空已填内容。');
+
+    if(mode === 'backfill'){
+      if(!formDateTouched) $('#f-date').value = '';
+      $('#mealSuggestHint').textContent = '补录：日期请选到访当天，不会被今天覆盖。';
+    }else if(!formDateTouched && !$('#f-date').value){
+      $('#f-date').value = todayStr();
+      $('#mealSuggestHint').textContent = '';
+    }
+    if(mode !== 'backfill' && mode !== 'snap') suggestMeal();
+    if(mode === 'snap') $('#mealSuggestHint').textContent = '';
+    $$('#pickChips .pick-chip').forEach(function(x){ x.classList.toggle('on', x.getAttribute('data-tab') === pickTab); });
+    paintPicker();
+    paintStoreMemo();
+  }
+  function openQuickSnap(){
+    openForm(null, null, 'snap');
+  }
+  function paintFormDefaults(){
+    if(!$('#setDefPeople')) return;
+    $('#setDefPeople').value = num(db.settings.defaultPeople) > 0 ? db.settings.defaultPeople : 4;
+    $('#setDefScene').value = db.settings.defaultScene || '';
+    $('#setDefMode').value = db.settings.defaultMode === 'full' ? 'full' : 'quick';
+    $('#setRemember').checked = db.settings.rememberDefaults !== false;
   }
 
   function formPrefillFromStore(s, mealType){
@@ -8724,13 +9143,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
   function saveRecord(e){
     if(e) e.preventDefault();
+    if(formSaving) return;
     var name = $('#f-name').value.trim();
     if(!name){ toast('请填写店名'); return; }
     var people = Math.max(1, Math.round(num($('#f-people').value) || 1));
     var per = num($('#f-per').value);
     var total = num($('#f-total').value);
     if(per <= 0 && total > 0) per = Math.round(total/people);
-    if(per <= 0 && total <= 0){ toast('请填写人均价格或总价'); return; }
+    /* 快速 / 补录 / 顺手记：金额可以不填；完整记录仍保留原有必填校验 */
+    if(formMode === 'full' && !editingId && per <= 0 && total <= 0){ toast('请填写人均价格或总价'); return; }
+    if(formMode === 'backfill' && !$('#f-date').value){ toast('请选择补录的实际到访日期'); return; }
     var os = $('#f-open1').value, oe = $('#f-open2').value;
     if((os && !oe) || (!os && oe)){ toast('营业时间需同时填写开始和结束，或都留空'); return; }
     if(os && oe){
@@ -8765,14 +9187,30 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
 
     var now = new Date().toISOString();
+    var cityV = $('#f-city').value.trim();
+    var areaV = $('#f-area').value.trim();
+    var addrV = $('#f-address').value.trim();
+    var catV = $('#f-category').value.trim();
+    var distV = num($('#f-dist').value) > 0 ? Math.min(999, Math.round(num($('#f-dist').value)*10)/10) : null;
+    /* 防重复建档：新记录若归一化后命中已有店（且城市/地址不冲突），归到已有店的档案 */
+    var canon = editingId ? null : canonicalStoreFor(name, cityV, addrV);
+    if(canon){
+      name = canon.name;
+      if(!cityV) cityV = canon.city || '';
+      if(!areaV) areaV = canon.area || '';
+      if(!addrV) addrV = canon.address || '';
+      if(!catV) catV = storeCatSafe(canon) || (canon.latest && canon.latest.category) || '';
+      if(formLng === null && num(canon.lng)){ formLng = canon.lng; formLat = canon.lat; }
+      if(distV === null && num(canon.distanceKm) > 0) distV = num(canon.distanceKm);
+    }
     var rec = {
       id: editingId || ('r'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)),
       name: name,
-      city: $('#f-city').value.trim(),
-      area: $('#f-area').value.trim(),
-      address: $('#f-address').value.trim(),
+      city: cityV,
+      area: areaV,
+      address: addrV,
       lat: formLat, lng: formLng,
-      distanceKm: num($('#f-dist').value) > 0 ? Math.min(999, Math.round(num($('#f-dist').value)*10)/10) : null,
+      distanceKm: distV,
       openStart: $('#f-open1').value || '',
       openEnd: $('#f-open2').value || '',
       fitMeals: formFitMeals.slice(),
@@ -8783,8 +9221,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       visitDate: $('#f-date').value || todayStr(),
       people: people,
       totalPrice: total > 0 ? Math.round(total) : null,
-      perPrice: Math.round(per),
-      category: $('#f-category').value.trim(),
+      perPrice: per > 0 ? Math.round(per) : null,
+      category: catV,
       rating: rating,
       note: $('#f-note').value.trim(),
       photo: formPhotoId ? null : (formPhoto || null),
@@ -8800,6 +9238,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       source: 'manual'
     };
 
+    formSaving = true;
+    var savedNew = false;
     if(editingId){
       var old = db.records.filter(function(x){ return x.id === editingId; })[0];
       if(old){
@@ -8811,9 +9251,35 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }else{
       db.records.unshift(rec);
       toast('已记录「'+name+'」');
+      savedNew = true;
     }
     if(!db.settings.city && rec.city) db.settings.city = rec.city;
+    /* 记住上次用的人数/场景/模式（可在「我的 → 记录默认」关闭） */
+    if(savedNew && db.settings.rememberDefaults !== false){
+      db.settings.defaultPeople = rec.people;
+      if(rec.scene) db.settings.defaultScene = rec.scene;
+      if(formMode === 'full' || formMode === 'quick') db.settings.defaultMode = formMode;
+    }
+
+    if(savedNew && formMode !== 'full'){
+      /* 快速保存：留在本页给出两个动作；再次提交会更新同一条，不会产生重复记录 */
+      editingId = rec.id;
+      $('#saveDoneTitle').textContent = '已记录「'+name+'」';
+      var miss = [];
+      if(!rec.perPrice) miss.push('金额');
+      if(!rec.photo && !rec.photoId) miss.push('照片');
+      if(rec.rating == null) miss.push('评分');
+      $('#saveDoneSub').textContent = miss.length
+        ? ('未填：' + miss.join(' / ') + '；这些会保持为空或「未评价」，不会生成虚假评分。可以现在完善，也可以以后从历史里补。')
+        : '这一条信息已完整记录，可以继续完善或直接返回首页。';
+      $('#saveDoneBox').classList.remove('hidden');
+      try{ $('#saveDoneBox').scrollIntoView({ block:'nearest' }); }catch(e){}
+      formSaving = false;
+      save();
+      return;
+    }
     closeForm();
+    formSaving = false;
     save();
   }
 
@@ -14438,6 +14904,81 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   $('#filePhoto').addEventListener('change', function(e){
     handlePhoto(e.target.files && e.target.files[0]);
     e.target.value = '';
+  });
+
+  /* 记录体验 2.0 · P0：模式 / 选店 / 预填 / 快速保存后续动作 / 记录默认 */
+  $('#formModeSeg').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-mode]') : null;
+    if(!b) return;
+    var m = b.getAttribute('data-mode');
+    if(m === formMode) return;
+    applyFormMode(m);
+  });
+  $('#pickChips').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-tab]') : null;
+    if(!b) return;
+    pickTab = b.getAttribute('data-tab') || 'recent';
+    $$('#pickChips .pick-chip').forEach(function(x){ x.classList.toggle('on', x === b); });
+    $('#f-storeq').value = '';
+    paintPicker();
+  });
+  $('#f-storeq').addEventListener('input', function(){ paintPicker(); });
+  $('#f-storeq').addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ e.preventDefault(); paintPicker(); }
+  });
+  $('#pickList').addEventListener('click', function(e){
+    if(!e.target.closest) return;
+    var pick = e.target.closest('[data-pick]');
+    if(pick){
+      var q = String($('#f-storeq').value || '').trim();
+      pickStore(pick.getAttribute('data-pick'));
+      if(q) rememberQuery(q);
+      /* 选完清空搜索词，回到该标签的完整列表，避免只剩一条匹配结果 */
+      $('#f-storeq').value = '';
+      paintPicker();
+      return;
+    }
+    var nw = e.target.closest('[data-new]');
+    if(nw){
+      $('#f-name').value = nw.getAttribute('data-new') || '';
+      pickedStoreKey = null;
+      paintStoreMemo();
+    }
+  });
+  $('#storeMemo').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-sugg]') : null;
+    if(!b) return;
+    var t = b.getAttribute('data-sugg');
+    if(!t || formTags.indexOf(t) >= 0) return;
+    if(formTags.length >= 8){ toast('自定义标签最多 8 个'); return; }
+    formTags.push(t); paintTags();
+  });
+  $('#f-name').addEventListener('input', function(){ pickedStoreKey = null; paintStoreMemo(); });
+  $('#f-people').addEventListener('input', function(){ formPeopleTouched = true; });
+  $('#f-date').addEventListener('input', function(){ formDateTouched = true; });
+  $('#f-meal').addEventListener('change', function(){ formMealTouched = true; });
+  $('#btnSnapRecord').addEventListener('click', openQuickSnap);
+  $('#btnDoneHome').addEventListener('click', function(){
+    closeForm();
+    showView('record');
+    showPanel('record','list');
+    try{ window.scrollTo(0, 0); }catch(e){}
+  });
+  $('#btnDoneMore').addEventListener('click', function(){
+    $('#saveDoneBox').classList.add('hidden');
+    applyFormMode('full');
+    setTimeout(function(){ try{ $('#f-per').focus(); }catch(e){} }, 60);
+  });
+  function saveRecordDefaults(){
+    db.settings.defaultPeople = clamp(Math.round(num($('#setDefPeople').value) || 4), 1, 60);
+    db.settings.defaultScene = $('#setDefScene').value || '';
+    db.settings.defaultMode = $('#setDefMode').value === 'full' ? 'full' : 'quick';
+    db.settings.rememberDefaults = !!$('#setRemember').checked;
+    save();
+    toast('已保存记录默认');
+  }
+  ['setDefPeople','setDefScene','setDefMode','setRemember'].forEach(function(id){
+    $('#'+id).addEventListener('change', saveRecordDefaults);
   });
 
   /* 跳转弹层 */
