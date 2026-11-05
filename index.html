@@ -1362,7 +1362,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           <button class="btn" id="btnExportCsv">导出 CSV</button>
           <button class="btn btn-soft" id="btnShareFanzi">分享给好友</button>
           <button class="btn" id="btnImport">导入好友分享</button>
-          <button class="btn" id="btnSample">载入示例</button>
+          <button class="btn" id="btnSample">示例预览（不保存）</button>
+          <button class="btn btn-soft hidden" id="btnCleanSample">清理教程示例</button>
           <button class="btn btn-danger" id="btnClear">清空全部</button>
         </div>
         <div class="actions" style="margin-top:8px">
@@ -1847,6 +1848,30 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="tut-hint-a">
     <button type="button" class="tut-hint-go" id="btnTutHintGo">看教程</button>
     <button type="button" class="tut-hint-close" id="btnTutHintClose" aria-label="关闭提示">✕</button>
+  </div>
+</div>
+
+<!-- 示例预览（只读，不写入记录） -->
+<div class="modal-mask hidden" id="sampleMask" style="z-index:79">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sampleTitle" style="max-width:520px">
+    <h3 id="sampleTitle">示例预览</h3>
+    <p class="muted" style="font-size:12px;margin-top:6px">这些是内置示例店，<b>只在这里展示，不会写入你的记录</b>；关闭后即消失。</p>
+    <div id="sampleList" style="margin-top:10px;max-height:50vh;overflow:auto"></div>
+    <div class="actions" style="margin-top:12px"><button type="button" class="btn btn-primary" id="btnSampleClose">知道了</button></div>
+  </div>
+</div>
+
+<!-- 清理教程示例 -->
+<div class="modal-mask hidden" id="sampleCleanMask" style="z-index:79">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sampleCleanTitle" style="max-width:520px">
+    <h3 id="sampleCleanTitle">清理教程示例</h3>
+    <p class="muted" id="sampleCleanIntro" style="font-size:12px;margin-top:6px"></p>
+    <div id="sampleCleanList" style="margin-top:10px;max-height:46vh;overflow:auto"></div>
+    <p class="muted" style="font-size:12px;margin-top:8px">删除前会自动创建一个恢复点，可在「恢复点」里撤销。只删除示例店，不动你自己的记录。</p>
+    <div class="actions" style="margin-top:12px">
+      <button type="button" class="btn btn-danger" id="btnSampleCleanConfirm">删除</button>
+      <button type="button" class="btn" id="btnSampleCleanCancel">取消</button>
+    </div>
   </div>
 </div>
 
@@ -5117,10 +5142,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       $('#listBox').innerHTML =
         '<div class="empty card flat">'+
           '<h3>还没有记录</h3>'+
-          '<p>记下吃过的店，推荐、抽签、聚会方案才有数据可用。<br>也可以先载入示例体验完整流程。</p>'+
+          '<p>记下吃过的店，推荐、抽签、聚会方案才有数据可用。<br>也可以先看看示例（只预览，不会写入你的记录）。</p>'+
           '<div class="actions" style="justify-content:center;margin-top:14px">'+
             '<button class="btn btn-primary" data-act="add">+ 记一餐</button>'+
-            '<button class="btn" data-act="sample">载入示例</button>'+
+            '<button class="btn" data-act="sample">看示例（不保存）</button>'+
           '</div>'+
         '</div>';
       updateSelectBar();
@@ -8338,6 +8363,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     renderBackupState();
     renderV2Card();
     renderDiag();
+    var sampleN = sampleRecords().length;
+    var cs = $('#btnCleanSample');
+    if(cs){
+      cs.classList.toggle('hidden', sampleN === 0);
+      cs.textContent = '清理教程示例（'+sampleN+'）';
+    }
     if(activeView === 'more'){
       photoStats().then(function(){
         var box = $('#diagBox');
@@ -9907,27 +9938,79 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     ];
   }
 
-  function loadSample(){
-    if(db.records.length && !confirm('当前已有 '+db.records.length+' 条记录，示例数据会追加到末尾，继续？')) return;
-    var now = new Date().toISOString();
-    sampleData().forEach(function(s, i){
-      db.records.push({
-        id:'s'+i+Date.now().toString(36), name:s.name, city:s.city, area:s.area, address:s.address,
-        lat:null, lng:null, visitDate:dateShift(s.off), people:s.people,
-        totalPrice:s.total, perPrice:s.per, category:s.category, rating:s.rating,
-        note:s.note, photo:null, createdAt:now, updatedAt:now,
-        mealType:s.meal, scene:s.scene, tags:s.tags,
-        ratings:{taste:s.dims.taste,env:s.dims.env,service:s.dims.service,value:s.dims.value},
-        kcal:s.kcal, protein:s.protein, fitnessFriendly:s.friendly, source:'sample'
-      });
+  /* 示例只做只读预览：不写入 db.records / db.wishlist / settings，关闭即消失 */
+  function samplePreviewHtml(){
+    return sampleData().map(function(s){
+      return '<div class="import-row" style="align-items:flex-start">'+
+        '<div class="grow"><b>'+esc(s.name)+'</b> <span class="muted" style="font-size:12px">'+esc(s.city+' · '+s.area)+'</span>'+
+        '<p class="meta" style="margin:2px 0 0">'+esc(s.category)+' · ¥'+num(s.per)+'/人 · ★'+num(s.rating)+' · '+esc(s.meal)+'</p>'+
+        '<p class="meta" style="margin:2px 0 0">'+esc(s.note)+'</p></div>'+
+        '<span class="muted" style="flex:none;font-size:12px">示例</span></div>';
+    }).join('');
+  }
+  function openSamplePreview(){
+    var list = $('#sampleList');
+    if(!list) return;
+    list.innerHTML = samplePreviewHtml();
+    $('#sampleMask').classList.remove('hidden');
+  }
+  function closeSamplePreview(){
+    var mask = $('#sampleMask');
+    if(mask) mask.classList.add('hidden');
+  }
+  function sampleRecordMatches(r){
+    if(!r) return false;
+    if(String(r.source || '') === 'sample') return true;
+    for(var i=0;i<sampleData().length;i++){
+      var s = sampleData()[i];
+      if(r.name === s.name && r.city === s.city && (r.address === s.address || r.area === s.area)) return true;
+    }
+    return false;
+  }
+  function sampleRecords(){
+    return (db.records || []).filter(sampleRecordMatches);
+  }
+  var sampleCleanIds = [];
+  function openSampleCleanDialog(){
+    var list = sampleRecords();
+    if(!list.length){ toast('没有发现教程示例记录'); return; }
+    sampleCleanIds = list.map(function(r){ return r.id; });
+    $('#sampleCleanIntro').textContent = '发现 '+list.length+' 条教程示例记录（本机共 '+db.records.length+' 条），确认后只删除这 '+list.length+' 条，不动你自己的记录：';
+    $('#sampleCleanList').innerHTML = list.map(function(r){
+      return '<div class="import-row"><div class="grow"><b>'+esc(r.name)+'</b>'+
+        '<p class="meta" style="margin:2px 0 0">'+esc(r.city || '')+' · '+esc(r.visitDate || '未填日期')+' · ¥'+num(r.perPrice)+'/人 · 来源 '+esc(r.source || '未标记')+'</p></div></div>';
+    }).join('');
+    $('#btnSampleCleanConfirm').textContent = '删除这 '+list.length+' 条';
+    $('#sampleCleanMask').classList.remove('hidden');
+  }
+  function closeSampleCleanDialog(){
+    sampleCleanIds = [];
+    var mask = $('#sampleCleanMask');
+    if(mask) mask.classList.add('hidden');
+  }
+  function confirmSampleClean(){
+    var ids = sampleCleanIds.slice();
+    if(!ids.length){ closeSampleCleanDialog(); return; }
+    var btn = $('#btnSampleCleanConfirm');
+    if(btn) btn.disabled = true;
+    return makeSnapshot('before-clean-sample').then(function(snap){
+      if(!snap && idbSupported()){
+        if(btn) btn.disabled = false;
+        toast('恢复点创建失败，已取消删除');
+        return;
+      }
+      var before = db.records.length;
+      db.records = db.records.filter(function(r){ return ids.indexOf(r.id) < 0; });
+      save();
+      closeSampleCleanDialog();
+      invalidateProfile();
+      renderMore();
+      toast('已删除 '+(before - db.records.length)+' 条教程示例，可在恢复点撤销');
+    }).catch(function(e){
+      if(btn) btn.disabled = false;
+      logError('清理教程示例', e);
+      toast('清理失败：'+(e && e.message ? e.message : '未知错误'));
     });
-    var w1 = { id:'w'+Date.now().toString(36)+'a', name:'新开的日料小屋', city:'上海', area:'静安寺', budget:150, note:'朋友推荐，说午市套餐划算', createdAt:now };
-    var w2 = { id:'w'+Date.now().toString(36)+'b', name:'街角咖啡', city:'上海', area:'武康路', budget:38, note:'想试试手冲', createdAt:now };
-    db.wishlist.push(w1, w2);
-    if(!db.settings.city) db.settings.city = '上海';
-    if(!db.settings.tasteTags.length) db.settings.tasteTags = ['清淡','高性价比'];
-    save();
-    toast('已载入示例记录与想去清单（店名虚构）');
   }
 
   function clearAll(){
@@ -12418,6 +12501,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(reason === 'before-import') return '导入好友分享前';
     if(reason === 'before-restore') return '恢复完整备份前';
     if(reason === 'before-migrate') return '升级到新版数据前';
+    if(reason === 'before-clean-sample') return '清理教程示例前';
     return '导入前';
   }
   function commitDbString(str){
@@ -13389,7 +13473,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       listState.shown = (listState.shown || LIST_PAGE) + LIST_PAGE;
       renderList(false);
     }
-    else if(act === 'sample'){ loadSample(); }
+    else if(act === 'sample'){ openSamplePreview(); }
     else if(act === 'edit'){ openForm(id); }
     else if(act === 'again'){ haptic(10); eatAgain(id); }
     else if(act === 'black'){
@@ -13672,7 +13756,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     markGuideDone();
     closeGuide(false);
     showView('record');
-    loadSample();
+    openSamplePreview();
   });
   $('#guideBody').addEventListener('click', function(e){
     var el = e.target.closest ? e.target.closest('[data-guide]') : null;
@@ -14145,7 +14229,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(f) readImportFile(f);
     e.target.value = '';
   });
-  $('#btnSample').addEventListener('click', loadSample);
+  $('#btnSample').addEventListener('click', openSamplePreview);
+  $('#btnSampleClose').addEventListener('click', closeSamplePreview);
+  $('#sampleMask').addEventListener('click', function(e){ if(e.target === this) closeSamplePreview(); });
+  $('#btnCleanSample').addEventListener('click', openSampleCleanDialog);
+  $('#btnSampleCleanCancel').addEventListener('click', closeSampleCleanDialog);
+  $('#sampleCleanMask').addEventListener('click', function(e){ if(e.target === this) closeSampleCleanDialog(); });
+  $('#btnSampleCleanConfirm').addEventListener('click', confirmSampleClean);
   $('#btnClear').addEventListener('click', clearAll);
   $('#btnDiagCopy').addEventListener('click', function(){ copyText(diagText()); });
   $('#themeSeg').addEventListener('click', function(e){
@@ -14506,6 +14596,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       },
       resetHint: function(){ try{ localStorage.removeItem(TUT_HINT_KEY); }catch(e){} },
       hint: function(kind){ return showTutHint(kind); }
+    },
+    sample: {
+      preview: openSamplePreview,
+      previewOpen: function(){ return !$('#sampleMask').classList.contains('hidden'); },
+      closePreview: closeSamplePreview,
+      listText: function(){ return $('#sampleList') ? $('#sampleList').innerText : ''; },
+      names: function(){ return sampleData().map(function(s){ return s.name; }); },
+      list: function(){ return sampleData(); },
+      tagged: function(){ return sampleRecords().map(function(r){ return { id:r.id, name:r.name, source:r.source }; }); },
+      clean: openSampleCleanDialog,
+      cleanOpen: function(){ return !$('#sampleCleanMask').classList.contains('hidden'); },
+      cleanList: function(){ return $('#sampleCleanList') ? $('#sampleCleanList').innerText : ''; },
+      cleanConfirm: confirmSampleClean,
+      cleanCancel: closeSampleCleanDialog,
+      cleanIds: function(){ return sampleCleanIds.slice(); }
     },
     tutLayout: function(){
       var card = $('#tutCard'), body = $('#tutBody'), done = $('#btnTutDone');
