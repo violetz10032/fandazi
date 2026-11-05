@@ -191,6 +191,36 @@
   .cal-cell.sel{background:var(--accent);color:#fff}
   .cal-cell i{font-style:normal;font-size:9px;opacity:.8;margin-top:2px}
 
+  .diary-bar{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .diary-bar h2{font-size:15px;flex:1;text-align:center}
+  .diary-filters{display:flex;gap:8px;margin-top:10px}
+  .diary-filters>*{flex:1;min-width:0}
+  .diary-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .diary-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;border:1px solid var(--line);background:#f8f4ee;border-radius:999px;padding:4px 9px;color:var(--ink2);cursor:pointer}
+  .diary-chip b{font-weight:400;color:var(--ink3)}
+  .diary-mhead{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:16px 2px 8px}
+  .diary-mhead h3{font-size:15px}
+  .diary-mhead .hint{text-align:right;line-height:1.5}
+  .diary-row{display:flex;gap:10px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:9px;cursor:pointer;box-shadow:var(--shadow)}
+  .diary-row:active{transform:scale(.99)}
+  .diary-thumb{width:62px;height:62px;flex:none;border-radius:9px;object-fit:cover;border:1px solid var(--line);background:#faf7f2}
+  .diary-thumb.no{display:grid;place-items:center;color:var(--ink3);font-size:10px;border-style:dashed}
+  .diary-main{flex:1;min-width:0}
+  .diary-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .diary-date{font-size:11px;font-variant-numeric:tabular-nums;color:#a8460a;background:var(--soft);border:1px solid #ffe0cc;border-radius:7px;padding:2px 7px;cursor:pointer;white-space:nowrap}
+  .diary-date.unk{color:#7a6647;background:#fffdf6;border-color:#f1e4cd;cursor:default}
+  .diary-name{font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .diary-meta{font-size:11px;color:var(--ink3);margin-top:3px}
+  .diary-note{font-size:12px;color:var(--ink2);margin-top:4px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+  .diary-foot{display:flex;align-items:center;gap:6px;margin-top:5px}
+  .diary-amount{font-size:13px;font-weight:600;color:var(--ink)}
+  .diary-amount.miss{font-weight:400;color:var(--ink3);font-size:11px}
+  .diary-kv{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:7px 0;border-bottom:1px dashed var(--line)}
+  .diary-kv:last-child{border-bottom:0}
+  .diary-kv span{color:var(--ink3);flex:none}
+  .diary-kv b{font-weight:500;text-align:right;word-break:break-word}
+  .diary-photo{width:100%;max-height:320px;object-fit:cover;border-radius:12px;margin:4px 0 10px;border:1px solid var(--line)}
+
   .vote-item{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px dashed var(--line)}
   .vote-item:last-child{border-bottom:0}
   .vote-score{min-width:30px;text-align:center;font-weight:800;color:var(--accent);font-size:15px}
@@ -369,6 +399,7 @@
       <div class="seg seg-top" id="recordSeg">
         <button class="on" data-panel="list">列表</button>
         <button data-panel="cal">日历</button>
+        <button data-panel="diary">日记</button>
       </div>
 
       <div id="panel-list">
@@ -427,6 +458,27 @@
         </div>
         <div id="calDayBox"></div>
       </div>
+      <div id="panel-diary" class="hidden">
+        <div class="notice hidden" id="diaryOldTip" style="margin-bottom:12px">当前为旧版数据，日记按旧记录的投影正常显示；可在「我的 → 数据」升级到新版数据结构。</div>
+        <div class="card" style="padding:12px">
+          <div class="diary-bar">
+            <button class="icon-btn" id="diaryPrev" aria-label="更早的月份">‹</button>
+            <h2 id="diaryMonthTitle">全部月份</h2>
+            <button class="icon-btn" id="diaryNext" aria-label="更新的月份">›</button>
+          </div>
+          <div class="diary-filters">
+            <select class="input" id="diaryCat"><option value="">全部菜系</option></select>
+            <select class="input" id="diaryShop"><option value="">全部店铺</option></select>
+          </div>
+          <div class="diary-chips" id="diaryChips"></div>
+        </div>
+        <div class="section-head" style="margin-top:14px">
+          <h2>美食日记</h2>
+          <span class="hint" id="diaryHint"></span>
+        </div>
+        <div id="diaryBox"></div>
+      </div>
+
     </section>
 
     <!-- ================= 推荐（四场景） ================= -->
@@ -896,6 +948,17 @@
 
   </div>
 </main>
+
+<!-- 日记详情 -->
+<div class="sheet-mask hidden" id="diaryMask">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="diaryDetailTitle">到访详情</h2>
+      <button type="button" class="icon-btn" id="diaryClose" aria-label="关闭">✕</button>
+    </div>
+    <div id="diaryDetail"></div>
+  </div>
+</div>
 
 <nav class="tabbar">
   <div class="tabbar-in">
@@ -4529,7 +4592,253 @@
       }).join('');
   }
 
-  /* ================= 每天吃什么 ================= */
+  /* ================= 美食日记 ================= */
+  var DIARY_PAGE = 20;
+  var diaryState = { active:false, month:'', day:'', cat:'', shop:'', shown:DIARY_PAGE, lastMs:0, lastRows:0, lastTotal:0, lastGroups:0, detailId:null };
+  var DIARY_DIM = { taste:'口味', env:'环境', service:'服务', value:'性价比' };
+
+  function diaryUnknown(r){
+    var d = String(r.visitDate || '');
+    return r.dateEstimated === true || !d || d === V2_DATE_SENTINEL;
+  }
+  function diaryMonthOf(r){ return diaryUnknown(r) ? '' : String(r.visitDate).slice(0,7); }
+  function diaryAmount(r){ var t = num(r.totalPrice); return t > 0 ? t : null; }
+  function diaryMonthLabel(m){
+    var p = String(m || '').split('-');
+    return p.length === 2 ? p[0]+' 年 '+Number(p[1])+' 月' : '全部月份';
+  }
+  function diaryMonths(){
+    var seen = {}, out = [];
+    db.records.forEach(function(r){
+      var m = diaryMonthOf(r);
+      if(m && !seen[m]){ seen[m] = 1; out.push(m); }
+    });
+    return out.sort(function(a,b){ return b > a ? 1 : -1; });
+  }
+  function diarySorted(){
+    return db.records.slice().sort(function(a,b){
+      var xa = diaryUnknown(a) ? '0000-00-00' : String(a.visitDate || '');
+      var xb = diaryUnknown(b) ? '0000-00-00' : String(b.visitDate || '');
+      if(xa !== xb) return xb > xa ? 1 : -1;
+      var ta = String(a.createdAt || ''), tb = String(b.createdAt || '');
+      if(ta !== tb) return tb > ta ? 1 : -1;
+      return String(b.id || '') > String(a.id || '') ? 1 : -1;
+    });
+  }
+  function diaryFiltered(){
+    var st = diaryState;
+    return diarySorted().filter(function(r){
+      var unk = diaryUnknown(r);
+      if(st.month && (unk || diaryMonthOf(r) !== st.month)) return false;
+      if(st.day && String(r.visitDate || '') !== st.day) return false;
+      if(st.cat && String(r.category || '') !== st.cat) return false;
+      if(st.shop && String(r.name || '') !== st.shop) return false;
+      return true;
+    });
+  }
+  function diaryGrouped(list){
+    var groups = [], by = {}, unknown = null;
+    list.forEach(function(r){
+      var key = diaryMonthOf(r);
+      if(!key){
+        if(!unknown) unknown = { month:'', items:[], amount:0, missing:0, unk:true };
+        unknown.items.push(r);
+        var au = diaryAmount(r);
+        if(au == null) unknown.missing++; else unknown.amount += au;
+        return;
+      }
+      var g = by[key];
+      if(!g){ g = by[key] = { month:key, items:[], amount:0, missing:0, unk:false }; groups.push(g); }
+      g.items.push(r);
+      var a = diaryAmount(r);
+      if(a == null) g.missing++; else g.amount += a;
+    });
+    if(unknown) groups.push(unknown);
+    return groups;
+  }
+  function diaryFirstLine(s){
+    var t = String(s || '').replace(/\s+/g, ' ').trim();
+    return t.length > 46 ? t.slice(0, 46) + '…' : t;
+  }
+  function diaryRow(r){
+    var unk = diaryUnknown(r);
+    var amount = diaryAmount(r);
+    var rating = num(r.rating) > 0 ? String(r.rating) : '';
+    var meta = [
+      rating ? '评分 '+rating : '未评分',
+      esc(r.people || 1)+' 人',
+      r.category ? esc(r.category) : '未分类'
+    ].join(' · ');
+    var dateEl = unk
+      ? '<span class="diary-date unk">日期未知</span>'
+      : '<span class="diary-date" data-diary-day="'+esc(r.visitDate)+'" title="只看这一天">'+esc(String(r.visitDate).slice(5))+'</span>';
+    var thumb = r.photoId
+      ? '<img class="diary-thumb" data-photo="'+esc(r.photoId)+'" loading="lazy" decoding="async" alt="到访照片">'
+      : (r.photo
+        ? '<img class="diary-thumb" src="'+esc(r.photo)+'" loading="lazy" decoding="async" alt="到访照片">'
+        : '<div class="diary-thumb no">无照片</div>');
+    return '<article class="diary-row" data-diary-id="'+esc(r.id)+'">'+
+      thumb+
+      '<div class="diary-main">'+
+        '<div class="diary-top">'+dateEl+'<h3 class="diary-name">'+esc(r.name)+'</h3></div>'+
+        '<p class="diary-meta">'+meta+'</p>'+
+        (r.note ? '<p class="diary-note">'+esc(diaryFirstLine(r.note))+'</p>' : '')+
+        '<div class="diary-foot">'+
+          (amount != null
+            ? '<span class="diary-amount">'+money(amount)+'</span>'
+            : '<span class="diary-amount miss">实付未记录</span>')+
+        '</div>'+
+      '</div>'+
+    '</article>';
+  }
+  function diaryChip(kind, label){
+    return '<button class="diary-chip" data-diary-clear="'+kind+'"><b>✕</b>'+esc(label)+'</button>';
+  }
+  function diaryChips(){
+    var parts = [];
+    if(diaryState.month) parts.push(diaryChip('month', diaryMonthLabel(diaryState.month)));
+    if(diaryState.day) parts.push(diaryChip('day', diaryState.day));
+    if(diaryState.cat) parts.push(diaryChip('cat', diaryState.cat));
+    if(diaryState.shop) parts.push(diaryChip('shop', diaryState.shop));
+    if(parts.length) parts.push('<button class="diary-chip" data-diary-clear="all"><b>✕</b>清除全部</button>');
+    return parts.join('') || '<span class="muted">全部到访，按月份分组</span>';
+  }
+  function fillDiarySelects(){
+    var cats = uniq(db.records.map(function(r){ return String(r.category || ''); })).sort();
+    var names = uniq(db.records.map(function(r){ return String(r.name || ''); })).sort();
+    var c = $('#diaryCat'), s = $('#diaryShop');
+    c.innerHTML = '<option value="">全部菜系</option>' + cats.map(function(x){ return '<option value="'+esc(x)+'">'+esc(x)+'</option>'; }).join('');
+    s.innerHTML = '<option value="">全部店铺</option>' + names.map(function(x){ return '<option value="'+esc(x)+'">'+esc(x)+'</option>'; }).join('');
+    c.value = diaryState.cat;
+    s.value = diaryState.shop;
+    if(c.value !== diaryState.cat) diaryState.cat = '';
+    if(s.value !== diaryState.shop) diaryState.shop = '';
+    if(c.value !== diaryState.cat) c.value = '';
+    if(s.value !== diaryState.shop) s.value = '';
+  }
+  /* force=true 忽略分页缓存；false 保留当前页数 */
+  function renderDiary(force){
+    var t0 = nowMs();
+    fillDiarySelects();
+    $('#diaryOldTip').classList.toggle('hidden', v2Active);
+    $('#diaryMonthTitle').textContent = diaryMonthLabel(diaryState.month);
+    $('#diaryChips').innerHTML = diaryChips();
+    var list = diaryFiltered();
+    var groups = diaryGrouped(list);
+    if(force === true) diaryState.shown = DIARY_PAGE;
+    var shown = Math.max(DIARY_PAGE, diaryState.shown || DIARY_PAGE);
+    var html = '', used = 0;
+    groups.forEach(function(g){
+      if(used >= shown) return;
+      var take = g.items.slice(0, Math.max(0, shown - used));
+      used += take.length;
+      html += '<div class="diary-mhead"><h3>'+esc(g.unk ? '日期未知' : diaryMonthLabel(g.month))+'</h3>'+
+        '<span class="hint">'+g.items.length+' 餐'+
+          (g.unk ? ' · 不计入月份统计'
+                 : ' · '+(g.amount > 0 ? '花费 '+money(g.amount) : '花费未记录')+(g.missing ? ' · '+g.missing+' 餐未记金额' : ''))+
+        '</span></div>';
+      html += take.map(diaryRow).join('');
+    });
+    var remaining = list.length - used;
+    if(remaining > 0){
+      html += '<div class="actions" style="justify-content:center;margin:14px 0">'+
+        '<button class="btn btn-block" data-diary-more="1">加载更多（还有 '+remaining+' 条）</button></div>';
+    }
+    if(!db.records.length){
+      html = '<div class="empty card flat"><h3>还没有记录</h3><p>记下吃过的店，日记会自动按月份整理。</p>'+
+        '<div class="actions" style="justify-content:center;margin-top:14px"><button class="btn btn-primary" data-act="add">+ 记一餐</button></div></div>';
+    }else if(!list.length){
+      html = '<div class="empty card flat"><h3>'+(diaryState.month ? '这个月还没有记录' : '没有匹配的到访')+'</h3>'+
+        '<p>'+(diaryState.month ? '可以补记一餐，或者切到其他月份看看。' : '换个菜系 / 店铺，或者清除筛选条件。')+'</p>'+
+        '<div class="actions" style="justify-content:center;margin-top:14px">'+
+          '<button class="btn btn-primary" data-act="add">+ 补记一餐</button>'+
+          '<button class="btn" data-diary-clear="all">清除筛选</button>'+
+        '</div></div>';
+    }
+    $('#diaryBox').innerHTML = html;
+    hydratePhotos($('#diaryBox'));
+    $('#diaryHint').textContent = list.length+' 餐 · '+groups.length+' 组';
+    diaryState.lastMs = nowMs() - t0;
+    diaryState.lastRows = $('#diaryBox').querySelectorAll('.diary-row').length;
+    diaryState.lastTotal = list.length;
+    diaryState.lastGroups = groups.length;
+    return diaryState;
+  }
+  function diaryCycleMonth(dir){
+    var months = diaryMonths();
+    if(!months.length){ toast('还没有可切换的月份'); return; }
+    if(!diaryState.month){ diaryState.month = months[0]; }
+    else{
+      var i = months.indexOf(diaryState.month);
+      var j = i + (dir < 0 ? 1 : -1);
+      diaryState.month = (j < 0 || j >= months.length) ? '' : months[j];
+    }
+    diaryState.day = '';
+    diaryState.shown = DIARY_PAGE;
+    renderDiary(true);
+  }
+  function diaryClear(kind){
+    if(kind === 'all'){
+      diaryState.month = ''; diaryState.day = ''; diaryState.cat = ''; diaryState.shop = '';
+    }else if(kind === 'month') diaryState.month = '';
+    else if(kind === 'day') diaryState.day = '';
+    else if(kind === 'cat') diaryState.cat = '';
+    else if(kind === 'shop') diaryState.shop = '';
+    diaryState.shown = DIARY_PAGE;
+    renderDiary(true);
+  }
+  function diaryKv(k, v){
+    if(v == null || v === '' || v === undefined) return '';
+    return '<div class="diary-kv"><span>'+esc(k)+'</span><b>'+v+'</b></div>';
+  }
+  function diaryOpenDetail(id){
+    var r = db.records.filter(function(x){ return x.id === id; })[0];
+    if(!r) return null;
+    diaryState.detailId = id;
+    $('#diaryDetailTitle').textContent = r.name || '到访详情';
+    var dims = r.ratings || {};
+    var dimText = ['taste','env','service','value'].map(function(k){
+      return num(dims[k]) > 0 ? (DIARY_DIM[k]||k)+' '+num(dims[k]) : '';
+    }).filter(Boolean).join(' · ');
+    var html = '';
+    if(r.photoId) html += '<img class="diary-photo" data-photo="'+esc(r.photoId)+'" loading="lazy" decoding="async" alt="到访照片">';
+    else if(r.photo) html += '<img class="diary-photo" src="'+esc(r.photo)+'" loading="lazy" decoding="async" alt="到访照片">';
+    html += '<div class="card flat" style="padding:4px 12px;margin-bottom:12px">'+
+      diaryKv('到访日期', diaryUnknown(r) ? '<span class="tag warn">日期未知（旧数据未填）</span>' : esc(r.visitDate))+
+      diaryKv('店铺', esc([r.city, r.area].filter(Boolean).join(' · ') || '未填位置'))+
+      diaryKv('地址', esc(r.address || '未填'))+
+      diaryKv('餐次 / 场景', esc([MEAL_LABEL[r.mealType]||'', SCENE_LABEL[r.scene]||''].filter(Boolean).join(' · ') || '未填'))+
+      diaryKv('人数', esc(r.people || 1)+' 人')+
+      diaryKv('实付', diaryAmount(r) != null ? money(r.totalPrice) : '未记录（不按人均估算）')+
+      diaryKv('人均（记录值）', num(r.perPrice) > 0 ? money(r.perPrice) : '未记录')+
+      diaryKv('综合评分', num(r.rating) > 0 ? esc(r.rating) : '未评分')+
+      diaryKv('四维评分', esc(dimText || '未填'))+
+      diaryKv('菜系', esc(r.category || '未填'))+
+      diaryKv('标签', esc((r.tags || []).join('、') || '未填'))+
+      diaryKv('距离', hasKm(r) ? esc(kmLine(r)) : '未填')+
+      diaryKv('出行', (num(r.travelMin) > 0 || travelMinutesOf(r)) ? esc(travelLabel(r)) : '未填')+
+      diaryKv('营业时间', (r.openStart && r.openEnd) ? esc(r.openStart+'–'+r.openEnd) : '未填')+
+      diaryKv('热量 / 蛋白', (r.kcal || r.protein) ? esc((r.kcal ? num(r.kcal)+' kcal' : '')+(r.protein ? ' · 蛋白 '+num(r.protein)+'g' : '')) : '未填')+
+      diaryKv('来源', esc([r.source || 'manual', r.importedFrom ? '来自 '+r.importedFrom : ''].filter(Boolean).join(' · ')))+
+      diaryKv('创建时间', esc(r.createdAt || '未记录'))+
+      diaryKv('更新时间', esc(r.updatedAt || '未记录'))+
+    '</div>';
+    if(r.note) html += '<div class="card flat" style="padding:12px;margin-bottom:12px"><p class="muted" style="margin-bottom:4px">一句话评价</p><p class="desc" style="margin-top:0">'+esc(r.note)+'</p></div>';
+    html += '<div class="actions" style="margin-top:0">'+
+      '<button class="btn btn-primary" data-diary-act="edit" data-id="'+esc(r.id)+'">编辑</button>'+
+      '<button class="btn btn-danger" data-diary-act="del" data-id="'+esc(r.id)+'">删除</button>'+
+      '<button class="btn" data-diary-act="close">关闭</button>'+
+    '</div>';
+    $('#diaryDetail').innerHTML = html;
+    $('#diaryMask').classList.remove('hidden');
+    hydratePhotos($('#diaryDetail'));
+    return r;
+  }
+  function closeDiaryDetail(){
+    $('#diaryMask').classList.add('hidden');
+    diaryState.detailId = null;
+  }
+
   function renderTasteChips(box, selected, extra){
     var all = uniq(ALL_TAGS.concat(db.settings.tasteTags||[]).concat(extra||[]));
     box.innerHTML = all.map(function(t){
@@ -5195,6 +5504,7 @@
     safeRender('fillSelects', fillSelects);
     safeRender('renderList', function(){ renderList(true); }, '#listBox');
     safeRender('renderCalendar', renderCalendar, '#calGrid');
+    if(diaryState.active) safeRender('renderDiary', function(){ renderDiary(false); }, '#diaryBox');
     safeRender('renderDailyInputs', renderDailyInputs);
     safeRender('renderDecide', renderDecide, '#decideBox');
     safeRender('renderDraw', renderDraw, '#drawBox');
@@ -5237,6 +5547,7 @@
     if(name === 'record'){
       safeRender('renderList', function(){ renderList(false); }, '#listBox');
       safeRender('renderCalendar', renderCalendar, '#calGrid');
+      if(diaryState.active) safeRender('renderDiary', function(){ renderDiary(false); }, '#diaryBox');
     }
     if(name === 'recommend'){
       safeRender('renderDailyInputs', renderDailyInputs);
@@ -5265,8 +5576,11 @@
     if(group === 'record'){
       $('#panel-list').classList.toggle('hidden', panel !== 'list');
       $('#panel-cal').classList.toggle('hidden', panel !== 'cal');
+      $('#panel-diary').classList.toggle('hidden', panel !== 'diary');
       $$('#recordSeg button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-panel') === panel); });
       if(panel === 'cal') renderCalendar();
+      diaryState.active = (panel === 'diary');
+      if(panel === 'diary') renderDiary(true);
     }else if(group === 'recommend' || group === 'decide'){
       recoPanel = panel || 'daily';
       ['daily','party','fitness','friend'].forEach(function(k){
@@ -9905,6 +10219,46 @@
     renderCalendar();
   });
 
+  /* 美食日记 */
+  $('#diaryPrev').addEventListener('click', function(){ diaryCycleMonth(-1); });
+  $('#diaryNext').addEventListener('click', function(){ diaryCycleMonth(1); });
+  $('#diaryCat').addEventListener('change', function(){
+    diaryState.cat = this.value; diaryState.shown = DIARY_PAGE; renderDiary(true);
+  });
+  $('#diaryShop').addEventListener('change', function(){
+    diaryState.shop = this.value; diaryState.shown = DIARY_PAGE; renderDiary(true);
+  });
+  $('#diaryChips').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-diary-clear]') : null;
+    if(b) diaryClear(b.getAttribute('data-diary-clear'));
+  });
+  $('#diaryBox').addEventListener('click', function(e){
+    var clear = e.target.closest ? e.target.closest('[data-diary-clear]') : null;
+    if(clear){ diaryClear(clear.getAttribute('data-diary-clear')); return; }
+    var more = e.target.closest ? e.target.closest('[data-diary-more]') : null;
+    if(more){ diaryState.shown = (diaryState.shown || DIARY_PAGE) + DIARY_PAGE; renderDiary(false); return; }
+    var day = e.target.closest ? e.target.closest('[data-diary-day]') : null;
+    if(day){
+      diaryState.day = day.getAttribute('data-diary-day');
+      diaryState.month = diaryState.day.slice(0, 7);
+      diaryState.shown = DIARY_PAGE;
+      renderDiary(true);
+      return;
+    }
+    var row = e.target.closest ? e.target.closest('[data-diary-id]') : null;
+    if(row) diaryOpenDetail(row.getAttribute('data-diary-id'));
+  });
+  $('#diaryClose').addEventListener('click', closeDiaryDetail);
+  $('#diaryMask').addEventListener('click', function(e){ if(e.target === this) closeDiaryDetail(); });
+  $('#diaryDetail').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-diary-act]') : null;
+    if(!b) return;
+    var act = b.getAttribute('data-diary-act'), id = b.getAttribute('data-id');
+    if(act === 'close') closeDiaryDetail();
+    else if(act === 'edit'){ closeDiaryDetail(); openForm(id); }
+    else if(act === 'del'){ closeDiaryDetail(); deleteRecord(id); }
+  });
+
   /* 主要按钮 */
   $('#btnAddTop').addEventListener('click', function(){ openForm(); });
   $('#btnDecide').addEventListener('click', function(){ runDecideNow(false); });
@@ -10549,6 +10903,60 @@
           });
         });
       }
+    },
+    diary: {
+      show: function(panel){
+        showPanel('record', panel || 'diary');
+        return {
+          active: diaryState.active,
+          month: diaryState.month, day: diaryState.day, cat: diaryState.cat, shop: diaryState.shop,
+          rows: diaryState.lastRows, total: diaryState.lastTotal, groups: diaryState.lastGroups, ms: diaryState.lastMs,
+          oldTip: !$('#diaryOldTip').classList.contains('hidden')
+        };
+      },
+      state: function(){ return { month:diaryState.month, day:diaryState.day, cat:diaryState.cat, shop:diaryState.shop, shown:diaryState.shown }; },
+      metrics: function(){
+        var box = $('#diaryBox');
+        return {
+          ms: diaryState.lastMs, rows: diaryState.lastRows, total: diaryState.lastTotal, groups: diaryState.lastGroups,
+          domNodes: box ? box.querySelectorAll('*').length : 0,
+          photosCached: Object.keys(photoCache).length,
+          heapMb: (performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null)
+        };
+      },
+      plan: function(){
+        var list = diaryFiltered();
+        return {
+          total: list.length,
+          groups: diaryGrouped(list).map(function(g){
+            return { month:g.month || 'unknown', count:g.items.length, amount:Math.round(g.amount), missing:g.missing, unk:!!g.unk };
+          }),
+          months: diaryMonths(),
+          unknownCount: list.filter(diaryUnknown).length
+        };
+      },
+      rows: function(){
+        return diaryFiltered().map(function(r){
+          return { id:r.id, name:r.name, date:r.visitDate || '', unknown:diaryUnknown(r), amount:diaryAmount(r),
+            rating:num(r.rating) > 0 ? num(r.rating) : null, people:num(r.people) || 1, note:r.note || '', photoId:r.photoId || '' };
+        });
+      },
+      set: function(o){
+        o = o || {};
+        ['month','day','cat','shop'].forEach(function(k){ if(o[k] !== undefined) diaryState[k] = o[k]; });
+        diaryState.shown = o.shown || DIARY_PAGE;
+        renderDiary(true);
+        return { total: diaryState.lastTotal, rows: diaryState.lastRows, groups: diaryState.lastGroups, ms: diaryState.lastMs };
+      },
+      step: function(dir){ diaryCycleMonth(dir); return diaryState.month; },
+      clear: function(kind){ diaryClear(kind || 'all'); return diaryState.month; },
+      open: function(id){ return diaryOpenDetail(id); },
+      detail: function(){
+        var d = $('#diaryDetail');
+        return { open: !$('#diaryMask').classList.contains('hidden'), title: $('#diaryDetailTitle').textContent, text: d ? d.innerText : '', html: d ? d.innerHTML : '' };
+      },
+      close: closeDiaryDetail,
+      refresh: function(){ renderDiary(true); return diaryState.lastRows; }
     },
     v2: {
       active: function(){ return v2Active; },
