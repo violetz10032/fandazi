@@ -93,6 +93,11 @@
   .prof-dim{opacity:.55;filter:grayscale(.65)}
   .prof-note{font-size:11px;color:var(--ink3);margin-top:6px;line-height:1.6}
   .prof-manual{margin-top:10px;padding-top:9px;border-top:1px dashed var(--line)}
+  .quick-cond{font-size:12px;color:var(--ink2);line-height:1.65;word-break:break-word}
+  .quick-cond .prof-act{font-size:11px}
+  .quick-card .chip-toggle{font-size:11px;padding:5px 10px}
+  .spin-name{animation:spinName .07s linear infinite alternate}
+  @keyframes spinName{from{opacity:.5}to{opacity:1}}
   .addr{font-size:12px;color:var(--ink2);margin-top:8px}
   .desc{font-size:13px;color:var(--ink2);margin-top:6px;white-space:pre-wrap;word-break:break-word}
   .actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
@@ -434,6 +439,12 @@
       </div>
 
       <div id="panel-daily">
+        <div class="seg seg-top" id="decideModeSeg">
+          <button class="on" data-dmode="A">帮我决定</button>
+          <button data-dmode="B">按我的想法选</button>
+          <button data-dmode="C">完全随机</button>
+        </div>
+        <div id="modeA">
         <div class="card">
           <div class="field">
             <label>这一顿是</label>
@@ -492,6 +503,57 @@
           <button class="btn btn-primary btn-block btn-lg" id="btnDecide" style="margin-top:12px">帮我决定</button>
         </div>
         <div id="decideBox"></div>
+        </div>
+
+        <div id="modeB" class="hidden">
+          <div class="card">
+            <div class="frow">
+              <div class="field" style="margin-bottom:0">
+                <label>想吃哪个菜系</label>
+                <select class="input" id="ideaCuisine"><option value="">不限</option></select>
+              </div>
+              <div class="field" style="margin-bottom:0">
+                <label>距离上限（km，手填）</label>
+                <input class="input" type="number" id="ideaNearKm" min="0" step="0.5" placeholder="不限" inputmode="decimal">
+              </div>
+            </div>
+            <div class="frow" style="margin-top:12px">
+              <div class="field" style="margin-bottom:0">
+                <label>人均下限（元）</label>
+                <input class="input" type="number" id="idea-min" min="0" step="5" value="15">
+              </div>
+              <div class="field" style="margin-bottom:0">
+                <label>人均上限（元）</label>
+                <input class="input" type="number" id="idea-max" min="0" step="5" value="80">
+              </div>
+            </div>
+            <div class="field" style="margin-top:12px;margin-bottom:0">
+              <label>想吃的口味（可多选）</label>
+              <div class="chips" id="ideaTasteChips"></div>
+            </div>
+            <button class="btn btn-primary btn-block btn-lg" id="btnIdea" style="margin-top:12px">按我的想法选</button>
+            <p class="prof-note">这里只按你选的条件硬筛，排序仍用评分 / 距离 / 新鲜度加权；不会改动「帮我决定」的状态，也不会带上它的快捷排除。</p>
+          </div>
+          <div id="ideaBox"></div>
+        </div>
+
+        <div id="modeC" class="hidden">
+          <div class="card">
+            <div class="frow">
+              <div class="field" style="margin-bottom:0">
+                <label>人均下限（元）</label>
+                <input class="input" type="number" id="rd-min" min="0" step="5" value="15">
+              </div>
+              <div class="field" style="margin-bottom:0">
+                <label>人均上限（元）</label>
+                <input class="input" type="number" id="rd-max" min="0" step="5" value="80">
+              </div>
+            </div>
+            <button class="btn btn-primary btn-block btn-lg" id="btnRandom" style="margin-top:12px">纯随机抽一家</button>
+            <p class="prof-note">纯随机：候选池里每家等概率，<b>不加权</b>；只排除黑名单、忌口命中、你手动拉黑的菜系、超出人均上限与不在价格区间的店。与「抽签」页的加权随机不同——那边按评分与新鲜度加权，入口在底部导航「抽签」。</p>
+          </div>
+          <div id="randomBox"></div>
+        </div>
       </div>
 
       <div id="panel-friend" class="hidden">
@@ -2274,6 +2336,342 @@
     return isWeekend ? 0.35 : 1;
   }
 
+  /* ================= 第 4B：多样性 / 探索位 / 会话内快捷筛选 ================= */
+  /* 规则（写死在这里，README 同步）：Top3 里同菜系最多 2 席；Top5 里同商圈最多 2 席；
+     Top5 固定保留 1 个探索位（想去清单里的新店，或 ≥90 天没去过的店）。 */
+  var DAILY_DIVERSITY = { cuisineMaxInTop3:2, areaMaxInTop5:2, exploreSize:5, exploreDays:90 };
+  var dailySession = { exclude:[], cuisine:'', priceMax:null, nearKm:null, recentDays:null };
+  var dailyNoDiversity = false;   /* 仅测试：关闭多样性/探索位，用于「旧版对照」 */
+  var quickCuisineOpen = false;
+
+  function storeCat(s){ return String(s.category||'').trim() || '未分类'; }
+  function storeArea(s){ return String(s.area||'').trim() || '未填商圈'; }
+  function isExploreStore(it){ return it.store.isWish || (!it.store.isWish && num(it.store.days) >= DAILY_DIVERSITY.exploreDays); }
+
+  /* 在已按分数排序的列表上重排前 5 席，其余保持原顺序 */
+  function diversifyDaily(list){
+    var meta = { applied:false, explore:null, top5:[], relaxed:false,
+      rules:'菜系 Top3 最多 2 席；同商圈 Top5 最多 2 席；Top5 至少含 1 个探索位（想去或 ≥90 天未去），优先放第 5 席' };
+    if(dailyNoDiversity || list.length < 3) return { list:list, meta:meta };
+    var max = Math.min(DAILY_DIVERSITY.exploreSize, list.length);
+    var picked = [], used = {}, cN = {}, aN = {};
+    function fits(it, slot){
+      var c = storeCat(it.store), a = storeArea(it.store);
+      if(slot < 3 && (cN[c]||0) >= DAILY_DIVERSITY.cuisineMaxInTop3) return false;
+      if((aN[a]||0) >= DAILY_DIVERSITY.areaMaxInTop5) return false;
+      return true;
+    }
+    function take(it){
+      picked.push(it); used[it.store.key] = 1;
+      var c = storeCat(it.store), a = storeArea(it.store);
+      cN[c] = (cN[c]||0) + 1; aN[a] = (aN[a]||0) + 1;
+    }
+    var reserveExplore = max >= 5;
+    var fillTo = reserveExplore ? 4 : max;
+    for(var i=0;i<list.length && picked.length<fillTo;i++){ if(fits(list[i], picked.length)) take(list[i]); }
+    /* 约束太紧时放宽菜系上限补齐前 4 席（商圈上限仍保留） */
+    for(var i2=0;i2<list.length && picked.length<fillTo;i2++){
+      var it2 = list[i2];
+      if(used[it2.store.key]) continue;
+      if((aN[storeArea(it2.store)]||0) >= DAILY_DIVERSITY.areaMaxInTop5) continue;
+      take(it2);
+    }
+    if(reserveExplore){
+      var explore = null;
+      for(var e=0;e<list.length;e++){
+        var it3 = list[e];
+        if(used[it3.store.key] || !isExploreStore(it3)) continue;
+        if((aN[storeArea(it3.store)]||0) >= DAILY_DIVERSITY.areaMaxInTop5) continue;
+        explore = it3; break;
+      }
+      if(!explore){
+        for(var f=0;f<list.length;f++){
+          var it4 = list[f];
+          if(used[it4.store.key]) continue;
+          if(fits(it4, picked.length)){ explore = it4; break; }
+        }
+      }
+      if(explore){
+        if(isExploreStore(explore)){
+          explore.reasons.unshift('多样性探索位：'+(explore.store.isWish ? '想去清单里还没打卡的新店' : '已有 '+Math.round(num(explore.store.days))+' 天没去')+'（Top5 固定留 1 席）');
+          meta.explore = explore.store.name;
+        }
+        take(explore);
+      }
+    }
+    if(picked.length < max){
+      meta.relaxed = true;
+      for(var g=0;g<list.length && picked.length<max;g++){ if(!used[list[g].store.key]) take(list[g]); }
+    }
+    var rest = list.filter(function(x){ return !used[x.store.key]; });
+    var out = picked.concat(rest);
+    /* 若探索店已在前 4 席自然入选，也标记为「本批的探索位」，保证 Top5 至少 1 个 */
+    var exp = picked.filter(isExploreStore)[0];
+    if(exp){
+      var hasTag = exp.reasons.some(function(t){ return String(t).indexOf('多样性探索位') === 0; });
+      if(!hasTag){
+        exp.reasons.unshift('多样性探索位：'+(exp.store.isWish ? '想去清单里还没打卡的新店' : '已有 '+Math.round(num(exp.store.days))+' 天没去')+'（Top5 至少保留 1 席）');
+      }
+      meta.explore = exp.store.name;
+    }
+    meta.applied = true;
+    meta.top5 = picked.map(function(x){ return { name:x.store.name, category:storeCat(x.store), area:storeArea(x.store), explore:isExploreStore(x), score:x.score }; });
+    return { list:out, meta:meta };
+  }
+
+  function currentMainIndex(){
+    if(!dailyState || !dailyState.list.length) return 0;
+    return dailyRotation % Math.min(DAILY_DIVERSITY.exploreSize, dailyState.list.length);
+  }
+  function currentMain(){
+    if(!dailyState || !dailyState.list.length) return null;
+    return dailyState.list[currentMainIndex()];
+  }
+
+  /* 会话内快捷条件（不落盘、不改记录） */
+  function sessionConditions(){
+    var arr = [];
+    if(dailySession.exclude.length) arr.push('已排除 '+dailySession.exclude.length+' 家（本次会话）');
+    if(dailySession.cuisine) arr.push('只看菜系「'+dailySession.cuisine+'」');
+    if(dailySession.priceMax != null) arr.push('快捷人均 ≤ ¥'+dailySession.priceMax);
+    if(dailySession.nearKm != null) arr.push('快捷距离 ≤ '+dailySession.nearKm+' km');
+    if(dailySession.recentDays) arr.push('排除最近 '+dailySession.recentDays+' 天吃过的');
+    if(dailyNear) arr.push('只看 '+dailyNearKm+' km 内');
+    if(dailyNowOnly) arr.push('此刻营业');
+    if(dailyNoRepeat) arr.push('这周不重复');
+    var mt = num($('#dayMaxMin').value); if(mt > 0) arr.push('≤ '+mt+' 分钟可达');
+    if(dailySortDist) arr.push('按距离排序');
+    return arr;
+  }
+  function sessionClearAll(){
+    dailySession = { exclude:[], cuisine:'', priceMax:null, nearKm:null, recentDays:null };
+    quickCuisineOpen = false;
+    dailyNear = false; dailySortDist = false; dailyNowOnly = false; dailyNoRepeat = false;
+    $('#dayMaxMin').value = '';
+    if(db.settings.noRepeatWeek){ db.settings.noRepeatWeek = false; save(true); }
+    renderDailyInputs();
+    runDecideNow(false);
+  }
+  function quickBarHtml(){
+    var conds = sessionConditions();
+    var cond = conds.length ? '当前生效：'+conds.map(esc).join(' · ') : '当前没有额外筛选';
+    var picker = '';
+    if(quickCuisineOpen){
+      var cats = {};
+      (dailyState ? dailyState.list : []).forEach(function(x){ var c = storeCat(x.store); cats[c] = (cats[c]||0)+1; });
+      var names = Object.keys(cats).sort(function(a,b){ return cats[b]-cats[a]; }).slice(0,8);
+      picker = '<div class="chips" style="margin-top:8px">'+
+        '<button class="chip-toggle'+(dailySession.cuisine ? '' : ' on')+'" data-act="qCuisinePick" data-cat="">不限</button>'+
+        names.map(function(c){ return '<button class="chip-toggle'+(dailySession.cuisine === c ? ' on' : '')+'" data-act="qCuisinePick" data-cat="'+esc(c)+'">'+esc(c)+'（'+cats[c]+'）</button>'; }).join('')+
+      '</div>';
+    }
+    return '<div class="card flat quick-card" style="padding:12px">'+
+      '<p class="quick-cond">'+esc(cond)+' <button class="prof-act" data-act="qClear">清除全部</button></p>'+
+      '<div class="chips" style="margin-top:8px">'+
+        '<button class="chip-toggle" data-act="qSwap">换一家</button>'+
+        '<button class="chip-toggle'+(quickCuisineOpen ? ' on' : '')+'" data-act="qCuisine">换个菜系</button>'+
+        '<button class="chip-toggle" data-act="qLower">价格再低一些</button>'+
+        '<button class="chip-toggle" data-act="qCloser">距离更近</button>'+
+        '<button class="chip-toggle'+(dailySession.recentDays ? ' on' : '')+'" data-act="qNoRecent">排除最近吃过的</button>'+
+        (currentMain() ? '<button class="chip-toggle prof-act danger" data-act="qSkip" data-key="'+esc(currentMain().store.key)+'">暂时不考虑这家</button>' : '')+
+      '</div>'+picker+
+      '<p class="prof-note">换一家 / 暂时不考虑：仅本次会话排除，不改记录；价格再低 = 当前主推人均 ×0.8；距离更近 = 当前候选中位距离 ×0.7；排除最近吃过的 = 7 天内到访。</p>'+
+    '</div>';
+  }
+  function quickSwap(){
+    var it = currentMain();
+    if(!it){ toast('还没有可换的结果'); return; }
+    var name = it.store.name;
+    var k = it.store.key;
+    if(dailySession.exclude.indexOf(k) < 0) dailySession.exclude.push(k);
+    runDecideNow(false);
+    toast('已排除「'+name+'」，重新排序');
+  }
+  function quickSkip(key){
+    if(!key) return;
+    if(dailySession.exclude.indexOf(key) < 0) dailySession.exclude.push(key);
+    runDecideNow(false);
+    toast('本次会话不再考虑这家');
+  }
+  function quickLower(){
+    if(!dailyState || !dailyState.list.length){ toast('还没有结果，先点「帮我决定」'); return; }
+    var cur = num(dailyState.list[0].store.perPrice);
+    if(!cur || cur <= 0) cur = num(dailyState.ctx.max);
+    var cap = Math.max(1, Math.round(cur * 0.8));
+    var floor = num($('#day-min').value);
+    if(cap <= floor){ toast('当前主推人均已接近下限，无法再降'); return; }
+    dailySession.priceMax = cap;
+    runDecideNow(false);
+    toast('快捷上限已降到 ¥'+cap+'（原人均 ¥'+cur+' ×0.8）');
+  }
+  function quickCloser(){
+    if(!dailyState || !dailyState.list.length){ toast('还没有结果，先点「帮我决定」'); return; }
+    var ds = dailyState.list.map(function(x){ return storeKm(x.store); }).filter(function(d){ return d != null; }).sort(function(a,b){ return a-b; });
+    if(!ds.length){ toast('当前候选没有距离数据，无法收紧'); return; }
+    var med = ds.length % 2 ? ds[(ds.length-1)/2] : (ds[ds.length/2-1] + ds[ds.length/2]) / 2;
+    var r = Math.max(0.1, Math.round(med * 0.7 * 10) / 10);
+    dailySession.nearKm = r;
+    runDecideNow(false);
+    toast('距离上限收紧到 '+r+' km（候选中位 '+med.toFixed(2)+' km ×0.7）');
+  }
+  function quickNoRecent(){
+    dailySession.recentDays = dailySession.recentDays ? null : 7;
+    runDecideNow(false);
+    toast(dailySession.recentDays ? '已排除 7 天内到访过的店' : '已恢复：不再排除最近吃过的');
+  }
+  function quickSetCuisine(cat){
+    dailySession.cuisine = cat || '';
+    quickCuisineOpen = false;
+    runDecideNow(false);
+    toast(cat ? '只看菜系「'+cat+'」' : '已恢复全部菜系');
+  }
+
+  /* ================= 第 4B：三模式（A 帮我决定 / B 按我的想法选 / C 完全随机） ================= */
+  var decideMode = 'A';
+  var ideaState = null, ideaTastes = [], ideaMs = null;
+  var randomState = null, randomMs = null;
+
+  function setDecideMode(m){
+    decideMode = (m === 'B' || m === 'C') ? m : 'A';
+    $('#modeA').classList.toggle('hidden', decideMode !== 'A');
+    $('#modeB').classList.toggle('hidden', decideMode !== 'B');
+    $('#modeC').classList.toggle('hidden', decideMode !== 'C');
+    $$('#decideModeSeg button').forEach(function(x){ x.classList.toggle('on', x.getAttribute('data-dmode') === decideMode); });
+    if(decideMode === 'A') renderDecide();
+    else if(decideMode === 'B'){ renderIdeaCuisines(); renderIdeaTastes(); renderIdea(); }
+    else renderRandom();
+  }
+  function renderIdeaTastes(){
+    var box = $('#ideaTasteChips'); if(!box) return;
+    renderTasteChips(box, ideaTastes);
+  }
+  function renderIdeaCuisines(){
+    var sel = $('#ideaCuisine'); if(!sel) return;
+    var prev = sel.value;
+    var cats = {};
+    getStores().concat(wishStores()).forEach(function(s){ var c = storeCat(s); if(c !== '未分类') cats[c] = 1; });
+    var names = Object.keys(cats).sort();
+    sel.innerHTML = '<option value="">不限</option>' + names.map(function(c){ return '<option value="'+esc(c)+'">'+esc(c)+'</option>'; }).join('');
+    if(names.indexOf(prev) >= 0) sel.value = prev;
+  }
+  function runIdeaNow(){
+    var t0 = nowMs();
+    var min = num($('#idea-min').value), max = num($('#idea-max').value);
+    if(max < min){ toast('人均上限需大于等于下限'); return; }
+    if(max <= 0){ toast('请先填写人均预算区间'); return; }
+    var nk = num($('#ideaNearKm').value);
+    var ctx = {
+      meal: currentMeal(), min:min, max:max,
+      nearOnly: nk > 0, nearKm: nk,
+      nowOnly:false, noRepeatWeek:false, sortDist:false, maxTravel:0, travelMax:45,
+      tastes: ideaTastes.slice(),
+      restrictions: (db.settings.restrictions||[]).slice(),
+      cuisine: $('#ideaCuisine').value || '',
+      ignoreSession:true, noDiversity:true
+    };
+    var res = runDaily(ctx);
+    ideaMs = nowMs() - t0;
+    ideaState = { ctx:ctx, list:res.list, skipped:res.skipped, ms:ideaMs };
+    renderIdea();
+    if(!res.list.length) toast('这些条件下没有店，放宽一项试试');
+  }
+  function renderIdea(){
+    var box = $('#ideaBox');
+    if(!ideaState){
+      box.innerHTML = '<div class="empty card flat"><h3>还没按条件筛</h3><p>先选菜系、口味、预算和距离，再点「按我的想法选」。</p></div>';
+      return;
+    }
+    var st = ideaState;
+    if(!st.list.length){
+      box.innerHTML = '<div class="empty card flat"><h3>没有符合条件的店</h3><p>已排除 '+st.skipped.length+' 家，可放宽预算或距离再试。</p></div>';
+      return;
+    }
+    var top = st.list.slice(0, 3);
+    var html = top.map(function(x, i){
+      return '<article class="card'+(i===0?' draw-card focus-flash':'')+'" style="'+(i===0?'':'padding:12px')+'">'+
+        '<div class="top"><div style="min-width:0"><h3 style="font-size:'+(i===0?17:15)+'px">'+(i===0?'主推 · ':'备选 '+(i+1)+' · ')+esc(x.store.name)+'</h3>'+
+        '<p class="meta">'+money(x.store.perPrice)+'/人 · '+esc(storeCat(x.store))+' · 适配分 '+x.score+'</p></div>'+
+        '<div class="score-pill '+scoreClass(x.score)+'">'+x.score+'<small>适配</small></div></div>'+
+        '<div class="why">'+x.reasons.slice(0, i===0?6:3).map(function(t){ return '<div class="why-item">'+t+'</div>'; }).join('')+'</div>'+
+        '<div class="actions" style="margin-top:10px">'+
+          '<button class="btn btn-sm btn-soft" data-act="ideaEat" data-key="'+esc(x.store.key)+'">就吃这个</button>'+
+          '<button class="btn btn-sm" data-act="jumpStore" data-key="'+esc(x.store.key)+'">打开平台</button>'+
+        '</div></article>';
+    }).join('');
+    var cond = st.ctx.cuisine ? '菜系「'+st.ctx.cuisine+'」' : '不限菜系';
+    var log = '条件：'+cond+' · 人均 ¥'+st.ctx.min+'–¥'+st.ctx.max+(st.ctx.nearOnly ? ' · '+num(st.ctx.nearKm)+' km 内' : '')+
+      (st.ctx.tastes.length ? ' · 口味 '+st.ctx.tastes.join('、') : '')+' · 候选 '+st.list.length+' 家 / 排除 '+st.skipped.length+' 家';
+    box.innerHTML = html + '<div class="card flat" style="padding:12px"><div class="log">'+esc(log)+'</div></div>';
+  }
+
+  /* C 模式候选池：只排除黑名单、忌口、手动拉黑菜系、手动人均上限与价格区间；不加权 */
+  function randomPool(min, max){
+    min = Math.max(0, num(min)); max = Math.max(min, num(max));
+    var pool = [];
+    getStores().concat(wishStores()).forEach(function(s){
+      if(isBlack(s)) return;
+      if(conflictOf(s, db.settings.restrictions)) return;
+      if(profileBlockedCategory(s)) return;
+      if(profileOverBudget(s)) return;
+      var p = num(s.perPrice);
+      if(p <= 0 || p < min || p > max) return;
+      pool.push(s);
+    });
+    return pool;
+  }
+  function runRandomNow(animate){
+    var t0 = nowMs();
+    var min = num($('#rd-min').value), max = num($('#rd-max').value);
+    if(max < min) max = min;
+    if(max <= 0){ toast('请先填写人均预算区间'); return; }
+    var pool = randomPool(min, max);
+    var picked = pool.length ? pool[Math.floor(Math.random()*pool.length)] : null;
+    randomMs = nowMs() - t0;
+    var allCount = getStores().concat(wishStores()).length;
+    var log = pool.length
+      ? '候选池 '+pool.length+' 家（总 '+allCount+' 家，已排除黑名单/忌口/手动拉黑菜系/超预算/区间外）；每家等概率 1/'+pool.length
+      : '这个区间没有可抽的店';
+    randomState = { pool:pool, picked:picked, min:min, max:max, ms:randomMs, log:log };
+    if(animate && pool.length > 1){
+      var box = $('#randomBox'), i = 0;
+      var timer = setInterval(function(){
+        i++;
+        var f = pool[Math.floor(Math.random()*pool.length)];
+        box.innerHTML = '<article class="card draw-card"><p class="muted">纯随机抽取中…</p><div class="draw-name spin-name">'+esc(f.name)+'</div></article>';
+        if(i >= 8){ clearInterval(timer); renderRandom(); haptic(12); }
+      }, 70);
+    }else{
+      renderRandom();
+      if(animate) haptic(12);
+    }
+  }
+  function renderRandom(){
+    var box = $('#randomBox');
+    if(!randomState){
+      box.innerHTML = '<div class="empty card flat"><h3>还没抽</h3><p>纯随机不加权，抽到哪家看运气。</p></div>';
+      return;
+    }
+    if(!randomState.picked){
+      box.innerHTML = '<div class="empty card flat"><h3>没有可抽的店</h3><p>'+esc(randomState.log)+'</p></div>';
+      return;
+    }
+    var s = randomState.picked;
+    box.innerHTML =
+      '<article class="card draw-card focus-flash">'+
+        '<p class="muted">纯随机结果 · 不加权</p>'+
+        '<div class="draw-name">'+esc(s.name)+'</div>'+
+        '<p class="draw-price">'+money(s.perPrice)+'/人 · '+esc(storeCat(s))+' · '+(s.isWish?'想去清单':'到访 '+s.visits+' 次')+'</p>'+
+        '<p class="meta">'+esc([s.city,s.area].filter(Boolean).join(' · ')||'未填位置')+'</p>'+
+        '<div class="actions" style="margin-top:12px">'+
+          '<button class="btn" data-act="randAgain">再抽一次</button>'+
+          '<button class="btn btn-soft" data-act="jumpStore" data-key="'+esc(s.key)+'">打开平台</button>'+
+          '<button class="btn" data-act="goPick">去加权抽签</button>'+
+        '</div>'+
+        '<button class="btn btn-primary btn-block btn-lg" data-act="randEat" data-key="'+esc(s.key)+'" style="margin-top:9px">就吃这个</button>'+
+      '</article>'+
+      '<div class="log" style="margin-top:10px">'+esc(randomState.log)+' · 本次计算 '+fmtMs(randomState.ms)+'</div>';
+  }
+
   function dailyScore(store, ctx){
     var p = store.perPrice;
     var pf = store.isWish ? (p > 0 ? priceFitRange(p, ctx.min, ctx.max) : 0.7) : priceFitRange(p, ctx.min, ctx.max);
@@ -2313,9 +2711,10 @@
     }
     if(store.isWish) reasons.push('去了记得回来补一条记录');
     else {
-      if(q >= 0.85) reasons.push('综合品质高（评分 '+ (store.rating || '—') +'）');
-      else if(q >= 0.65) reasons.push('口碑中等偏上');
-      else reasons.push('口碑一般，胜在方便或便宜');
+      var rt = num(store.rating), avg = num(ctx.avgRating);
+      if(rt > 0 && avg > 0) reasons.push('评分 '+rt.toFixed(1)+'，'+(rt >= avg ? '高于' : '低于')+'你记录的平均 '+avg.toFixed(1)+' 分');
+      else if(rt > 0) reasons.push('评分 '+rt.toFixed(1)+'（记录还少，暂不做横向对比）');
+      else reasons.push('这家还没填评分，品质项按中性值计算');
     }
     if(tf.hits.length) reasons.push('口味命中：'+tf.hits.join('、'));
     else if(ctx.tastes.length) reasons.push('标签与这顿想吃的口味不太一致');
@@ -2351,6 +2750,9 @@
     ctx.travelMax = ctx.maxTravel || 45;
     var weekStart = mondayStr();
     var all = getStores().concat(wishStores());
+    var rated = [];
+    all.forEach(function(s){ var r = num(s.rating); if(!s.isWish && r > 0) rated.push(r); });
+    ctx.avgRating = rated.length ? rated.reduce(function(a,b){ return a+b; }, 0) / rated.length : 0;
     var list = [], skipped = [], nearest = { min: null, name: '' };
     var nearestOpen = { min: null, name: '', clock: '' };
     var nearestKm = { km: null, name: '' };
@@ -2363,6 +2765,30 @@
       if(profileOverBudget(s)){ skipped.push({name:s.name, why:'人均 ¥'+num(s.perPrice)+' 超过你设置的上限 ¥'+num(profileManual.budgetCap)+'（我的口味）'}); return; }
       var dkm = storeKm(s);
       if(dkm != null && (nearestKm.km === null || dkm < nearestKm.km)) nearestKm = { km:dkm, name:s.name };
+      if(ctx.cuisine && storeCat(s) !== ctx.cuisine){
+        skipped.push({name:s.name, why:'菜系不是「'+ctx.cuisine+'」'});
+        return;
+      }
+      /* 会话内快捷筛选：只影响 A 模式本次会话，不落盘、不改记录 */
+      if(!ctx.ignoreSession){
+        if(dailySession.exclude.indexOf(s.key) >= 0){
+          skipped.push({name:s.name, why:'本次会话已排除（换一家 / 暂时不考虑）'}); return;
+        }
+        if(dailySession.cuisine && storeCat(s) !== dailySession.cuisine){
+          skipped.push({name:s.name, why:'快捷筛选只看菜系「'+dailySession.cuisine+'」'}); return;
+        }
+        if(dailySession.recentDays && !s.isWish && num(s.days) <= dailySession.recentDays){
+          skipped.push({name:s.name, why:'最近 '+dailySession.recentDays+' 天内吃过'}); return;
+        }
+        var sp = num(s.perPrice);
+        if(dailySession.priceMax != null && !s.isWish && sp > 0 && sp > dailySession.priceMax){
+          skipped.push({name:s.name, why:'快捷人均 ¥'+sp+' 超过 ¥'+dailySession.priceMax}); return;
+        }
+        if(dailySession.nearKm != null && (dkm == null || dkm > dailySession.nearKm)){
+          skipped.push({name:s.name, why: dkm != null ? '快捷距离 '+dkm+' km 超出 '+dailySession.nearKm+' km' : '未填距离，无法判断 '+dailySession.nearKm+' km 内'});
+          return;
+        }
+      }
       var price = num(s.perPrice);
       if(!s.isWish && price > 0 && (price < ctx.min || price > ctx.max)){
         skipped.push({name:s.name, why:'人均 ¥'+price+' 不在 ¥'+ctx.min+'–¥'+ctx.max+' 预算内'});
@@ -2410,7 +2836,10 @@
     } else {
       list.sort(function(a,b){ return b.score - a.score; });
     }
-    return { list:list, skipped:skipped, nearest:nearest, nearestOpen:nearestOpen, nearestKm:nearestKm, now:tc };
+    var div = { list:list, meta:{ applied:false, explore:null, top5:[] } };
+    if(!ctx.noDiversity && !ctx.sortDist) div = diversifyDaily(list);
+    list = div.list;
+    return { list:list, skipped:skipped, nearest:nearest, nearestOpen:nearestOpen, nearestKm:nearestKm, now:tc, diversity:div.meta };
   }
 
   /* 抽签：累积权重随机。边界：空集合 / 价格为 0 / 权重非正 都直接返回，不进入循环 */
@@ -3576,10 +4005,10 @@
         tips.map(function(t){ return '<p style="margin-top:6px">'+t+'</p>'; }).join('')+
         '<div class="actions" style="justify-content:center;margin-top:12px">'+
           '<button class="btn" data-act="relaxFilters">一键放宽筛选</button>'+
-        '</div></div>';
+        '</div></div>'+quickBarHtml();
       return;
     }
-    var top = st.list.slice(0, Math.min(6, st.list.length));
+    var top = st.list.slice(0, Math.min(5, st.list.length));
     var main = top[dailyRotation % top.length];
     var alts = top.filter(function(x){ return x.store.key !== main.store.key; }).slice(0,2);
 
@@ -3616,9 +4045,14 @@
 
     var log = '候选 '+st.list.length+' 家；已排除 '+(st.skipped.length)+' 家';
     if(st.skipped.length) log += '（'+st.skipped.slice(0,3).map(function(k){ return k.name+'：'+k.why; }).join('；')+'）';
+    if(st.diversity && st.diversity.applied){
+      log += '\n多样性：Top3 同菜系 ≤'+DAILY_DIVERSITY.cuisineMaxInTop3+' 席，Top5 同商圈 ≤'+DAILY_DIVERSITY.areaMaxInTop5+' 席'+
+        (st.diversity.explore ? '；探索位「'+st.diversity.explore+'」' : '；本批无探索位候选');
+    }
 
     $('#decideBox').innerHTML = mainCard + altCards +
-      '<div class="card flat" style="padding:12px"><p class="muted" style="margin-bottom:6px">这次怎么选的</p><div class="log">'+esc(log)+'</div></div>';
+      '<div class="card flat" style="padding:12px"><p class="muted" style="margin-bottom:6px">这次怎么选的</p><div class="log">'+esc(log)+'</div></div>'+
+      quickBarHtml();
   }
 
   function runDecideNow(rotate){
@@ -3637,10 +4071,10 @@
     };
     var res = runDaily(ctx);
     decideMs = nowMs() - t0;
-    var prevKey = dailyState && dailyState.list.length ? dailyState.list[dailyRotation % Math.min(6, dailyState.list.length)].store.key : null;
-    dailyState = { ctx:ctx, list:res.list, skipped:res.skipped, nearest:res.nearest, nearestOpen:res.nearestOpen, nearestKm:res.nearestKm }; 
+    var prevKey = dailyState && dailyState.list.length ? dailyState.list[dailyRotation % Math.min(DAILY_DIVERSITY.exploreSize, dailyState.list.length)].store.key : null;
+    dailyState = { ctx:ctx, list:res.list, skipped:res.skipped, nearest:res.nearest, nearestOpen:res.nearestOpen, nearestKm:res.nearestKm, diversity:res.diversity }; 
     if(rotate && res.list.length){
-      dailyRotation = (dailyRotation + 1) % Math.min(6, res.list.length);
+      dailyRotation = (dailyRotation + 1) % Math.min(DAILY_DIVERSITY.exploreSize, res.list.length);
     }else{
       dailyRotation = 0;
     }
@@ -8118,7 +8552,7 @@
   /* 点击委托：所有 data-act 与口味 chip */
   document.addEventListener('click', function(e){
     var actEl = e.target.closest ? e.target.closest('[data-act]') : null;
-    var tasteEl = e.target.closest ? e.target.closest('#tasteChips [data-taste], #friendTasteChips [data-taste]') : null;
+    var tasteEl = e.target.closest ? e.target.closest('#tasteChips [data-taste], #friendTasteChips [data-taste], #ideaTasteChips [data-taste]') : null;
     var fitEl = e.target.closest ? e.target.closest('#fitMealChips [data-fitmeal]') : null;
 
     if(fitEl && !actEl){
@@ -8137,6 +8571,12 @@
           ? friendTastes.filter(function(x){ return x !== tt; })
           : friendTastes.concat([tt]);
         renderTasteChips($('#friendTasteChips'), friendTastes);
+      }else if(tasteEl.parentNode && tasteEl.parentNode.id === 'ideaTasteChips'){
+        ideaTastes = ideaTastes.indexOf(tt) >= 0
+          ? ideaTastes.filter(function(x){ return x !== tt; })
+          : ideaTastes.concat([tt]);
+        renderTasteChips($('#ideaTasteChips'), ideaTastes);
+        if(ideaState) runIdeaNow();
       }else{
         dailyTastes = dailyTastes.indexOf(tt) >= 0
           ? dailyTastes.filter(function(x){ return x !== tt; })
@@ -8212,8 +8652,28 @@
     }
     else if(act === 'drawAgain'){ runDrawNow(); }
     else if(act === 'dailyRotate'){ runDecideNow(true); }
+    else if(act === 'qSwap'){ quickSwap(); }
+    else if(act === 'qCuisine'){ quickCuisineOpen = !quickCuisineOpen; renderDecide(); }
+    else if(act === 'qCuisinePick'){ quickSetCuisine(actEl.getAttribute('data-cat') || ''); }
+    else if(act === 'qLower'){ quickLower(); }
+    else if(act === 'qCloser'){ quickCloser(); }
+    else if(act === 'qNoRecent'){ quickNoRecent(); }
+    else if(act === 'qSkip'){ quickSkip(key || (dailyState && dailyState.list.length ? dailyState.list[0].store.key : '')); }
+    else if(act === 'qClear'){ sessionClearAll(); toast('已清除全部筛选条件'); }
+    else if(act === 'randAgain'){ runRandomNow(true); }
+    else if(act === 'randEat'){
+      var rr = findStore(key);
+      if(rr){ haptic(18); quickEat(rr, currentMeal()); }
+    }
+    else if(act === 'ideaEat'){
+      var ri = findStore(key);
+      if(ri){ haptic(18); quickEat(ri, currentMeal()); }
+    }
+    else if(act === 'goPick'){ showView('pick'); }
     else if(act === 'relaxFilters'){
       dailyNear = false; dailySortDist = false; dailyNowOnly = false; dailyNoRepeat = false;
+      dailySession = { exclude:[], cuisine:'', priceMax:null, nearKm:null, recentDays:null };
+      quickCuisineOpen = false;
       $('#dayMaxMin').value = '';
       renderDailyInputs();
       runDecideNow(false);
@@ -8534,6 +8994,13 @@
   /* 主要按钮 */
   $('#btnAddTop').addEventListener('click', function(){ openForm(); });
   $('#btnDecide').addEventListener('click', function(){ runDecideNow(false); });
+  $$('#decideModeSeg button').forEach(function(b){
+    b.addEventListener('click', function(){ setDecideMode(b.getAttribute('data-dmode')); });
+  });
+  $('#btnIdea').addEventListener('click', runIdeaNow);
+  $('#btnRandom').addEventListener('click', function(){ runRandomNow(true); });
+  $('#ideaCuisine').addEventListener('change', function(){ if(ideaState) runIdeaNow(); });
+  $('#ideaNearKm').addEventListener('change', function(){ if(ideaState) runIdeaNow(); });
   $('#btnDraw').addEventListener('click', runDrawNow);
   $('#btnFriend').addEventListener('click', function(){ runFriendNow(); });
   $('#btnParty').addEventListener('click', function(){
@@ -8829,7 +9296,6 @@
       $('#q').value = String(v || '');
       var t0 = nowMs(); renderList(true); return nowMs() - t0;
     },
-    decide: function(){ var t0 = nowMs(); runDecideNow(false); return nowMs() - t0; },
     draw: function(){ var t0 = nowMs(); runDrawNow(); return nowMs() - t0; },
     party: function(){ var t0 = nowMs(); $('#btnParty').click(); return nowMs() - t0; },
     friend: function(){ var t0 = nowMs(); $('#btnFriend').click(); return nowMs() - t0; },
@@ -9298,6 +9764,94 @@
           effective:profileCache ? profileCache.effective : null, confidence:profileCache ? profileCache.confidence : null };
       }
     },
+    /* 兼容旧调用：__fandaziTest.decide() 仍返回一次推荐的耗时，同时把 4B 的方法挂在同一个函数上 */
+    decide: (function(){
+      var api = function(){ var t0 = nowMs(); runDecideNow(false); return nowMs() - t0; };
+      var m = {
+      mode: function(){ return decideMode; },
+      setMode: function(m){ setDecideMode(m); return decideMode; },
+      session: function(){ return JSON.parse(JSON.stringify(dailySession)); },
+      conditions: function(){ return sessionConditions(); },
+      state: function(){
+        var st = dailyState;
+        return {
+          mode: decideMode, session: JSON.parse(JSON.stringify(dailySession)), conditions: sessionConditions(),
+          top: currentMain() ? { name:currentMain().store.name, key:currentMain().store.key, price:num(currentMain().store.perPrice), score:currentMain().score, reasons:currentMain().reasons.slice() } : null,
+          list: st ? st.list.slice(0,5).map(function(x){ return { name:x.store.name, cat:storeCat(x.store), area:storeArea(x.store), price:num(x.store.perPrice), dist:storeKm(x.store), days:x.store.isWish ? null : Math.round(num(x.store.days)), score:x.score, explore:isExploreStore(x), reasons:x.reasons.slice() }; }) : [],
+          skipped: st ? st.skipped.length : 0,
+          diversity: st ? st.diversity : null,
+          bar: $('#decideBox') ? $('#decideBox').innerText : ''
+        };
+      },
+      list: function(){ return this.state().list; },
+      full: function(){ return dailyState ? dailyState.list.map(function(x){ return { name:x.store.name, cat:storeCat(x.store), area:storeArea(x.store), score:x.score, fb:x.feedback, prof:x.profile }; }) : []; },
+      rotate: function(){ runDecideNow(true); return this.state(); },
+      quick: function(act, arg){
+        if(act === 'swap') quickSwap();
+        else if(act === 'cuisine') quickSetCuisine(arg || '');
+        else if(act === 'lower') quickLower();
+        else if(act === 'closer') quickCloser();
+        else if(act === 'recent') quickNoRecent();
+        else if(act === 'skip') quickSkip(arg || (currentMain() ? currentMain().store.key : ''));
+        else if(act === 'clear') sessionClearAll();
+        return this.state();
+      },
+      selectCuisine: function(cat){ quickSetCuisine(cat || ''); return this.state(); },
+      diversityOff: function(on){ dailyNoDiversity = !!on; if(dailyState) runDecideNow(false); return dailyNoDiversity; },
+      noDiversity: function(){ return dailyNoDiversity; },
+      idea: function(p){
+        p = p || {};
+        if(p.cuisine !== undefined) $('#ideaCuisine').value = p.cuisine;
+        if(p.min !== undefined) $('#idea-min').value = p.min;
+        if(p.max !== undefined) $('#idea-max').value = p.max;
+        if(p.nearKm !== undefined) $('#ideaNearKm').value = p.nearKm;
+        if(p.tastes) ideaTastes = p.tastes.slice();
+        runIdeaNow();
+        return {
+          list: ideaState ? ideaState.list.map(function(x){ return { name:x.store.name, cat:storeCat(x.store), price:num(x.store.perPrice), dist:storeKm(x.store), score:x.score, reasons:x.reasons.slice() }; }) : [],
+          skipped: ideaState ? ideaState.skipped.length : 0, ms: ideaMs
+        };
+      },
+      ideaState: function(){ return ideaState ? { list:ideaState.list.length, skipped:ideaState.skipped.length, ms:ideaMs, ctx:ideaState.ctx } : null; },
+      randomOnce: function(min, max){
+        if(min !== undefined) $('#rd-min').value = min;
+        if(max !== undefined) $('#rd-max').value = max;
+        runRandomNow(false);
+        return { name: randomState && randomState.picked ? randomState.picked.name : null, pool: randomState ? randomState.pool.length : 0, ms: randomMs, log: randomState ? randomState.log : '' };
+      },
+      randomSim: function(n, min, max){
+        var pool = randomPool(min == null ? 15 : min, max == null ? 80 : max);
+        var counts = {};
+        for(var i=0;i<(n||20) && pool.length;i++){
+          var s = pool[Math.floor(Math.random()*pool.length)];
+          counts[s.name] = (counts[s.name]||0) + 1;
+        }
+        return { pool: pool.length, counts: counts };
+      },
+      randomState: function(){ return randomState ? { name:randomState.picked ? randomState.picked.name : null, pool:randomState.pool.length, ms:randomMs, text:$('#randomBox') ? $('#randomBox').innerText : '' } : null; },
+      perf: function(){
+        var c = {
+          meal:currentMeal(), min:num($('#day-min').value) || 15, max:num($('#day-max').value) || 80,
+          nearOnly:false, nearKm:0, sortDist:false, nowOnly:false, noRepeatWeek:false,
+          maxTravel:num($('#dayMaxMin').value), tastes:[], restrictions:(db.settings.restrictions||[]).slice()
+        };
+        var t0 = nowMs(); var ra = runDaily(c); var a = nowMs() - t0;
+        var cb = JSON.parse(JSON.stringify(c)); cb.tastes = []; cb.ignoreSession = true; cb.noDiversity = true;
+        var t1 = nowMs(); var rb = runDaily(cb); var b = nowMs() - t1;
+        var t2 = nowMs(); var pool = randomPool(15, 80); var cc = nowMs() - t2;
+        return { A:a, B:b, C:cc, listA:ra.list.length, listB:rb.list.length, pool:pool.length, stores:getStores().length };
+      },
+      inputValues: function(){ return { min:$('#day-min').value, max:$('#day-max').value, meal:currentMeal(), ideaCuisine:$('#ideaCuisine').value, ideaNear:$('#ideaNearKm').value, ideaTastes:ideaTastes.slice(), rdMin:$('#rd-min').value, rdMax:$('#rd-max').value }; },
+      panel: function(){
+        var b = $('#modeB'), c = $('#modeC');
+        return { mode:decideMode, bText:b ? b.innerText : '', cText:c ? c.innerText : '',
+          bScrollW:b ? b.scrollWidth : 0, bClientW:b ? b.clientWidth : 0,
+          cScrollW:c ? c.scrollWidth : 0, cClientW:c ? c.clientWidth : 0 };
+      }
+      };
+      for(var dk in m) if(Object.prototype.hasOwnProperty.call(m, dk)) api[dk] = m[dk];
+      return api;
+    })(),
     map: {
       urls: function(o){
         var info = mapInfoOf(o || {});
