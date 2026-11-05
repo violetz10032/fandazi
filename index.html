@@ -6819,6 +6819,78 @@
       }catch(e){ logError('恢复本机标记', e); }
     });
   }
+  /* ---- 反馈段（fandazi.feedback）纳入备份 ---- */
+  /* 反馈不参与记录去重：备份/恢复都按原样整段还原，不按「城市+店名+日期」判定。 */
+  function feedbackBackupData(){
+    return {
+      version: feedbackStore.version,
+      items: JSON.parse(JSON.stringify(feedbackStore.items || []))
+    };
+  }
+  /* 只校验不改写：旧备份（payload.feedback 缺失）返回 null，表示「保持现状」；
+     结构损坏直接抛错，让整包在写任何数据之前被拒绝。 */
+  function feedbackBackupValidate(fb, where){
+    if(fb == null) return null;
+    if(typeof fb !== 'object' || Array.isArray(fb)){
+      throw new Error('备份里的反馈数据格式不正确（' + where + '）');
+    }
+    var items = fb.items == null ? [] : fb.items;
+    if(!Array.isArray(items)) throw new Error('备份里的反馈列表格式不正确（' + where + '）');
+    for(var i=0;i<items.length;i++){
+      var it = items[i];
+      if(!it || typeof it !== 'object' || typeof it.key !== 'string' || !it.key){
+        throw new Error('备份里的反馈条目缺少店家标识（第 ' + (i+1) + ' 条）');
+      }
+      if(!FB_ACTIONS[it.action] || it.action === 'neutral' || it.action === 'today'){
+        throw new Error('备份里的反馈条目类型无效（第 ' + (i+1) + ' 条：' + String(it.action) + '）');
+      }
+      if(it.action === 'never' && it.blackKey != null && typeof it.blackKey !== 'string'){
+        throw new Error('备份里的反馈条目黑名单标识不正确（第 ' + (i+1) + ' 条）');
+      }
+    }
+    return { version: num(fb.version) || FB_VERSION, items: items };
+  }
+  /* 还原反馈到 localStorage 与内存；返回 {applied, count}。applied=false 表示旧备份，
+     此时不碰任何反馈数据（不清空）。 */
+  function applyBackupFeedback(fb){
+    var norm = feedbackBackupValidate(fb, '恢复');
+    if(!norm) return { applied:false, count:0, legacy:true };
+    var items = [];
+    norm.items.forEach(function(it){
+      var at = Date.parse(it.at);
+      var until = it.until ? Date.parse(it.until) : NaN;
+      items.push({
+        key: String(it.key),
+        action: it.action,
+        at: new Date(isFinite(at) ? at : Date.now()).toISOString(),
+        until: isFinite(until) ? new Date(until).toISOString() : (it.action === 'tired' ? new Date(Date.now() + FB_TIRED_DAYS * 86400000).toISOString() : null),
+        name: String(it.name || ''),
+        blackKey: it.blackKey ? String(it.blackKey) : null
+      });
+    });
+    feedbackStore = { version: norm.version, items: items };
+    feedbackToday = { date: todayStr(), items: {} };
+    try{ localStorage.setItem(FB_KEY, JSON.stringify({ version:norm.version, items:items })); }
+    catch(e){
+      logError('反馈恢复', e);
+      throw new Error('空间不足：反馈写入失败，本机数据未改动');
+    }
+    return { applied:true, count:items.length };
+  }
+  /* 永不推荐必须同时存在于黑名单；缺失则补上，保证「黑名单 > 其它一切」 */
+  function ensureNeverBlacklist(list, fb){
+    if(!Array.isArray(list) || !fb || !Array.isArray(fb.items)) return 0;
+    var added = 0;
+    fb.items.forEach(function(it){
+      if(!it || it.action !== 'never') return;
+      var key = String(it.blackKey || it.key || '');
+      if(!key || list.some(function(b){ return b && b.key === key; })) return;
+      var parts = key.split('|');
+      list.push({ key:key, name:String(it.name || ''), city:parts.length > 1 ? parts[0] : '', at:new Date().toISOString() });
+      added++;
+    });
+    return added;
+  }
   function backupPayloadOf(){
     return JSON.parse(JSON.stringify({
       version: db.version,
@@ -6828,6 +6900,7 @@
       votes: db.votes,
       places: db.places,
       localConfig: backupLocalConfig(),
+      feedback: feedbackBackupData(),
       records: db.records
     }));
   }
@@ -6838,11 +6911,12 @@
       var total = text + num(ps.bytes) + 320;
       return {
         records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length,
+        feedback: feedbackStore.items.length,
         photos: ps.count, photoBytes: num(ps.bytes), textBytes: text,
         sizeBytes: total, warn: total > BACKUP_WARN_BYTES
       };
     }).catch(function(){
-      return { records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length, photos: 0, photoBytes: 0, textBytes: 0, sizeBytes: 0, warn: false };
+      return { records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length, feedback: feedbackStore.items.length, photos: 0, photoBytes: 0, textBytes: 0, sizeBytes: 0, warn: false };
     });
   }
   function backupPhotos(){
@@ -6898,6 +6972,7 @@
             records: payload.records.length, stores: getStores().length,
             wishlist: payload.wishlist.length, blacklist: payload.blacklist.length,
             votes: payload.votes.length, places: payload.places.length,
+            feedback: payload.feedback.items.length,
             settingsKeys: Object.keys(payload.settings || {}).length,
             localConfigKeys: Object.keys(payload.localConfig || {}).length,
             photos: photos.length, photoBytes: photoBytes
@@ -6949,6 +7024,8 @@
     if(!ver) throw new Error('备份文件缺少 schemaVersion，无法判断版本兼容性');
     if(ver > db.version) throw new Error('备份版本 '+ver+' 高于当前应用支持的 '+db.version+'，请先升级应用再恢复');
     if(!obj.payload || !Array.isArray(obj.payload.records)) throw new Error('备份内容缺少记录列表');
+    /* 反馈段：存在则校验结构，缺失（旧备份）视为「保持现状」 */
+    feedbackBackupValidate(obj.payload.feedback, '恢复');
     if(!obj.checksum || !obj.checksum.value) throw new Error('备份文件缺少校验值，无法确认完整性');
     if(!Array.isArray(obj.photos)) obj.photos = [];
     for(var i = 0; i < obj.photos.length; i++){
@@ -6993,7 +7070,8 @@
         wishlist: db.wishlist,
         votes: db.votes,
         places: db.places,
-        localConfig: backupLocalConfig()
+        localConfig: backupLocalConfig(),
+        feedback: feedbackBackupData()
       }))
     };
     return snapshotStore('readwrite').then(function(store){
@@ -7108,6 +7186,7 @@
       var next, stats;
       if(mode === 'replace'){
         next = norm;
+        ensureNeverBlacklist(next.blacklist, obj.payload.feedback);
         stats = { added:norm.records.length, skipped:0, replaced:true };
       }else{
         next = JSON.parse(JSON.stringify(db));
@@ -7125,12 +7204,31 @@
           next.records.unshift(rec);
           added++;
         });
+        // 反馈整段还原（不按记录去重）：永不推荐若有反馈、黑名单缺失，一并补上
+        ensureNeverBlacklist(next.blacklist, obj.payload.feedback);
         stats = { added:added, skipped:skipped, replaced:false };
       }
+      /* 反馈先写、数据库后写；任何一步失败都回滚反馈，保持「整包拒绝」语义 */
+      var fbPrevRaw = null, fbPrevStore = JSON.parse(JSON.stringify(feedbackStore));
+      try{ fbPrevRaw = localStorage.getItem(FB_KEY); }catch(e){ fbPrevRaw = null; }
+      function rollbackFeedback(){
+        feedbackStore = fbPrevStore;
+        feedbackToday = { date: todayStr(), items: {} };
+        try{
+          if(fbPrevRaw == null) localStorage.removeItem(FB_KEY);
+          else localStorage.setItem(FB_KEY, fbPrevRaw);
+        }catch(_e){}
+      }
+      var fbResult = { applied:false, count:0 };
       var str;
-      try{ str = JSON.stringify(next); }
-      catch(e){ throw new Error('数据序列化失败，本机数据未改动'); }
-      commitDbString(str);
+      try{
+        fbResult = applyBackupFeedback(obj.payload.feedback);
+        str = JSON.stringify(next);
+        commitDbString(str);
+      }catch(e){
+        rollbackFeedback();
+        throw e;
+      }
       db = next;
       invalidateStores();
       lastSavedStr = str;
@@ -7140,6 +7238,7 @@
       return {
         ok:true, mode:mode, added:stats.added, skipped:stats.skipped, replaced:!!stats.replaced,
         photos:obj.photos.length, photoBytes:num(obj.stats && obj.stats.photoBytes),
+        feedback:fbResult.count, feedbackApplied:!!fbResult.applied,
         missingPhotos:countMissingPhotos(norm, photoMap), ms:Math.round(nowMs() - t0),
         snapshotId:snapRef ? snapRef.id : null
       };
@@ -7155,14 +7254,33 @@
       if(!snap) throw new Error('恢复点不存在或已被覆盖');
       var norm = migrate(snap.data);
       norm.votes = JSON.parse(JSON.stringify(Array.isArray(snap.data.votes) ? snap.data.votes : []));
-      var str = JSON.stringify(norm);
-      commitDbString(str);
+      ensureNeverBlacklist(norm.blacklist, snap.data.feedback);
+      var fbPrevRaw = null, fbPrevStore = JSON.parse(JSON.stringify(feedbackStore));
+      try{ fbPrevRaw = localStorage.getItem(FB_KEY); }catch(e){ fbPrevRaw = null; }
+      function rollbackFeedback(){
+        feedbackStore = fbPrevStore;
+        feedbackToday = { date: todayStr(), items: {} };
+        try{
+          if(fbPrevRaw == null) localStorage.removeItem(FB_KEY);
+          else localStorage.setItem(FB_KEY, fbPrevRaw);
+        }catch(_e){}
+      }
+      var fbResult = { applied:false, count:0 };
+      var str;
+      try{
+        fbResult = applyBackupFeedback(snap.data.feedback);
+        str = JSON.stringify(norm);
+        commitDbString(str);
+      }catch(e){
+        rollbackFeedback();
+        throw e;
+      }
       db = norm;
       invalidateStores();
       lastSavedStr = str;
       applyBackupLocalConfig(snap.data.localConfig, true);
       renderAll();
-      return { ok:true, records:db.records.length, photos:snap.photoIds ? snap.photoIds.length : 0, at:snap.at };
+      return { ok:true, records:db.records.length, photos:snap.photoIds ? snap.photoIds.length : 0, at:snap.at, feedback:fbResult.count, feedbackApplied:!!fbResult.applied };
     });
   }
 
@@ -7195,6 +7313,7 @@
           '<div class="stat"><b>' + fmtBytes(est.sizeBytes) + '</b><span>预计体积</span></div>' +
         '</div>' +
         '<p class="dist-note">照片以 base64 文本内联进 JSON，体积约等于现有照片总量（' + fmtBytes(est.photoBytes) + '）加记录文本；照片压缩规则沿用每张 ≤360px、最多 80 张。</p>' +
+        '<p class="dist-note">另含推荐反馈 ' + est.feedback + ' 条（想吃 / 吃腻了 / 不喜欢 / 永不推荐），随备份一起还原；反馈不按记录去重。</p>' +
         (est.warn ? '<p class="notice" style="margin-top:8px">体积超过 50 MB：生成与下载会占用较多内存和时间，仍可继续。低内存设备建议先清理旧照片。</p>' : '') +
         '<p class="muted" style="margin-top:8px">' + (last ? '上次备份：' + backupAgoText(last) : '还没有生成过完整备份。') + '</p>' +
         '<div class="actions" style="margin-top:14px">' +
@@ -7240,6 +7359,7 @@
           '<div class="stat"><b>' + fmtBytes(totalPhotoBytes) + '</b><span>照片体积</span></div>' +
         '</div>' +
         '<p class="dist-note">配置：偏好 ' + Object.keys(norm.settings || {}).length + ' 项 · 黑名单 ' + norm.blacklist.length + ' · 常用地点 ' + norm.places.length + ' · 想去 ' + norm.wishlist.length + ' · 投票 ' + (obj.payload.votes ? obj.payload.votes.length : 0) +
+          ' · 反馈 ' + (obj.payload.feedback && Array.isArray(obj.payload.feedback.items) ? obj.payload.feedback.items.length : 0) +
           '；校验值已通过（SHA-256）。' + (missing ? ' 有 ' + missing + ' 条记录引用的照片不在备份里，这些记录会保留无图状态。' : '') + '</p>' +
         '<div class="field" style="margin-top:12px"><label>恢复方式</label>' +
           '<select class="input" id="restoreMode">' +
@@ -7271,6 +7391,7 @@
         '<div class="sheet-head" style="margin-bottom:8px"><h3>恢复完成</h3>' +
           '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
         '<p class="muted">' + (res.replaced ? '已完整替换为备份内容' : '合并完成') + '：写入 ' + res.added + ' 条，跳过 ' + res.skipped + ' 条，恢复照片 ' + res.photos + ' 张（' + fmtBytes(res.photoBytes) + '），用时 ' + fmtMs(res.ms) + '。</p>' +
+        '<p class="dist-note">' + (res.feedbackApplied ? '推荐反馈已按备份还原（' + res.feedback + ' 条，不按记录去重）。' : '该备份不含反馈段（旧版本备份），本机反馈保持不变。') + '</p>' +
         (res.missingPhotos ? '<p class="dist-note">有 ' + res.missingPhotos + ' 条记录引用的照片缺失，已保留无图状态。</p>' : '') +
         '<p class="dist-note">恢复前的本机数据已存为恢复点；若结果不对，可点下方按钮回到恢复前。</p>' +
         '<div class="actions" style="margin-top:12px">' +
@@ -8556,6 +8677,8 @@
             });
           }
           if(opts.records) obj.payload.records = JSON.parse(JSON.stringify(opts.records));
+          if(opts.dropFeedback){ try{ delete obj.payload.feedback; }catch(e){} }
+          if(opts.feedback !== undefined){ obj.payload.feedback = JSON.parse(JSON.stringify(opts.feedback)); }
           return backupChecksum(obj.payload, obj.photos).then(function(sum){
             obj.checksum.value = sum;
             return JSON.stringify(obj);

@@ -213,7 +213,7 @@ APK 内接了 `@capacitor/filesystem` + `@capacitor/share`：**CSV / JSON / 文�
   "exportedAt": "2026-11-05T...",
   "checksum": { "algo": "SHA-256", "scope": "canonical(payload+photos)", "value": "…64 位十六进制…" },
   "stats": { "records": 30, "photos": 5, "photoBytes": 29167, … },
-  "payload": { "version": 3, "settings": {…}, "blacklist": [...], "wishlist": [...], "votes": [...], "places": [...], "localConfig": {…}, "records": [...] },
+  "payload": { "version": 3, "settings": {…}, "blacklist": [...], "wishlist": [...], "votes": [...], "places": [...], "localConfig": {…}, "feedback": { "version": 1, "items": [...] }, "records": [...] },
   "photos": [ { "id": "p1", "dataUrl": "data:image/jpeg;base64,…" } ]
 }
 ```
@@ -222,6 +222,8 @@ APK 内接了 `@capacitor/filesystem` + `@capacitor/share`：**CSV / JSON / 文�
 - **版本**：备份里的 `schemaVersion` 高于当前应用时拒绝并提示「请先升级应用」；低于当前时走应用已有的迁移路径（旧版记录会被补默认字段）。
 - **体积代价**：照片按原来的压缩规则（每张 ≤360px、最多 80 张、总量 >4MB 提示）存成 data URL，base64 以文本内联进 JSON，因此备份体积 ≈ 照片字节数 + 记录文本；照片越多，生成与下载越慢、占用内存越多。预计体积超过 50 MB 时面板会提醒，但仍可继续。
 - **照片**：备份会读 IndexedDB `fandazi.media/photos` 里的**全部**照片（包含已删除记录遗留的孤儿照片）；恢复时按原 `photoId` 映射回记录，已存在的同 id 照片不会重复覆盖。导入结果会报告恢复了多少张、多少字节，以及是否有记录引用了备份里不存在的照片。
+- **推荐反馈**：`payload.feedback` 保存 `fandazi.feedback` 的 `{version, items}` 原样内容（想吃 / 吃腻了 / 不喜欢 / 永不推荐）。恢复时整段还原，**不参与「城市+店名+日期」的记录去重**，同一备份重复导入也不会让反馈叠加；「永不推荐」若在黑名单里缺失会被一并补回，保证黑名单优先。
+- **旧备份兼容**：不含 `feedback` 段的旧备份可以正常恢复，行为是「保持现状」——本机现有反馈不报错、也不清空；只有备份里真的带了反馈段才会覆盖。恢复结果弹层会写明「该备份不含反馈段，本机反馈保持不变」。
 
 ### 恢复与恢复点
 
@@ -235,7 +237,7 @@ APK 内接了 `@capacitor/filesystem` + `@capacitor/share`：**CSV / JSON / 文�
 无论哪种模式，**导入前都会自动把当前数据存成本机恢复点**：
 
 - 存在 IndexedDB `fandazi.media/snapshots`（与应用照片同一个库，只保留**最近 2 份**，超出自动删除最旧的一份）；
-- 恢复点保存记录、偏好、黑名单、常用地点、想去、投票与引导/教程标记，照片**只存 id 引用，不重复占空间**；
+- 恢复点保存记录、偏好、黑名单、常用地点、想去、投票、推荐反馈与引导/教程标记，照片**只存 id 引用，不重复占空间**；旧恢复点若没有反馈字段，恢复时保持当前反馈不变；
 - 恢复点不是长期存档：下一次导入或恢复会把它挤掉；如果导入后误删了照片，恢复点也找不回来（备份文件才是长期底稿）；
 - 导入/恢复完成后，结果弹层里有「恢复到恢复前」；「我的 → 数据」也会列出最近 2 个恢复点，可单独恢复。
 
