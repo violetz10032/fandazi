@@ -330,6 +330,13 @@
       <button type="button" id="btnRemindClose" aria-label="关闭">✕</button>
     </div>
 
+    <!-- 备份提醒条（只在「我的」页显示，复用同一组件） -->
+    <div class="remind hidden" id="backupRemindBar">
+      <div class="grow" id="backupRemindText"></div>
+      <button type="button" id="btnBackupGo">去备份</button>
+      <button type="button" id="btnBackupClose" aria-label="关闭">✕</button>
+    </div>
+
     <!-- ================= 记录 ================= -->
     <section class="view" id="view-record">
       <div class="seg seg-top" id="recordSeg">
@@ -726,7 +733,14 @@
           <button class="btn" id="btnSample">载入示例</button>
           <button class="btn btn-danger" id="btnClear">清空全部</button>
         </div>
+        <div class="actions" style="margin-top:8px">
+          <button class="btn btn-soft" id="btnBackup">完整备份</button>
+          <button class="btn" id="btnRestore">恢复完整备份</button>
+        </div>
         <input type="file" id="fileImport" accept=".json,application/json" class="hidden">
+        <input type="file" id="fileRestore" accept=".json,application/json" class="hidden">
+        <p class="muted" style="margin-top:10px" id="backupState"></p>
+        <div id="snapshotBox" style="margin-top:6px"></div>
         <p class="muted" style="margin-top:10px" id="verInfo"></p>
       </div>
 
@@ -1203,6 +1217,11 @@
   </div>
 </div>
 
+<!-- 完整备份 / 恢复 -->
+<div class="modal-mask hidden" id="backupMask">
+  <div class="modal" id="backupModal" role="dialog" aria-modal="true" aria-label="完整备份与恢复" style="padding-bottom:calc(18px + env(safe-area-inset-bottom))"></div>
+</div>
+
 <!-- 朋友分享弹层 -->
 <div class="modal-mask hidden" id="shareMask">
   <div class="modal">
@@ -1590,6 +1609,7 @@
   /* ================= 照片：IndexedDB（localStorage 只留轻字段） ================= */
   var PHOTO_DB = 'fandazi.media';
   var PHOTO_STORE = 'photos';
+  var SNAPSHOT_STORE = 'snapshots';
   var PHOTO_LIMIT = 80;
   var PHOTO_MAX_BYTES = 4 * 1024 * 1024;
   var photoCache = {};
@@ -1601,10 +1621,11 @@
     if(photoDbPromise) return photoDbPromise;
     photoDbPromise = new Promise(function(resolve, reject){
       if(!window.indexedDB){ reject(new Error('IndexedDB 不可用')); return; }
-      var req = indexedDB.open(PHOTO_DB, 1);
+      var req = indexedDB.open(PHOTO_DB, 2);
       req.onupgradeneeded = function(){
         var d = req.result;
         if(!d.objectStoreNames.contains(PHOTO_STORE)) d.createObjectStore(PHOTO_STORE, { keyPath:'id' });
+        if(!d.objectStoreNames.contains(SNAPSHOT_STORE)) d.createObjectStore(SNAPSHOT_STORE, { keyPath:'id' });
       };
       req.onsuccess = function(){ resolve(req.result); };
       req.onerror = function(){ reject(req.error || new Error('IndexedDB 打开失败')); };
@@ -1615,6 +1636,11 @@
   function photoStore(mode){
     return openPhotoDb().then(function(d){
       return d.transaction(PHOTO_STORE, mode).objectStore(PHOTO_STORE);
+    });
+  }
+  function snapshotStore(mode){
+    return openPhotoDb().then(function(d){
+      return d.transaction(SNAPSHOT_STORE, mode).objectStore(SNAPSHOT_STORE);
     });
   }
   function photoPut(id, dataUrl){
@@ -3454,6 +3480,7 @@
     $('#st-wish').textContent = db.wishlist.length;
     $('#verInfo').textContent = '当前数据结构 version '+db.version+'；旧版（v1）数据会自动升级并保留历史记录。';
     $('#storageSize').textContent = fmtBytes(storageBytes());
+    renderBackupState();
     renderDiag();
     if(activeView === 'more'){
       photoStats().then(function(){
@@ -3476,6 +3503,7 @@
     safeRender('renderFitness', renderFitness, '#fitBox');
     safeRender('renderMore', renderMore, '#statBox');
     safeRender('renderReminder', renderReminder);
+    safeRender('renderBackupReminder', renderBackupReminder);
     safeRender('renderInstall', renderInstall);
     lastRenderMs = nowMs() - t0;
   }
@@ -3523,6 +3551,7 @@
       safeRender('updateNotifyUI', updateNotifyUI);
     }
     if(name === 'record' || name === 'recommend') safeRender('renderReminder', renderReminder);
+    safeRender('renderBackupReminder', renderBackupReminder);
     try{ window.scrollTo(0, viewScroll[name] || 0); }catch(e){}
   }
   function renderRecoPanel(){
@@ -6227,6 +6256,7 @@
     importBusy = true;
     var t0 = nowMs();
     var before = JSON.parse(JSON.stringify(db.records));
+    makeSnapshot('before-import');
     var addedPhotos = [];
     var stats = { added:0, overwritten:0, photos:0 };
     var i = 0;
@@ -6339,6 +6369,721 @@
     toast('检测到分享链接，请确认是否导入');
   }
 
+  /* ================= 2.0 数据安全网：完整备份 / 校验 / 恢复点 ================= */
+  var BACKUP_FORMAT = 'fandazi-backup';
+  var BACKUP_LAST_KEY = 'fandazi.backup.last';
+  var BACKUP_TMP_KEY = KEY + '.restore.tmp';
+  var BACKUP_FILE_MAX = 200 * 1024 * 1024;
+  var BACKUP_WARN_BYTES = 50 * 1024 * 1024;
+  var SNAPSHOT_LIMIT = 2;
+
+  var backupBusy = false;
+  var restoreBusy = false;
+  var backupLastCache = null;
+  var backupReminderMuted = false;
+  var testFailPhotoWrite = false;
+  var pendingRestore = null;
+
+  /* ---- 规范化 JSON 与 SHA-256（Web Crypto 优先；非安全上下文用纯 JS 兜底） ---- */
+  function canonicalJson(v){
+    if(v === undefined) return 'null';
+    if(v === null || typeof v !== 'object') return JSON.stringify(v);
+    if(Array.isArray(v)) return '[' + v.map(canonicalJson).join(',') + ']';
+    var keys = Object.keys(v).sort();
+    return '{' + keys.map(function(k){ return JSON.stringify(k) + ':' + canonicalJson(v[k]); }).join(',') + '}';
+  }
+  var SHA_K = [
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+  ];
+  function sha256Fallback(str){
+    var bytes = new TextEncoder().encode(String(str));
+    var len = bytes.length;
+    var total = (((len + 8) >> 6) + 1) * 64;
+    var buf = new Uint8Array(total);
+    buf.set(bytes);
+    buf[len] = 0x80;
+    var hi = Math.floor(len * 8 / 4294967296), lo = (len * 8) >>> 0;
+    buf[total-8] = hi >>> 24; buf[total-7] = (hi >>> 16) & 255; buf[total-6] = (hi >>> 8) & 255; buf[total-5] = hi & 255;
+    buf[total-4] = lo >>> 24; buf[total-3] = (lo >>> 16) & 255; buf[total-2] = (lo >>> 8) & 255; buf[total-1] = lo & 255;
+    function rotr(x, n){ return (x >>> n) | (x << (32-n)); }
+    var H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+    for(var off = 0; off < total; off += 64){
+      var w = new Uint32Array(64);
+      for(var i = 0; i < 16; i++){
+        w[i] = (buf[off+i*4] << 24) | (buf[off+i*4+1] << 16) | (buf[off+i*4+2] << 8) | buf[off+i*4+3];
+      }
+      for(i = 16; i < 64; i++){
+        var s0 = rotr(w[i-15],7) ^ rotr(w[i-15],18) ^ (w[i-15] >>> 3);
+        var s1 = rotr(w[i-2],17) ^ rotr(w[i-2],19) ^ (w[i-2] >>> 10);
+        w[i] = (w[i-16] + s0 + w[i-7] + s1) >>> 0;
+      }
+      var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+      for(i = 0; i < 64; i++){
+        var S1 = rotr(e,6) ^ rotr(e,11) ^ rotr(e,25);
+        var ch = (e & f) ^ ((~e) & g);
+        var t1 = (h + S1 + ch + SHA_K[i] + w[i]) >>> 0;
+        var S0 = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22);
+        var maj = (a & b) ^ (a & c) ^ (b & c);
+        var t2 = (S0 + maj) >>> 0;
+        h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+      }
+      H[0] = (H[0]+a) >>> 0; H[1] = (H[1]+b) >>> 0; H[2] = (H[2]+c) >>> 0; H[3] = (H[3]+d) >>> 0;
+      H[4] = (H[4]+e) >>> 0; H[5] = (H[5]+f) >>> 0; H[6] = (H[6]+g) >>> 0; H[7] = (H[7]+h) >>> 0;
+    }
+    return H.map(function(x){ return ('00000000' + x.toString(16)).slice(-8); }).join('');
+  }
+  function sha256Hex(str){
+    var subtle = null;
+    try{ if(window.crypto && window.crypto.subtle && window.TextEncoder) subtle = window.crypto.subtle; }catch(e){ subtle = null; }
+    if(subtle){
+      try{
+        return subtle.digest('SHA-256', new TextEncoder().encode(String(str))).then(function(buf){
+          var arr = new Uint8Array(buf), out = '';
+          for(var i = 0; i < arr.length; i++) out += ('00' + arr[i].toString(16)).slice(-2);
+          return out;
+        }).catch(function(){ return sha256Fallback(str); });
+      }catch(e){ return Promise.resolve(sha256Fallback(str)); }
+    }
+    return Promise.resolve(sha256Fallback(str));
+  }
+  function backupChecksum(payload, photos){
+    var list = (photos || []).slice().sort(function(a, b){ return String(a.id) < String(b.id) ? -1 : (String(a.id) > String(b.id) ? 1 : 0); });
+    return sha256Hex(canonicalJson({ payload:payload, photos:list }));
+  }
+
+  /* ---- 上次备份记录 ---- */
+  function backupLast(){
+    if(backupLastCache) return backupLastCache;
+    try{
+      var o = JSON.parse(localStorage.getItem(BACKUP_LAST_KEY) || 'null');
+      backupLastCache = (o && num(o.at) > 0) ? o : null;
+    }catch(e){ backupLastCache = null; }
+    return backupLastCache;
+  }
+  function setBackupLast(o){
+    backupLastCache = o;
+    try{ localStorage.setItem(BACKUP_LAST_KEY, JSON.stringify(o)); }
+    catch(e){ logError('备份时间记录', e); }
+  }
+  function backupAgoText(last){
+    if(!last) return '还没有完整备份';
+    var days = Math.floor((Date.now() - num(last.at)) / 86400000);
+    var dtext = days <= 0 ? '今天' : days + ' 天前';
+    return dtext + '（' + num(last.records) + ' 条 / ' + fmtBytes(num(last.sizeBytes)) + '）';
+  }
+  function backupDateText(t){
+    var d = new Date(num(t) || t);
+    if(isNaN(d.getTime())) return '未知时间';
+    return d.toLocaleString('zh-CN', { hour12:false });
+  }
+  function backupChangesCount(last){
+    if(!last) return db.records.length;
+    var iso = new Date(num(last.at)).toISOString();
+    return db.records.filter(function(r){ return String(r.updatedAt || r.createdAt || '') > iso; }).length;
+  }
+
+  /* ---- 备份内容与体积估算 ---- */
+  /* 迁移不会带走的可迁移本机标记（引导/教程）；键名固定，便于跨版本恢复 */
+  var BACKUP_LOCAL_KEYS = ['fandazi.guide.done', 'fandazi.tut.hint'];
+  function backupLocalConfig(){
+    var out = {};
+    BACKUP_LOCAL_KEYS.forEach(function(k){
+      try{
+        var v = localStorage.getItem(k);
+        if(v != null) out[k] = v;
+      }catch(e){}
+    });
+    return out;
+  }
+  function applyBackupLocalConfig(cfg, replace){
+    cfg = cfg || {};
+    BACKUP_LOCAL_KEYS.forEach(function(k){
+      try{
+        if(cfg[k] != null) localStorage.setItem(k, String(cfg[k]));
+        else if(replace) localStorage.removeItem(k);
+      }catch(e){ logError('恢复本机标记', e); }
+    });
+  }
+  function backupPayloadOf(){
+    return JSON.parse(JSON.stringify({
+      version: db.version,
+      settings: db.settings,
+      blacklist: db.blacklist,
+      wishlist: db.wishlist,
+      votes: db.votes,
+      places: db.places,
+      localConfig: backupLocalConfig(),
+      records: db.records
+    }));
+  }
+  function backupEstimate(){
+    return photoStats().then(function(ps){
+      var text = 0;
+      try{ text = JSON.stringify(backupPayloadOf()).length; }catch(e){ text = 0; }
+      var total = text + num(ps.bytes) + 320;
+      return {
+        records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length,
+        photos: ps.count, photoBytes: num(ps.bytes), textBytes: text,
+        sizeBytes: total, warn: total > BACKUP_WARN_BYTES
+      };
+    }).catch(function(){
+      return { records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length, photos: 0, photoBytes: 0, textBytes: 0, sizeBytes: 0, warn: false };
+    });
+  }
+  function backupPhotos(){
+    return photoStore('readonly').then(function(store){
+      return new Promise(function(resolve, reject){
+        var out = [];
+        var req = store.openCursor();
+        req.onsuccess = function(){
+          var cur = req.result;
+          if(!cur){
+            out.sort(function(a, b){ return a.id < b.id ? -1 : (a.id > b.id ? 1 : 0); });
+            resolve(out);
+            return;
+          }
+          var v = cur.value;
+          if(v && typeof v.id === 'string' && typeof v.dataUrl === 'string' && v.dataUrl.indexOf('data:image/') === 0){
+            out.push({ id:v.id, dataUrl:v.dataUrl });
+          }
+          cur.continue();
+        };
+        req.onerror = function(){ reject(req.error || new Error('照片读取失败')); };
+      });
+    });
+  }
+  function backupIdList(){
+    return photoStore('readonly').then(function(store){
+      return new Promise(function(resolve){
+        var out = [];
+        var req = store.openCursor();
+        req.onsuccess = function(){
+          var cur = req.result;
+          if(!cur){ resolve(out); return; }
+          if(cur.value && cur.value.id) out.push(cur.value.id);
+          cur.continue();
+        };
+        req.onerror = function(){ resolve(out); };
+      });
+    }).catch(function(){ return []; });
+  }
+  function buildBackupObject(){
+    var payload = backupPayloadOf();
+    return backupPhotos().then(function(photos){
+      return backupChecksum(payload, photos).then(function(sum){
+        var photoBytes = 0;
+        photos.forEach(function(p){ photoBytes += p.dataUrl.length; });
+        return {
+          format: BACKUP_FORMAT,
+          app: '饭搭子',
+          schemaVersion: db.version,
+          exportedAt: new Date().toISOString(),
+          checksum: { algo:'SHA-256', scope:'canonical(payload+photos)', value:sum },
+          stats: {
+            records: payload.records.length, stores: getStores().length,
+            wishlist: payload.wishlist.length, blacklist: payload.blacklist.length,
+            votes: payload.votes.length, places: payload.places.length,
+            settingsKeys: Object.keys(payload.settings || {}).length,
+            localConfigKeys: Object.keys(payload.localConfig || {}).length,
+            photos: photos.length, photoBytes: photoBytes
+          },
+          payload: payload,
+          photos: photos
+        };
+      });
+    });
+  }
+  function backupFilename(){ return '饭搭子-完整备份-' + todayStr() + '.fandazi-backup.json'; }
+  function generateBackupFile(){
+    if(backupBusy) return Promise.resolve({ busy:true });
+    backupBusy = true;
+    var t0 = nowMs();
+    return buildBackupObject().then(function(obj){
+      var text = JSON.stringify(obj);
+      download(backupFilename(), text, 'application/json');
+      setBackupLast({
+        at: Date.now(), records: obj.stats.records, stores: obj.stats.stores,
+        photos: obj.stats.photos, photoBytes: obj.stats.photoBytes, sizeBytes: text.length,
+        schemaVersion: obj.schemaVersion, exportedAt: obj.exportedAt
+      });
+      backupBusy = false;
+      renderMore();
+      return {
+        ok:true, name:backupFilename(), size:text.length, ms:Math.round(nowMs() - t0),
+        records:obj.stats.records, photos:obj.stats.photos, photoBytes:obj.stats.photoBytes,
+        snapshotDebug: false
+      };
+    }).catch(function(e){
+      backupBusy = false;
+      logError('完整备份', e);
+      throw e;
+    });
+  }
+
+  /* ---- 校验与解析 ---- */
+  function parseBackupText(text){
+    var raw = String(text == null ? '' : text).trim();
+    if(!raw) throw new Error('文件内容为空');
+    var obj;
+    try{ obj = JSON.parse(raw); }
+    catch(e){ throw new Error('不是有效的 JSON：文件可能被截断或编码损坏'); }
+    if(!obj || typeof obj !== 'object' || obj.format !== BACKUP_FORMAT){
+      throw new Error('不是「饭搭子」完整备份文件（缺少 format=' + BACKUP_FORMAT + '）');
+    }
+    var ver = num(obj.schemaVersion);
+    if(!ver) throw new Error('备份文件缺少 schemaVersion，无法判断版本兼容性');
+    if(ver > db.version) throw new Error('备份版本 '+ver+' 高于当前应用支持的 '+db.version+'，请先升级应用再恢复');
+    if(!obj.payload || !Array.isArray(obj.payload.records)) throw new Error('备份内容缺少记录列表');
+    if(!obj.checksum || !obj.checksum.value) throw new Error('备份文件缺少校验值，无法确认完整性');
+    if(!Array.isArray(obj.photos)) obj.photos = [];
+    for(var i = 0; i < obj.photos.length; i++){
+      var p = obj.photos[i];
+      if(!p || typeof p.id !== 'string' || typeof p.dataUrl !== 'string' || p.dataUrl.indexOf('data:image/') !== 0){
+        throw new Error('备份里的照片数据格式不正确（第 '+(i+1)+' 张）');
+      }
+    }
+    return obj;
+  }
+  function verifyBackup(obj){
+    return backupChecksum(obj.payload, obj.photos).then(function(sum){
+      if(String(obj.checksum.value).toLowerCase() !== sum){
+        throw new Error('校验失败：文件内容与校验值不一致，可能已损坏或被修改');
+      }
+      return true;
+    });
+  }
+  function countMissingPhotos(norm, photoMap){
+    var n = 0;
+    (norm.records || []).forEach(function(r){ if(r.photoId && !photoMap[r.photoId]) n++; });
+    return n;
+  }
+
+  /* ---- 恢复点（IndexedDB snapshots，保留最近 2 份；照片只存引用） ---- */
+  function makeSnapshot(reason){
+    if(!idbSupported()) return Promise.resolve(null);
+    var photoIds = [];
+    db.records.forEach(function(r){ if(r.photoId) photoIds.push(r.photoId); });
+    var snap = {
+      id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      at: Date.now(),
+      reason: String(reason || ''),
+      records: db.records.length,
+      photoIds: uniq(photoIds),
+      localConfig: backupLocalConfig(),
+      data: JSON.parse(JSON.stringify({
+        version: db.version,
+        records: db.records,
+        settings: db.settings,
+        blacklist: db.blacklist,
+        wishlist: db.wishlist,
+        votes: db.votes,
+        places: db.places,
+        localConfig: backupLocalConfig()
+      }))
+    };
+    return snapshotStore('readwrite').then(function(store){
+      return new Promise(function(resolve, reject){
+        var req = store.put(snap);
+        req.onsuccess = function(){ resolve(snap); };
+        req.onerror = function(){ reject(req.error || new Error('恢复点写入失败')); };
+      });
+    }).then(function(s){
+      return snapshotTrim().then(function(){ return s; });
+    }).catch(function(e){
+      logError('恢复点写入', e);
+      return null;
+    });
+  }
+  function snapshotAll(){
+    if(!idbSupported()) return Promise.resolve([]);
+    return snapshotStore('readonly').then(function(store){
+      return new Promise(function(resolve){
+        var out = [];
+        var req = store.openCursor();
+        req.onsuccess = function(){
+          var cur = req.result;
+          if(!cur){
+            out.sort(function(a, b){ return num(b.at) - num(a.at); });
+            resolve(out);
+            return;
+          }
+          if(cur.value) out.push(cur.value);
+          cur.continue();
+        };
+        req.onerror = function(){ resolve(out); };
+      });
+    }).catch(function(){ return []; });
+  }
+  function snapshotTrim(){
+    return snapshotAll().then(function(list){
+      var extra = list.slice(SNAPSHOT_LIMIT);
+      if(!extra.length) return true;
+      return Promise.all(extra.map(function(s){
+        return snapshotStore('readwrite').then(function(store){
+          return new Promise(function(resolve){
+            var req = store.delete(s.id);
+            req.onsuccess = function(){ resolve(true); };
+            req.onerror = function(){ resolve(false); };
+          });
+        });
+      })).catch(function(){ return false; });
+    });
+  }
+  function snapshotReasonText(reason){
+    if(reason === 'before-import') return '导入好友分享前';
+    if(reason === 'before-restore') return '恢复完整备份前';
+    return '导入前';
+  }
+  function commitDbString(str){
+    var old = null;
+    try{ old = localStorage.getItem(KEY); }catch(e){ old = null; }
+    try{ localStorage.setItem(BACKUP_TMP_KEY, str); }
+    catch(e){
+      try{ localStorage.removeItem(BACKUP_TMP_KEY); }catch(_e){}
+      throw new Error('空间不足：本机 localStorage 写入失败，未改动原数据');
+    }
+    try{
+      if(old && old.length > 2) localStorage.setItem(BAK_KEY, old);
+      localStorage.setItem(KEY, str);
+    }catch(e){
+      try{ if(old != null) localStorage.setItem(KEY, old); }catch(_e){}
+      try{ localStorage.removeItem(BACKUP_TMP_KEY); }catch(_e2){}
+      throw new Error('空间不足：本机 localStorage 写入失败，已还原原数据');
+    }
+    try{
+      if(localStorage.getItem(KEY) !== str) throw new Error('readback');
+      localStorage.removeItem(BACKUP_TMP_KEY);
+    }catch(e){
+      try{ if(old != null) localStorage.setItem(KEY, old); }catch(_e){}
+      throw new Error('写入校验失败，已还原原数据');
+    }
+  }
+  function applyBackupRestore(obj, mode){
+    if(restoreBusy) return Promise.reject(new Error('正在恢复，请稍候'));
+    restoreBusy = true;
+    var t0 = nowMs();
+    var norm = migrate(obj.payload);
+    // migrate 不处理 votes，这里按备份原样补回，保证完整恢复
+    norm.votes = JSON.parse(JSON.stringify(Array.isArray(obj.payload.votes) ? obj.payload.votes : []));
+    var photoMap = {};
+    obj.photos.forEach(function(p){ photoMap[p.id] = p.dataUrl; });
+    var written = [];
+    var snapRef = null;
+    return makeSnapshot('before-restore').then(function(snap){
+      snapRef = snap;
+      return backupIdList();
+    }).then(function(existing){
+      var exists = {};
+      existing.forEach(function(id){ exists[id] = 1; });
+      var i = 0;
+      function step(){
+        if(i >= obj.photos.length) return Promise.resolve();
+        var p = obj.photos[i++];
+        if(exists[p.id]) return step();  // 已存在同样 id 的照片，不覆盖
+        if(testFailPhotoWrite) return Promise.reject(new Error('test-fail-photo'));
+        return photoPut(p.id, p.dataUrl).then(function(){ written.push(p.id); return step(); }, function(err){ throw err; });
+      }
+      return step().then(function(){ return true; }, function(err){
+        written.forEach(function(id){ photoDelete(id); });
+        var name = (err && err.name) || '';
+        if(name === 'QuotaExceededError') throw new Error('空间不足：IndexedDB 无法写入照片，本机数据未改动');
+        throw new Error('照片写入失败' + (testFailPhotoWrite ? '（测试注入）' : '') + '，本机数据未改动');
+      });
+    }).then(function(){
+      var next, stats;
+      if(mode === 'replace'){
+        next = norm;
+        stats = { added:norm.records.length, skipped:0, replaced:true };
+      }else{
+        next = JSON.parse(JSON.stringify(db));
+        var rows = importClassify(norm.records, '完整备份');
+        var added = 0, skipped = 0;
+        rows.forEach(function(row){
+          if(row.status !== 'new'){ skipped++; return; }
+          var rec = JSON.parse(JSON.stringify(row.rec));
+          rec.photo = null;
+          if(!rec.photoId || !photoMap[rec.photoId]) rec.photoId = null;
+          if(!rec.id || next.records.some(function(x){ return x.id === rec.id; })) rec.id = newId('r');
+          rec.createdAt = rec.createdAt || new Date().toISOString();
+          rec.updatedAt = rec.updatedAt || rec.createdAt;
+          rec.source = 'backup';
+          next.records.unshift(rec);
+          added++;
+        });
+        stats = { added:added, skipped:skipped, replaced:false };
+      }
+      var str;
+      try{ str = JSON.stringify(next); }
+      catch(e){ throw new Error('数据序列化失败，本机数据未改动'); }
+      commitDbString(str);
+      db = next;
+      invalidateStores();
+      lastSavedStr = str;
+      if(mode === 'replace') applyBackupLocalConfig(obj.payload.localConfig, true);
+      restoreBusy = false;
+      renderAll();
+      return {
+        ok:true, mode:mode, added:stats.added, skipped:stats.skipped, replaced:!!stats.replaced,
+        photos:obj.photos.length, photoBytes:num(obj.stats && obj.stats.photoBytes),
+        missingPhotos:countMissingPhotos(norm, photoMap), ms:Math.round(nowMs() - t0),
+        snapshotId:snapRef ? snapRef.id : null
+      };
+    }).catch(function(e){
+      restoreBusy = false;
+      if(!testFailPhotoWrite) logError('恢复备份', e);
+      throw e;
+    });
+  }
+  function restoreSnapshotById(id){
+    return snapshotAll().then(function(list){
+      var snap = list.filter(function(s){ return s.id === id; })[0];
+      if(!snap) throw new Error('恢复点不存在或已被覆盖');
+      var norm = migrate(snap.data);
+      norm.votes = JSON.parse(JSON.stringify(Array.isArray(snap.data.votes) ? snap.data.votes : []));
+      var str = JSON.stringify(norm);
+      commitDbString(str);
+      db = norm;
+      invalidateStores();
+      lastSavedStr = str;
+      applyBackupLocalConfig(snap.data.localConfig, true);
+      renderAll();
+      return { ok:true, records:db.records.length, photos:snap.photoIds ? snap.photoIds.length : 0, at:snap.at };
+    });
+  }
+
+  /* ---- 备份 / 恢复界面（复用现有 modal / toast / 按钮风格） ---- */
+  function openBackupModal(html){
+    $('#backupMask').classList.remove('hidden');
+    $('#backupModal').innerHTML = html;
+  }
+  function closeBackupModal(){ $('#backupMask').classList.add('hidden'); }
+  function backupErrorModal(msg, title){
+    openBackupModal(
+      '<div class="sheet-head" style="margin-bottom:8px"><h3>' + esc(title || '无法恢复') + '</h3>' +
+        '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+      '<p class="muted">' + esc(msg || '未知错误') + '</p>' +
+      '<p class="dist-note">原数据没有被修改；可重新选择文件或先用「导出 JSON」确认本机数据。</p>' +
+      '<div class="actions" style="margin-top:12px"><button class="btn btn-block" data-act="close">关闭</button></div>'
+    );
+  }
+  function openBackupPanel(){
+    openBackupModal('<h3>完整备份</h3><p class="muted">正在统计本机数据…</p>');
+    backupEstimate().then(function(est){
+      var last = backupLast();
+      var html =
+        '<div class="sheet-head" style="margin-bottom:8px"><h3>完整备份</h3>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+        '<p class="muted">把所有记录、配置与照片打包成一个 <b>.fandazi-backup.json</b> 文件，只保存到你选择的位置，不上传服务器。</p>' +
+        '<div class="stats" style="margin-top:10px">' +
+          '<div class="stat"><b>' + est.records + '</b><span>条记录</span></div>' +
+          '<div class="stat"><b>' + est.photos + '</b><span>张照片</span></div>' +
+          '<div class="stat"><b>' + fmtBytes(est.sizeBytes) + '</b><span>预计体积</span></div>' +
+        '</div>' +
+        '<p class="dist-note">照片以 base64 文本内联进 JSON，体积约等于现有照片总量（' + fmtBytes(est.photoBytes) + '）加记录文本；照片压缩规则沿用每张 ≤360px、最多 80 张。</p>' +
+        (est.warn ? '<p class="notice" style="margin-top:8px">体积超过 50 MB：生成与下载会占用较多内存和时间，仍可继续。低内存设备建议先清理旧照片。</p>' : '') +
+        '<p class="muted" style="margin-top:8px">' + (last ? '上次备份：' + backupAgoText(last) : '还没有生成过完整备份。') + '</p>' +
+        '<div class="actions" style="margin-top:14px">' +
+          '<button class="btn btn-primary btn-block" data-act="make">生成并下载备份</button>' +
+          '<button class="btn btn-block" data-act="close">取消</button>' +
+        '</div>';
+      $('#backupModal').innerHTML = html;
+    });
+  }
+  function uiGenerateBackup(){
+    if(backupBusy){ toast('正在生成备份，请稍候'); return; }
+    openBackupModal('<h3>正在生成备份…</h3><p class="muted">读取照片并计算 SHA-256 校验值，请勿关闭页面。</p>');
+    generateBackupFile().then(function(res){
+      openBackupModal(
+        '<div class="sheet-head" style="margin-bottom:8px"><h3>备份已生成</h3>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+        '<p class="muted">' + esc(res.name) + ' · ' + fmtBytes(res.size) + ' · 用时 ' + fmtMs(res.ms) + '</p>' +
+        '<p class="dist-note">记录 ' + res.records + ' 条、照片 ' + res.photos + ' 张（' + fmtBytes(res.photoBytes) + '）。浏览器下载到下载目录；APK 内会调起系统分享面板，选「保存到文件」即可。</p>' +
+        '<p class="muted" style="margin-top:8px">上次备份时间已更新为：' + backupAgoText(backupLast()) + '</p>' +
+        '<div class="actions" style="margin-top:12px"><button class="btn btn-block" data-act="close">完成</button></div>'
+      );
+      toast('已生成完整备份');
+    }).catch(function(e){
+      backupErrorModal('备份失败：' + (e && e.message ? e.message : '未知错误'), '备份失败');
+    });
+  }
+  function uiOpenRestorePreview(obj){
+    verifyBackup(obj).then(function(){
+      pendingRestore = obj;
+      var norm = migrate(obj.payload);
+      var rows = importClassify(norm.records, '完整备份');
+      var sum = importSummary(rows);
+      var missing = countMissingPhotos(norm, (function(){ var m = {}; obj.photos.forEach(function(p){ m[p.id] = 1; }); return m; })());
+      var totalPhotoBytes = 0;
+      obj.photos.forEach(function(p){ totalPhotoBytes += p.dataUrl.length; });
+      var html =
+        '<div class="sheet-head" style="margin-bottom:8px"><h3>恢复完整备份</h3>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+        '<p class="muted">备份时间 ' + esc(backupDateText(obj.exportedAt)) + ' · 数据结构 version ' + num(obj.schemaVersion) + '（当前 ' + db.version + '）</p>' +
+        '<div class="stats" style="margin-top:10px">' +
+          '<div class="stat"><b>' + norm.records.length + '</b><span>条记录</span></div>' +
+          '<div class="stat"><b>' + obj.photos.length + '</b><span>张照片</span></div>' +
+          '<div class="stat"><b>' + fmtBytes(totalPhotoBytes) + '</b><span>照片体积</span></div>' +
+        '</div>' +
+        '<p class="dist-note">配置：偏好 ' + Object.keys(norm.settings || {}).length + ' 项 · 黑名单 ' + norm.blacklist.length + ' · 常用地点 ' + norm.places.length + ' · 想去 ' + norm.wishlist.length + ' · 投票 ' + (obj.payload.votes ? obj.payload.votes.length : 0) +
+          '；校验值已通过（SHA-256）。' + (missing ? ' 有 ' + missing + ' 条记录引用的照片不在备份里，这些记录会保留无图状态。' : '') + '</p>' +
+        '<div class="field" style="margin-top:12px"><label>恢复方式</label>' +
+          '<select class="input" id="restoreMode">' +
+            '<option value="merge">合并：按 城市+店名+日期 去重（人均差 ≤10% 视为同一条）</option>' +
+            '<option value="replace">完整替换：还原备份原样（会替换当前全部记录与配置）</option>' +
+          '</select></div>' +
+        '<div class="import-sum" style="margin-top:6px"><div><b>' + sum.new + '</b><span>可新增</span></div><div><b>' + sum.dup + '</b><span>重复</span></div><div><b>' + sum.conflict + '</b><span>冲突</span></div></div>' +
+        '<p class="dist-note">合并模式只写入「可新增」，重复与冲突保留本机；完整替换会恢复备份里的全部记录。两种模式都会在写入前自动保存本机恢复点。</p>' +
+        '<div class="import-warn">恢复前会自动把当前数据存到本机恢复点（只保留最近 2 份，下一次导入会覆盖最旧的一份）；恢复点不是长期存档，请另存备份文件。</div>' +
+        '<div class="actions" style="margin-top:12px">' +
+          '<button class="btn btn-primary" data-act="doRestore">开始恢复</button>' +
+          '<button class="btn" data-act="close">取消</button>' +
+        '</div>';
+      openBackupModal(html);
+    }).catch(function(e){
+      pendingRestore = null;
+      backupErrorModal(e && e.message ? e.message : '校验失败');
+    });
+  }
+  function uiApplyRestore(){
+    if(!pendingRestore){ toast('请先选择备份文件'); return; }
+    if(restoreBusy){ toast('正在恢复，请稍候'); return; }
+    var mode = ($('#restoreMode') && $('#restoreMode').value === 'replace') ? 'replace' : 'merge';
+    if(mode === 'replace' && !confirm('完整替换会用备份内容覆盖当前全部记录与配置，确定继续？\n（恢复前会自动保存本机恢复点）')) return;
+    openBackupModal('<h3>正在恢复…</h3><p class="muted">正在写入照片并切换数据；期间请勿关闭页面。</p>');
+    applyBackupRestore(pendingRestore, mode).then(function(res){
+      pendingRestore = null;
+      openBackupModal(
+        '<div class="sheet-head" style="margin-bottom:8px"><h3>恢复完成</h3>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+        '<p class="muted">' + (res.replaced ? '已完整替换为备份内容' : '合并完成') + '：写入 ' + res.added + ' 条，跳过 ' + res.skipped + ' 条，恢复照片 ' + res.photos + ' 张（' + fmtBytes(res.photoBytes) + '），用时 ' + fmtMs(res.ms) + '。</p>' +
+        (res.missingPhotos ? '<p class="dist-note">有 ' + res.missingPhotos + ' 条记录引用的照片缺失，已保留无图状态。</p>' : '') +
+        '<p class="dist-note">恢复前的本机数据已存为恢复点；若结果不对，可点下方按钮回到恢复前。</p>' +
+        '<div class="actions" style="margin-top:12px">' +
+          '<button class="btn btn-danger" data-act="undoRestore">恢复到恢复前</button>' +
+          '<button class="btn" data-act="close">完成</button>' +
+        '</div>'
+      );
+      renderMore();
+      toast('已恢复备份');
+    }).catch(function(e){
+      backupErrorModal('恢复失败：' + (e && e.message ? e.message : '未知错误'), '恢复失败');
+    });
+  }
+  function uiRestoreLatestSnapshot(){
+    snapshotAll().then(function(list){
+      if(!list.length){ toast('没有可用的恢复点'); return; }
+      var snap = list[0];
+      if(!confirm('恢复到 ' + backupDateText(snap.at) + ' 的恢复点（' + snap.records + ' 条）？当前数据会被覆盖。')) return;
+      return restoreSnapshotById(snap.id).then(function(res){
+        openBackupModal(
+          '<div class="sheet-head" style="margin-bottom:8px"><h3>已恢复</h3>' +
+            '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+          '<p class="muted">已回到 ' + esc(backupDateText(res.at)) + ' 的恢复点：' + res.records + ' 条记录，照片引用 ' + res.photos + ' 张。</p>' +
+          '<div class="actions" style="margin-top:12px"><button class="btn btn-block" data-act="close">完成</button></div>'
+        );
+        toast('已恢复到恢复前');
+      });
+    }).catch(function(e){
+      backupErrorModal('恢复点还原失败：' + (e && e.message ? e.message : '未知错误'));
+    });
+  }
+  function renderBackupState(){
+    var el = $('#backupState');
+    if(!el) return;
+    var last = backupLast();
+    el.textContent = last
+      ? '上次备份：' + backupAgoText(last) + ' · ' + backupDateText(last.at)
+      : '还没有完整备份：建议现在生成一份，换设备或清缓存后可用它恢复。';
+    var box = $('#snapshotBox');
+    if(!box) return;
+    snapshotAll().then(function(list){
+      if(activeView !== 'more') return;
+      if(!list.length){
+        box.innerHTML = '<p class="dist-note">还没有恢复点。每次导入好友分享或恢复完整备份前，会自动保存一份（仅最近 2 份）。</p>';
+        return;
+      }
+      box.innerHTML = '<p class="dist-note">最近的恢复点（仅保留 2 份，下一次导入会覆盖最旧的一份；照片只存引用，不重复占空间）：</p>' +
+        list.map(function(s){
+          return '<div class="import-row"><div class="grow"><b>' + esc(backupDateText(s.at)) + '</b> · ' + num(s.records) + ' 条 · ' + esc(snapshotReasonText(s.reason)) +
+            '<br><span class="muted">照片引用 ' + (s.photoIds ? s.photoIds.length : 0) + ' 张</span></div>' +
+            '<button type="button" class="btn btn-sm" data-snap="' + esc(s.id) + '">恢复</button></div>';
+        }).join('');
+    });
+  }
+  function backupNeedsReminder(){
+    if(!db.records.length) return null;
+    var last = backupLast();
+    if(!last) return { text:'还没有完整备份 · ' + db.records.length + ' 条记录只在本机' };
+    var days = (Date.now() - num(last.at)) / 86400000;
+    var changes = backupChangesCount(last);
+    if(days > 7 || changes >= 10){
+      return { text:'上次备份 ' + backupAgoText(last) + ' · 自上次备份新增/修改 ' + changes + ' 条' };
+    }
+    return null;
+  }
+  function renderBackupReminder(){
+    var bar = $('#backupRemindBar');
+    if(!bar) return;
+    if(activeView !== 'more' || backupReminderMuted){ bar.classList.add('hidden'); return; }
+    var info = backupNeedsReminder();
+    if(!info){ bar.classList.add('hidden'); return; }
+    $('#backupRemindText').textContent = '建议备份：' + info.text;
+    bar.classList.remove('hidden');
+  }
+  function onBackupModalClick(e){
+    var t = e.target.closest ? e.target.closest('[data-act]') : null;
+    if(!t) return;
+    var act = t.getAttribute('data-act');
+    if(act === 'close') closeBackupModal();
+    else if(act === 'make') uiGenerateBackup();
+    else if(act === 'doRestore') uiApplyRestore();
+    else if(act === 'undoRestore') uiRestoreLatestSnapshot();
+  }
+  function readBackupFile(file){
+    if(!file) return;
+    if(file.size > BACKUP_FILE_MAX){
+      backupErrorModal('文件超过 200MB 上限（' + Math.round(file.size / 1024 / 1024) + 'MB），未读取', '文件过大');
+      return;
+    }
+    var fr = new FileReader();
+    fr.onload = function(){
+      var text = String(fr.result || '');
+      var obj;
+      try{ obj = parseBackupText(text); }
+      catch(e){ backupErrorModal(e && e.message ? e.message : '无法解析备份文件'); return; }
+      uiOpenRestorePreview(obj);
+    };
+    fr.onerror = function(){ backupErrorModal('文件读取失败，请重试'); };
+    fr.readAsText(file);
+  }
+  $('#backupMask').addEventListener('click', function(e){
+    if(e.target === this){ closeBackupModal(); return; }
+    onBackupModalClick(e);
+  });
+  $('#snapshotBox').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-snap]') : null;
+    if(!b) return;
+    var id = b.getAttribute('data-snap');
+    if(!confirm('恢复到这个恢复点？当前数据会被覆盖。')) return;
+    restoreSnapshotById(id).then(function(res){
+      openBackupModal(
+        '<div class="sheet-head" style="margin-bottom:8px"><h3>已恢复</h3>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+        '<p class="muted">已回到 ' + esc(backupDateText(res.at)) + ' 的恢复点：' + res.records + ' 条记录，照片引用 ' + res.photos + ' 张。</p>' +
+        '<div class="actions" style="margin-top:12px"><button class="btn btn-block" data-act="close">完成</button></div>'
+      );
+      toast('已恢复到恢复点');
+    }).catch(function(e){
+      backupErrorModal('恢复点还原失败：' + (e && e.message ? e.message : '未知错误'));
+    });
+  });
 
   function guessMeal(){
     var h = testClock ? testClock.h : new Date().getHours();
@@ -6913,6 +7658,18 @@
   $('#btnExportJson').addEventListener('click', exportJson);
   $('#btnExportCsv').addEventListener('click', exportCsv);
   $('#btnImport').addEventListener('click', function(){ openImport({}); });
+  $('#btnBackup').addEventListener('click', openBackupPanel);
+  $('#btnRestore').addEventListener('click', function(){ $('#fileRestore').click(); });
+  $('#fileRestore').addEventListener('change', function(e){
+    var f = e.target.files && e.target.files[0];
+    if(f) readBackupFile(f);
+    e.target.value = '';
+  });
+  $('#btnBackupGo').addEventListener('click', openBackupPanel);
+  $('#btnBackupClose').addEventListener('click', function(){
+    backupReminderMuted = true;
+    renderBackupReminder();
+  });
 
   /* B3 批量选择与导出 */
   $('#btnSelectMode').addEventListener('click', function(){ toggleSelectMode(); });
@@ -7402,6 +8159,91 @@
       file: readImportFile,
       photo: photoGet,
       close: closeImport
+    },
+    backup: {
+      build: buildBackupObject,
+      text: function(){ return buildBackupObject().then(function(o){ return JSON.stringify(o); }); },
+      checksum: backupChecksum,
+      sha: sha256Hex,
+      shaFallback: sha256Fallback,
+      parse: parseBackupText,
+      verify: verifyBackup,
+      parseVerify: function(text){ var o = parseBackupText(text); return verifyBackup(o).then(function(){ return o; }); },
+      restore: function(text, mode){ return applyBackupRestore(parseBackupText(text), mode) },
+      last: backupLast,
+      estimate: backupEstimate,
+      snapshots: snapshotAll,
+      snapshot: function(reason){ return makeSnapshot(reason || 'test'); },
+      restoreSnapshot: restoreSnapshotById,
+      failPhoto: function(on){ testFailPhotoWrite = !!on; return testFailPhotoWrite; },
+      reminder: function(){ backupReminderMuted = false; renderBackupReminder(); return { visible: !$('#backupRemindBar').classList.contains('hidden'), text: $('#backupRemindText').textContent }; },
+      state: function(){ renderBackupState(); return { last:backupLast(), text:$('#backupState') ? $('#backupState').textContent : '' }; },
+      photoDigests: function(){
+        return backupPhotos().then(function(list){
+          return Promise.all(list.map(function(p){
+            return sha256Hex(p.dataUrl).then(function(h){ return { id:p.id, bytes:p.dataUrl.length, sha:h }; });
+          }));
+        });
+      },
+      photoIds: backupIdList,
+      clearPhotos: function(){
+        return photoStore('readwrite').then(function(store){
+          return new Promise(function(resolve, reject){
+            var req = store.openCursor();
+            req.onsuccess = function(){
+              var cur = req.result;
+              if(!cur){ resolve(true); return; }
+              cur.delete();
+              cur.continue();
+            };
+            req.onerror = function(){ reject(req.error || new Error('清空照片失败')); };
+          });
+        });
+      },
+      db: function(){ return JSON.parse(JSON.stringify(db)); },
+      seedRecords: function(records){
+        db.records = JSON.parse(JSON.stringify(records || []));
+        save(); invalidateStores(); renderAll();
+        return db.records.length;
+      },
+      seedState: function(st){
+        st = st || {};
+        ['settings','blacklist','wishlist','votes','places'].forEach(function(k){
+          if(st[k] && typeof st[k] === 'object') db[k] = JSON.parse(JSON.stringify(st[k]));
+        });
+        if(Array.isArray(st.records)) db.records = JSON.parse(JSON.stringify(st.records));
+        save(); invalidateStores(); renderAll();
+        return { records:db.records.length, settings:Object.keys(db.settings).length, places:db.places.length, blacklist:db.blacklist.length, wishlist:db.wishlist.length, votes:db.votes.length };
+      },
+      recordLast: function(o){ setBackupLast(o || {}); renderMore(); renderBackupReminder(); return backupLast(); },
+      seedPhoto: function(id, dataUrl){
+        return photoPut(id, dataUrl).then(function(){ return true; });
+      },
+      clearRecords: function(){
+        db.records = []; save(); invalidateStores(); renderAll(); return 0;
+      },
+      clearBackupMeta: function(){
+        try{ localStorage.removeItem(BACKUP_LAST_KEY); }catch(e){}
+        backupLastCache = null; return true;
+      },
+      craft: function(opts){
+        opts = opts || {};
+        return buildBackupObject().then(function(obj){
+          if(opts.schemaVersion != null){ obj.schemaVersion = Number(opts.schemaVersion); obj.payload.version = Number(opts.schemaVersion); }
+          if(opts.dropFields && opts.dropFields.length){
+            obj.payload.records = obj.payload.records.map(function(r){
+              var c = JSON.parse(JSON.stringify(r));
+              opts.dropFields.forEach(function(k){ delete c[k]; });
+              return c;
+            });
+          }
+          if(opts.records) obj.payload.records = JSON.parse(JSON.stringify(opts.records));
+          return backupChecksum(obj.payload, obj.photos).then(function(sum){
+            obj.checksum.value = sum;
+            return JSON.stringify(obj);
+          });
+        });
+      }
     },
     map: {
       urls: function(o){
