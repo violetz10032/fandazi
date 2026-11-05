@@ -856,6 +856,14 @@
         <p class="muted" style="margin-top:10px" id="verInfo"></p>
       </div>
 
+      <div class="card" id="v2Card">
+        <div class="section-head" style="margin:0 0 10px">
+          <h2>新版数据</h2>
+          <span class="hint" id="v2Hint"></span>
+        </div>
+        <div id="v2Box"></div>
+      </div>
+
       <div class="card">
         <div class="section-head" style="margin:0 0 10px">
           <h2>诊断</h2>
@@ -1863,6 +1871,36 @@
     };
   }
 
+  /**
+   * 迁移计划：用当前记录构建 v2，并按已有 v2 计算「新增 / 跳过 / 保留」。
+   * 迁移执行与界面预览共用这一个函数，保证预览数字与实际结果同源。
+   */
+  function v2PlanBuild(records, state, photoSet, existing, migratedAt){
+    var built = buildV2FromRecords(records, {
+      state: state, photoSet: photoSet, migratedAt: migratedAt
+    });
+    var addedVisits = 0, skippedVisits = 0, skippedShops = 0, keptVisits = 0;
+    if(existing){
+      var prevVisits = {}, prevShops = {};
+      (existing.visits || []).forEach(function(v){ prevVisits[String(v.id)] = 1; });
+      Object.keys(existing.shops || {}).forEach(function(sid){ prevShops[sid] = 1; });
+      Object.keys(built.shops || {}).forEach(function(sid){ if(prevShops[sid]) skippedShops++; });
+      built.visits.forEach(function(v){ if(prevVisits[v.id]) skippedVisits++; else addedVisits++; });
+      /* 保留迁移后新增、v1 里没有的到访与店铺，避免重跑迁移丢数据 */
+      var have = {};
+      built.visits.forEach(function(v){ have[v.id] = 1; });
+      (existing.visits || []).forEach(function(v){
+        if(!have[String(v.id)]){ built.visits.push(cloneJson(v)); keptVisits++; }
+      });
+      Object.keys(existing.shops || {}).forEach(function(sid){
+        if(!built.shops[sid]) built.shops[sid] = cloneJson(existing.shops[sid]);
+      });
+    }else{
+      addedVisits = built.visits.length;
+    }
+    return { built:built, addedVisits:addedVisits, skippedVisits:skippedVisits, skippedShops:skippedShops, keptVisits:keptVisits };
+  }
+
   /* v2 → 旧 db 结构（settings/places 复用 migrate 的归一化，records 由 visits 投影） */
   function projectV2(v2){
     v2 = v2 || {};
@@ -2127,30 +2165,10 @@
     return backupIdList().then(function(ids){
       var photoSet = {};
       ids.forEach(function(id){ photoSet[id] = 1; });
-      var built = buildV2FromRecords(records, {
-        state: state,
-        migratedAt: (existing && num(existing.migratedAt)) || Date.now(),
-        photoSet: photoSet
-      });
-      var addedVisits = 0, skippedVisits = 0, skippedShops = 0;
-      var prevVisits = {}, prevShops = {};
-      if(existing){
-        (existing.visits || []).forEach(function(v){ prevVisits[String(v.id)] = 1; });
-        Object.keys(existing.shops || {}).forEach(function(sid){ prevShops[sid] = 1; });
-        Object.keys(built.shops || {}).forEach(function(sid){ if(prevShops[sid]) skippedShops++; });
-        built.visits.forEach(function(v){ if(prevVisits[v.id]) skippedVisits++; else addedVisits++; });
-        /* 保留迁移后新增、v1 里没有的到访与店铺，避免重跑迁移丢数据 */
-        var have = {};
-        built.visits.forEach(function(v){ have[v.id] = 1; });
-        (existing.visits || []).forEach(function(v){
-          if(!have[String(v.id)]) built.visits.push(cloneJson(v));
-        });
-        Object.keys(existing.shops || {}).forEach(function(sid){
-          if(!built.shops[sid]) built.shops[sid] = cloneJson(existing.shops[sid]);
-        });
-      }else{
-        addedVisits = built.visits.length;
-      }
+      var plan = v2PlanBuild(records, state, photoSet, existing,
+        (existing && num(existing.migratedAt)) || Date.now());
+      var built = plan.built;
+      var addedVisits = plan.addedVisits, skippedVisits = plan.skippedVisits, skippedShops = plan.skippedShops;
       var sample = v2SampleDiff(built, records, 10);
       if(!sample.ok) throw new Error('迁移自检失败：' + sample.errors[0]);
       var builtStr = JSON.stringify(built);
@@ -5162,6 +5180,7 @@
     $('#verInfo').textContent = '当前数据结构 version '+db.version+'；旧版（v1）数据会自动升级并保留历史记录。';
     $('#storageSize').textContent = fmtBytes(storageBytes());
     renderBackupState();
+    renderV2Card();
     renderDiag();
     if(activeView === 'more'){
       photoStats().then(function(){
@@ -8952,6 +8971,308 @@
     $('#backupRemindText').textContent = '建议备份：' + info.text;
     bar.classList.remove('hidden');
   }
+  /* ================= 新版数据（v2）：迁移入口与安全操作 =================
+     只复用现有的卡片 / 备份弹窗 / notice 样式；未迁移时除本卡片外行为与旧版完全一致。 */
+  var v2UiBusy = false;
+  var V2_POST_KEY = 'fandazi.v2.postAction';
+
+  function v2EstimateMs(n){ return Math.max(30, Math.round(20 + num(n) * 0.03)); }
+  function v2ConfigCounts(){
+    return {
+      settings: Object.keys(db.settings || {}).length,
+      blacklist: (db.blacklist || []).length,
+      wishlist: (db.wishlist || []).length,
+      votes: (db.votes || []).length,
+      places: (db.places || []).length
+    };
+  }
+
+  function renderV2Card(){
+    var box = $('#v2Box'), hint = $('#v2Hint');
+    if(!box) return;
+    if(v2Active && v2Store){
+      var shops = Object.keys(v2Store.shops || {}).length;
+      var visits = (v2Store.visits || []).length;
+      var orphans = (v2Store.meta && v2Store.meta.orphanPhotos) ? v2Store.meta.orphanPhotos.length : 0;
+      var when = num(v2Store.migratedAt) ? backupDateText(num(v2Store.migratedAt)) : '未知时间';
+      if(hint) hint.textContent = '新版';
+      box.innerHTML =
+        '<p class="muted">当前使用新版数据（迁移于 ' + esc(when) + '，' + shops + ' 家店 / ' + visits + ' 条到访）。</p>' +
+        (orphans ? '<p class="dist-note">照片引用检查：' + orphans + ' 张照片在当前照片库中不存在（记录保留，可重建复核）。</p>' : '') +
+        '<div class="actions" style="margin-top:10px">' +
+          '<button class="btn" data-act="v2-rebuild">重建</button>' +
+          '<button class="btn btn-danger" data-act="v2-revert">回到旧版</button>' +
+        '</div>' +
+        '<p class="dist-note" style="margin-top:8px">旧版数据（fandazi.v1）保持只读，不会被写入；「回到旧版」会丢弃迁移后新增/修改的数据，但照片不会丢。</p>';
+      return;
+    }
+    if(hint) hint.textContent = '旧版';
+    var n = db.records.length;
+    box.innerHTML =
+      '<p class="muted">当前使用旧版数据（' + n + ' 条到访记录）。升级后数据拆成「店铺 + 到访」，旧数据会以只读副本保留，现有功能与界面不变。</p>' +
+      (v2Broken ? '<p class="dist-note">检测到无法读取的新版数据（fandazi.v2）；升级会按当前记录重建。</p>' : '') +
+      '<p class="notice" style="margin-top:8px">迁移不可自动撤销；旧数据只读保留；建议先备份再迁移。</p>' +
+      '<div class="actions" style="margin-top:10px">' +
+        '<button class="btn btn-primary" data-act="v2-upgrade">升级到新版数据</button>' +
+        '<button class="btn btn-soft" data-act="v2-backup-first">先备份再迁移</button>' +
+      '</div>';
+  }
+
+  /* 迁移预览：与 migrateToV2 共用 v2PlanBuild，保证预览数字与实际结果一致 */
+  function v2PreviewPlan(){
+    return backupIdList().then(function(ids){
+      var photoSet = {};
+      ids.forEach(function(id){ photoSet[id] = 1; });
+      var existing = null;
+      try{ existing = JSON.parse(localStorage.getItem(V2_KEY) || 'null'); }catch(e){ existing = null; }
+      var plan = v2PlanBuild(db.records, stateOfDb(db), photoSet, existing,
+        (existing && num(existing.migratedAt)) || Date.now());
+      var bytes = 0, v1Bytes = 0;
+      try{ bytes = JSON.stringify(plan.built).length; }catch(e){}
+      try{ v1Bytes = (localStorage.getItem(KEY) || '').length; }catch(e){}
+      return {
+        records: db.records.length,
+        shops: Object.keys(plan.built.shops || {}).length,
+        visits: plan.built.visits.length,
+        added: plan.addedVisits, skipped: plan.skippedVisits, kept: plan.keptVisits,
+        orphanPhotos: plan.built.meta.orphanPhotos || [],
+        bytes: bytes, v1Bytes: v1Bytes, existing: !!existing
+      };
+    });
+  }
+
+  function openV2MigrateSheet(){
+    if(v2UiBusy || v2Migrating){ toast('正在处理，请稍候'); return; }
+    openBackupModal('<h3>升级到新版数据</h3><p class="muted">正在统计本机数据…</p>');
+    v2PreviewPlan().then(function(p){
+      var delta = p.bytes - p.v1Bytes;
+      var pct = p.v1Bytes ? Math.round(Math.abs(delta) / p.v1Bytes * 1000) / 10 : 0;
+      var deltaText = (delta >= 0 ? '+' : '−') + fmtBytes(Math.abs(delta)) + (p.v1Bytes ? '（' + (delta >= 0 ? '+' : '−') + pct + '%）' : '');
+      openBackupModal(
+        '<div class="sheet-head" style="margin-bottom:8px"><h3>升级到新版数据</h3>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+        '<div class="stats">' +
+          '<div class="stat"><b>' + p.records + '</b><span>条记录</span></div>' +
+          '<div class="stat"><b>' + p.shops + '</b><span>家店铺</span></div>' +
+          '<div class="stat"><b>' + p.visits + '</b><span>条到访</span></div>' +
+        '</div>' +
+        '<p class="muted" style="margin-top:8px">将迁移 ' + p.records + ' 条 → ' + p.shops + ' 家店 / ' + p.visits + ' 条到访' +
+          (p.existing ? '（已有新版数据：重复 ' + p.skipped + ' 条会跳过，迁移后新增的 ' + p.kept + ' 条会保留）' : '') + '。</p>' +
+        '<p class="dist-note">预计耗时约 ' + v2EstimateMs(p.records) + ' ms；体积约 ' + fmtBytes(p.bytes) + '（旧数据 ' + fmtBytes(p.v1Bytes) + '，' + deltaText + '）。</p>' +
+        (p.orphanPhotos.length ? '<p class="dist-note">照片引用检查：有 ' + p.orphanPhotos.length + ' 张照片在当前照片库中不存在，会在结果里列出，不阻塞迁移。</p>' : '') +
+        '<p class="notice" style="margin-top:10px">迁移不可自动撤销；旧数据（fandazi.v1）会以只读副本完整保留，不会被写入；建议先备份再迁移。</p>' +
+        '<div class="actions" style="margin-top:12px">' +
+          '<button class="btn btn-primary" data-act="v2do-migrate">开始迁移</button>' +
+          '<button class="btn btn-soft" data-act="v2-backup-first">先备份再迁移</button>' +
+          '<button class="btn" data-act="close">取消</button>' +
+        '</div>'
+      );
+    }).catch(function(e){
+      backupErrorModal('无法生成迁移预览：' + (e && e.message ? e.message : '未知错误'), '升级预览失败');
+    });
+  }
+
+  function runV2Migrate(){
+    if(v2UiBusy || v2Migrating){ toast('迁移正在进行，请稍候'); return; }
+    v2UiBusy = true;
+    openBackupModal('<h3>正在迁移…</h3><p class="muted">正在写新版数据并读回校验，请勿关闭页面；重复点击不会重复迁移。</p>');
+    migrateToV2().then(function(res){
+      v2UiBusy = false;
+      var orphanText = res.orphans
+        ? '有 ' + res.orphans + ' 张照片引用在当前照片库中不存在（' + res.orphanIds.slice(0, 6).join('、') + (res.orphanIds.length > 6 ? '…' : '') + '）'
+        : '没有孤儿照片';
+      openBackupModal(
+        '<div class="sheet-head" style="margin-bottom:8px"><h3>已升级到新版数据</h3>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+        '<div class="stats">' +
+          '<div class="stat"><b>' + res.addedVisits + '</b><span>新增到访</span></div>' +
+          '<div class="stat"><b>' + res.skippedVisits + '</b><span>跳过重复</span></div>' +
+          '<div class="stat"><b>' + res.shops + '</b><span>家店铺</span></div>' +
+        '</div>' +
+        '<p class="muted" style="margin-top:8px">共 ' + res.visits + ' 条到访 / ' + res.shops + ' 家店；用时 ' + fmtMs(res.ms) + '；新版数据体积 ' + fmtBytes(res.bytes) + '。</p>' +
+        '<p class="dist-note">照片引用：' + orphanText + '。旧数据 fandazi.v1 保持只读，未被改动。</p>' +
+        '<p class="notice" style="margin-top:10px">建议立即备份一次：备份文件会同时包含新版数据（v2）段，之后可随时恢复。</p>' +
+        '<div class="actions" style="margin-top:12px">' +
+          '<button class="btn btn-primary" data-act="make">立即备份</button>' +
+          '<button class="btn" data-act="close">完成</button>' +
+        '</div>'
+      );
+      renderMore();
+      toast('已升级到新版数据');
+    }).catch(function(e){
+      v2UiBusy = false;
+      backupErrorModal(e && e.message ? e.message : '迁移失败', '迁移未完成');
+      renderMore();
+    });
+  }
+
+  /* 「先备份再迁移」：备份下载完成后再让用户决定是否继续（不强制） */
+  function runV2BackupFirst(){
+    if(v2UiBusy){ toast('正在处理，请稍候'); return; }
+    if(backupBusy){ toast('正在生成备份，请稍候'); return; }
+    openBackupModal('<h3>正在生成备份…</h3><p class="muted">先备份，再迁移；备份完成后可选择继续升级。</p>');
+    generateBackupFile().then(function(res){
+      openBackupModal(
+        '<div class="sheet-head" style="margin-bottom:8px"><h3>备份已完成</h3>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+        '<p class="muted">' + esc(res.name) + ' · ' + fmtBytes(res.size) + ' · 用时 ' + fmtMs(res.ms) + '</p>' +
+        '<p class="dist-note">记录 ' + res.records + ' 条、照片 ' + res.photos + ' 张已打包；现在可以安全地继续升级。</p>' +
+        '<div class="actions" style="margin-top:12px">' +
+          '<button class="btn btn-primary" data-act="v2-preview">继续升级</button>' +
+          '<button class="btn" data-act="close">稍后再说</button>' +
+        '</div>'
+      );
+    }).catch(function(e){
+      backupErrorModal('备份失败：' + (e && e.message ? e.message : '未知错误'), '备份失败');
+    });
+  }
+
+  /* 回到旧版：只读计算会丢多少（不删数据），供二次确认弹窗使用 */
+  function v2RevertPlan(){
+    var out = { lostVisits: 0, visits: 0, v1Records: 0, config: v2ConfigCounts() };
+    try{
+      var raw1 = localStorage.getItem(KEY);
+      var v1 = raw1 ? JSON.parse(raw1) : null;
+      var ids = {};
+      (v1 && Array.isArray(v1.records) ? v1.records : []).forEach(function(r){ ids[String(r.id)] = 1; });
+      out.v1Records = Object.keys(ids).length;
+      var raw2 = localStorage.getItem(V2_KEY);
+      if(raw2){
+        var o = JSON.parse(raw2);
+        out.visits = (o.visits || []).length;
+        (o.visits || []).forEach(function(v){ if(!ids[String(v.id)]) out.lostVisits++; });
+      }
+    }catch(e){ logError('回退计划', e); }
+    return out;
+  }
+
+  function openV2RevertSheet(){
+    if(v2UiBusy){ toast('正在处理，请稍候'); return; }
+    var p = v2RevertPlan(), c = p.config;
+    openBackupModal(
+      '<div class="sheet-head" style="margin-bottom:8px"><h3>回到旧版数据</h3>' +
+        '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+      '<p class="muted">会删除新版数据（fandazi.v2）与迁移标记，回到迁移前的旧版数据。</p>' +
+      '<div class="stats" style="margin-top:10px">' +
+        '<div class="stat"><b>' + p.lostVisits + '</b><span>条迁移后新增会丢失</span></div>' +
+        '<div class="stat"><b>' + p.v1Records + '</b><span>条旧版记录保留</span></div>' +
+        '<div class="stat"><b>' + p.visits + '</b><span>条新版到访</span></div>' +
+      '</div>' +
+      '<p class="dist-note" style="margin-top:8px">新版数据里 ' + p.lostVisits + ' 条到访是迁移后新增/修改产生、旧版中没有的，回到旧版后会消失。</p>' +
+      '<p class="dist-note">会一起丢失的配置类别（回到迁移前的旧版版本）：设置 ' + c.settings + ' 项 · 黑名单 ' + c.blacklist + ' 条 · 想去 ' + c.wishlist + ' 条 · 投票 ' + c.votes + ' 条 · 常用地点 ' + c.places + ' 个。</p>' +
+      '<p class="dist-note"><b>照片不会丢</b>：只删除新版数据与迁移标记，IndexedDB 里的照片和旧版记录的照片引用都不动。</p>' +
+      '<p class="notice" style="margin-top:10px">此操作不可撤销；旧版数据本身不会被修改。确认后会立即刷新页面。</p>' +
+      '<div class="actions" style="margin-top:12px">' +
+        '<button class="btn btn-danger" data-act="v2do-revert">确认回到旧版</button>' +
+        '<button class="btn" data-act="close">取消</button>' +
+      '</div>'
+    );
+  }
+
+  function runV2Revert(){
+    if(v2UiBusy){ toast('正在处理，请稍候'); return; }
+    v2UiBusy = true;
+    var p = v2RevertPlan();
+    openBackupModal('<h3>正在回到旧版…</h3><p class="muted">正在删除新版数据与迁移标记；页面会自动刷新。</p>');
+    setTimeout(function(){
+      try{
+        var res = revertV2();
+        try{ sessionStorage.setItem(V2_POST_KEY, JSON.stringify({ records: res.records, lostVisits: p.lostVisits, at: Date.now() })); }catch(e){}
+        location.reload();
+      }catch(e){
+        v2UiBusy = false;
+        backupErrorModal(e && e.message ? e.message : '回到旧版失败', '回到旧版失败');
+      }
+    }, 40);
+  }
+
+  /* 刷新后给出回退结果（sessionStorage 只存结果，不存业务数据） */
+  function showV2PostAction(){
+    var raw = null;
+    try{ raw = sessionStorage.getItem(V2_POST_KEY); if(raw) sessionStorage.removeItem(V2_POST_KEY); }catch(e){ return; }
+    if(!raw) return;
+    var res = null;
+    try{ res = JSON.parse(raw); }catch(e){ return; }
+    showView('more');
+    setTimeout(function(){
+      openBackupModal(
+        '<div class="sheet-head" style="margin-bottom:8px"><h3>已回到旧版数据</h3>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+        '<p class="muted">当前使用旧版数据：' + num(res.records) + ' 条记录。</p>' +
+        '<p class="dist-note">迁移后新增的 ' + num(res.lostVisits) + ' 条到访已按预期移除；旧版数据 fandazi.v1 未被改动；照片仍在（IndexedDB 未删除）。</p>' +
+        '<p class="dist-note">新版模式下改过的设置 / 黑名单 / 想去 / 投票 / 常用地点也回到迁移前的版本，这是设计。</p>' +
+        '<div class="actions" style="margin-top:12px"><button class="btn btn-block" data-act="close">知道了</button></div>'
+      );
+      toast('已回到旧版数据');
+    }, 80);
+  }
+
+  /* 实时核对孤儿照片（v2Status 只读 meta 里的申报值，重建面板需要现值） */
+  function v2LiveStatus(){
+    var st = v2Status();
+    return backupIdList().then(function(ids){
+      var photoSet = {};
+      ids.forEach(function(id){ photoSet[id] = 1; });
+      var got = readV2Raw();
+      if(!got) return st;
+      var r = verifyV2(got.data, photoSet);
+      st.shops = r.shops; st.visits = r.visits; st.orphans = r.orphans.length;
+      return st;
+    });
+  }
+
+  function openV2RebuildSheet(){
+    if(v2UiBusy || !v2Active){ toast('请先升级到新版数据'); return; }
+    openBackupModal('<h3>重建新版数据</h3><p class="muted">正在核对店铺聚合与照片引用…</p>');
+    v2LiveStatus().then(function(st){
+      openBackupModal(
+        '<div class="sheet-head" style="margin-bottom:8px"><h3>重建新版数据</h3>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+        '<p class="muted">按当前记录重新计算店铺聚合与照片引用，用于修复不一致（例如某张照片被误删）。</p>' +
+        '<p class="dist-note">影响范围：只重写新版数据（fandazi.v2）；旧版数据 fandazi.v1 与 IndexedDB 照片都不动；不会删除记录，也不会补回已不存在的照片。</p>' +
+        '<p class="dist-note">当前：' + st.shops + ' 家店 / ' + st.visits + ' 条到访 / 孤儿照片 ' + st.orphans + ' 张；预计耗时约 ' + v2EstimateMs(st.visits) + ' ms。</p>' +
+        '<div class="actions" style="margin-top:12px">' +
+          '<button class="btn btn-primary" data-act="v2do-rebuild">开始重建</button>' +
+          '<button class="btn" data-act="close">取消</button>' +
+        '</div>'
+      );
+    }).catch(function(e){
+      backupErrorModal('无法读取新版数据：' + (e && e.message ? e.message : '未知错误'), '重建失败');
+    });
+  }
+
+  function runV2Rebuild(){
+    if(v2UiBusy){ toast('正在处理，请稍候'); return; }
+    v2UiBusy = true;
+    openBackupModal('<h3>正在重建…</h3><p class="muted">正在重算店铺聚合与照片引用，请勿关闭页面。</p>');
+    v2LiveStatus().then(function(before){
+      return rebuildV2().then(function(res){
+        v2UiBusy = false;
+        var after = v2Status();
+        openBackupModal(
+          '<div class="sheet-head" style="margin-bottom:8px"><h3>重建完成</h3>' +
+            '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
+          '<div class="stats">' +
+            '<div class="stat"><b>' + before.shops + ' → ' + after.shops + '</b><span>店铺数</span></div>' +
+            '<div class="stat"><b>' + before.visits + ' → ' + after.visits + '</b><span>到访数</span></div>' +
+            '<div class="stat"><b>' + before.orphans + ' → ' + res.orphans + '</b><span>孤儿照片</span></div>' +
+          '</div>' +
+          '<p class="muted" style="margin-top:8px">用时 ' + fmtMs(res.ms) + '，新版数据体积 ' + fmtBytes(res.bytes) + '。</p>' +
+          '<p class="dist-note">' + (res.orphans
+            ? '有 ' + res.orphans + ' 张照片引用已不存在：' + res.orphanIds.slice(0, 8).join('、') + '。记录本身保留，照片无法恢复（可从上一次完整备份找回）。'
+            : '没有孤儿照片：所有照片引用都能在照片库中找到。') + '</p>' +
+          '<p class="dist-note">旧版数据 fandazi.v1 未被改动。</p>' +
+          '<div class="actions" style="margin-top:12px"><button class="btn btn-block" data-act="close">完成</button></div>'
+        );
+        renderMore();
+        toast('已重建新版数据');
+      });
+    }).catch(function(e){
+      v2UiBusy = false;
+      backupErrorModal('重建失败：' + (e && e.message ? e.message : '未知错误'), '重建失败');
+    });
+  }
+
   function onBackupModalClick(e){
     var t = e.target.closest ? e.target.closest('[data-act]') : null;
     if(!t) return;
@@ -8960,6 +9281,11 @@
     else if(act === 'make') uiGenerateBackup();
     else if(act === 'doRestore') uiApplyRestore();
     else if(act === 'undoRestore') uiRestoreLatestSnapshot();
+    else if(act === 'v2do-migrate') runV2Migrate();
+    else if(act === 'v2-preview') openV2MigrateSheet();
+    else if(act === 'v2-backup-first') runV2BackupFirst();
+    else if(act === 'v2do-revert') runV2Revert();
+    else if(act === 'v2do-rebuild') runV2Rebuild();
   }
   function readBackupFile(file){
     if(!file) return;
@@ -9624,6 +9950,15 @@
   $('#btnExportCsv').addEventListener('click', exportCsv);
   $('#btnImport').addEventListener('click', function(){ openImport({}); });
   $('#btnBackup').addEventListener('click', openBackupPanel);
+  $('#v2Box').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-act]') : null;
+    if(!b) return;
+    var act = b.getAttribute('data-act');
+    if(act === 'v2-upgrade') openV2MigrateSheet();
+    else if(act === 'v2-backup-first') runV2BackupFirst();
+    else if(act === 'v2-revert') openV2RevertSheet();
+    else if(act === 'v2-rebuild') openV2RebuildSheet();
+  });
   $('#btnRestore').addEventListener('click', function(){ $('#fileRestore').click(); });
   $('#fileRestore').addEventListener('change', function(e){
     var f = e.target.files && e.target.files[0];
@@ -9865,6 +10200,7 @@
   if(legacyData || recoveredBackup) save(true);
   renderAll();
   showView('record');
+  showV2PostAction();
   bootMs = nowMs() - BOOT_START;
   registerSW();
   updateNotifyUI();
@@ -10277,7 +10613,40 @@
           out.mark = localStorage.getItem(V2_MARK_KEY) ? localStorage.getItem(V2_MARK_KEY).length : 0;
         }catch(e){}
         return out;
-      }
+      },
+      /* 5B 界面测试辅助：只读或模拟点击，不绕过原有事件路由 */
+      planUi: function(){ return v2PreviewPlan(); },
+      revertPlanUi: function(){ return v2RevertPlan(); },
+      card: function(){
+        var box = $('#v2Box');
+        return {
+          hint: $('#v2Hint') ? $('#v2Hint').textContent : '',
+          text: box ? box.textContent : '',
+          buttons: box ? Array.prototype.map.call(box.querySelectorAll('[data-act]'), function(b){ return b.getAttribute('data-act'); }) : []
+        };
+      },
+      cardClick: function(act){
+        var box = $('#v2Box');
+        var b = box ? box.querySelector('[data-act="' + act + '"]') : null;
+        if(!b) return false;
+        b.click();
+        return true;
+      },
+      modal: function(){
+        var m = $('#backupModal');
+        return {
+          open: !$('#backupMask').classList.contains('hidden'),
+          text: m.textContent,
+          acts: Array.prototype.map.call(m.querySelectorAll('[data-act]'), function(b){ return b.getAttribute('data-act'); })
+        };
+      },
+      modalClick: function(act){
+        var b = $('#backupModal').querySelector('[data-act="' + act + '"]');
+        if(!b) return false;
+        b.click();
+        return true;
+      },
+      uiBusy: function(){ return v2UiBusy; }
     },
     feedback: {
       state: function(){
