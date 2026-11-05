@@ -77,6 +77,22 @@
   .fb-chip:active{transform:scale(.97)}
   .fb-chip.on{background:var(--soft);border-color:#ffd0ad;color:#b8460a;font-weight:600}
   .fb-badge{display:inline-block;margin-top:4px;font-size:11px;color:#8a4b0f;background:#fff4e8;border:1px solid #ffd9ba;border-radius:999px;padding:2px 8px;white-space:nowrap}
+
+  .prof-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  .prof-conf{font-size:11px;border-radius:999px;padding:3px 9px;border:1px solid var(--line);background:#f8f4ee;color:var(--ink2);white-space:nowrap}
+  .prof-conf.high{background:#eaf6ef;border-color:#cbe9d8;color:#1f7a4c}
+  .prof-conf.medium{background:#fff6e6;border-color:#f6e2bd;color:#a56a12}
+  .prof-conf.low{background:#f4f1ed;border-color:#e6ded4;color:#7b7067}
+  .prof-sec{margin-top:10px}
+  .prof-sec>label{display:block;font-size:12px;color:var(--ink2);font-weight:600;margin-bottom:6px}
+  .prof-chips{display:flex;flex-wrap:wrap;gap:6px}
+  .prof-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;background:#f8f4ee;border:1px solid var(--line);border-radius:999px;padding:4px 8px 4px 10px;color:var(--ink2);max-width:100%}
+  .prof-chip .pct{color:#a8460a;font-variant-numeric:tabular-nums}
+  .prof-act{cursor:pointer;font-size:11px;color:#8a6a4f;border-left:1px solid var(--line);padding-left:6px;white-space:nowrap}
+  .prof-act.danger{color:var(--danger)}
+  .prof-dim{opacity:.55;filter:grayscale(.65)}
+  .prof-note{font-size:11px;color:var(--ink3);margin-top:6px;line-height:1.6}
+  .prof-manual{margin-top:10px;padding-top:9px;border-top:1px dashed var(--line)}
   .addr{font-size:12px;color:var(--ink2);margin-top:8px}
   .desc{font-size:13px;color:var(--ink2);margin-top:6px;white-space:pre-wrap;word-break:break-word}
   .actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
@@ -730,6 +746,14 @@
 
       <div class="card">
         <div class="section-head" style="margin:0 0 10px">
+          <h2>我的口味</h2>
+          <span class="hint" id="profileHint"></span>
+        </div>
+        <div id="profileBox"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-head" style="margin:0 0 10px">
           <h2>常用地点</h2>
           <span class="hint">用于「从家 / 公司出发」的距离</span>
         </div>
@@ -1377,7 +1401,7 @@
       return false;
     }
   }
-  function invalidateStores(){ storesCache = null; }
+  function invalidateStores(){ storesCache = null; profileCache = null; }
   function debounce(fn, wait){
     var t = null;
     return function(){
@@ -2270,7 +2294,8 @@
       : { p:0.28, q:0.22, t:0.16, m:0.14, n:0.10, tr:0.08, wk:0.02 };
     var base = 100*(w.p*pf + w.q*q + w.t*tf.v + w.m*mealVal + w.n*nov + w.tr*trv + w.wk*wk);
     var fb = feedbackMultiplier(feedbackKeyOf(store));
-    var score = Math.round(base * rp.m * fb);
+    var pm = profileMultiplier(store.key);
+    var score = Math.round(base * rp.m * fb * pm);
     var reasons = [];
 
     if(store.isWish) reasons.push('来自想去清单，还没打卡的新店');
@@ -2309,7 +2334,9 @@
     }
     if(fb > 1.0001) reasons.push('你标记过想吃，反馈加权 ×'+fb.toFixed(2));
     else if(fb < 0.9999) reasons.push('反馈降权 ×'+fb.toFixed(2)+'（到期或撤销后恢复）');
-    return { score:score, reasons:reasons, penalty:rp, store:store, travelMin:tmin, feedback:fb };
+    var prText = profileReasonText(store, pm);
+    if(prText) reasons.push(prText);
+    return { score:score, reasons:reasons, penalty:rp, store:store, travelMin:tmin, feedback:fb, profile:pm };
   }
 
   function runDaily(ctx){
@@ -2332,6 +2359,8 @@
       if(feedbackTodaySkipped(s)){ skipped.push({name:s.name, why:'今天不想吃（仅当天排除）'}); return; }
       var cf = conflictOf(s, ctx.restrictions);
       if(cf){ skipped.push({name:s.name, why:'忌口命中「'+cf+'」'}); return; }
+      if(profileBlockedCategory(s)){ skipped.push({name:s.name, why:'你在「我的口味」里拉黑了「'+String(s.category||'').trim()+'」'}); return; }
+      if(profileOverBudget(s)){ skipped.push({name:s.name, why:'人均 ¥'+num(s.perPrice)+' 超过你设置的上限 ¥'+num(profileManual.budgetCap)+'（我的口味）'}); return; }
       var dkm = storeKm(s);
       if(dkm != null && (nearestKm.km === null || dkm < nearestKm.km)) nearestKm = { km:dkm, name:s.name };
       var price = num(s.perPrice);
@@ -2388,7 +2417,7 @@
   function storeWeight(store){
     var rn = store.rating ? clamp(num(store.rating)/5, 0, 1) : 0.55;
     var rec = store.isWish ? 1 : Math.exp(-Math.max(0, num(store.days))/180);
-    var w = (1 + 1.5*rn + 1.0*rec) * feedbackMultiplier(feedbackKeyOf(store));
+    var w = (1 + 1.5*rn + 1.0*rec) * feedbackMultiplier(feedbackKeyOf(store)) * profileMultiplier(store.key);
     return isFinite(w) ? w : 0;
   }
   function runDraw(min, max, nearOnly, maxTravel){
@@ -2403,6 +2432,8 @@
     all.forEach(function(s){
       if(isBlack(s)) return;
       if(conflictOf(s, db.settings.restrictions)) return;
+      if(profileBlockedCategory(s)){ notes.push(s.name+' 的菜系「'+String(s.category||'').trim()+'」被你手动拉黑，已跳过'); return; }
+      if(profileOverBudget(s)){ notes.push(s.name+' 人均 ¥'+num(s.perPrice)+' 超过你设置的上限 ¥'+num(profileManual.budgetCap)+'，已跳过'); return; }
       var p = num(s.perPrice);
       if(p <= 0){ notes.push(s.name+' 未填人均，已跳过'); return; }
       if(p < min || p > max) return;
@@ -2756,6 +2787,8 @@
   function saveFeedbackStore(){
     try{ localStorage.setItem(FB_KEY, JSON.stringify({ version:FB_VERSION, items:feedbackStore.items })); }
     catch(e){ logError('反馈保存', e); toast('反馈保存失败：本机存储可能已满'); }
+    invalidateProfile();
+    renderProfile();
   }
   function ensureFeedbackToday(){
     var d = todayStr();
@@ -2945,6 +2978,338 @@
       Object.keys(FB_ACTIONS).map(function(a){
         return '<button type="button" class="fb-chip'+(on[a]?' on':'')+'" data-act="fb" data-key="'+esc(store.key)+'" data-fb="'+a+'">'+esc(FB_ACTIONS[a].label)+'</button>';
       }).join('')+'</div>';
+  }
+
+  /* ================= 饮食偏好画像（派生数据 + 手动设置） ================= */
+  /* 画像是派生数据：只读现有记录/反馈，不改 db.records，也不要求用户重填资料。
+     可信度（有效记录条数 = 有菜系或标签、且能算出人均）：
+       < 10 条 → low：画像权重严格为 0，profileMultiplier 恒等 1.0
+       10–29 条 → medium：自动画像对总分最大影响 ±8%
+       ≥ 30 条 → high：自动画像对总分最大影响 ±15%
+     字段完整度 < 60%（菜系/人均/评分/标签/四维评分五项）时降一档。
+     手动设置存独立键 fandazi.profile，缺失即「无手动设置」；
+     优先级：永久黑名单 > 忌口 > 手动口味设置 > 画像加权 > 原有评分。 */
+  var PROFILE_KEY = 'fandazi.profile';
+  var PROFILE_VERSION = 1;
+  var PROFILE_MIN_MEDIUM = 10;
+  var PROFILE_MIN_HIGH = 30;
+  var PROFILE_AMP = { low:0, medium:0.08, high:0.15 };
+  var profileCache = null;
+  var profileManual = loadProfileManual();
+  var profileForceNeutral = false; /* 仅测试用：强制关闭画像加权，做「无画像」对照 */
+
+  function loadProfileManual(){
+    var out = { version:PROFILE_VERSION, boost:[], block:[], budgetCap:null };
+    try{
+      var raw = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null');
+      if(raw && typeof raw === 'object'){
+        out.boost = Array.isArray(raw.boost) ? raw.boost.filter(function(x){ return typeof x === 'string' && x; }) : [];
+        out.block = Array.isArray(raw.block) ? raw.block.filter(function(x){ return typeof x === 'string' && x; }) : [];
+        out.budgetCap = num(raw.budgetCap) > 0 ? Math.round(num(raw.budgetCap)) : null;
+      }
+    }catch(e){ logError('口味设置读取', e); }
+    return out;
+  }
+  function saveProfileManual(){
+    try{ localStorage.setItem(PROFILE_KEY, JSON.stringify(profileManual)); }
+    catch(e){ logError('口味设置保存', e); toast('口味设置保存失败：本机存储空间不足'); }
+    invalidateProfile();
+  }
+  function invalidateProfile(){ profileCache = null; }
+
+  function profileTop(list, n){
+    return (list || []).slice(0, n || 3);
+  }
+  function profileWeighted(list){
+    var agg = {}, total = 0;
+    list.forEach(function(x){
+      if(!x.name) return;
+      var w = num(x.w);
+      if(w <= 0) return;
+      agg[x.name] = (agg[x.name] || 0) + w;
+      total += w;
+    });
+    var out = Object.keys(agg).map(function(k){ return { name:k, share: total > 0 ? agg[k] / total : 0 }; });
+    out.sort(function(a, b){ return b.share - a.share || a.name.localeCompare(b.name); });
+    return out;
+  }
+  function profilePct(items, p){
+    if(!items.length) return null;
+    var sorted = items.slice().sort(function(a, b){ return a.v - b.v; });
+    var total = sorted.reduce(function(s, x){ return s + x.w; }, 0);
+    if(total <= 0) return sorted[sorted.length - 1].v;
+    var target = total * p, acc = 0;
+    for(var i = 0; i < sorted.length; i++){ acc += sorted[i].w; if(acc >= target) return sorted[i].v; }
+    return sorted[sorted.length - 1].v;
+  }
+
+  function computeProfile(){
+    var t0 = nowMs();
+    var recs = db.records || [];
+    var valid = [], filled = 0, fields = recs.length * 5;
+    recs.forEach(function(r){
+      var cat = String(r.category || '').trim();
+      var tags = Array.isArray(r.tags) ? r.tags.map(function(t){ return String(t || '').trim(); }).filter(Boolean) : [];
+      var price = perPriceOf(r);
+      var rating = num(r.rating);
+      var dims = r.ratings || {};
+      var dimN = ['taste', 'env', 'service', 'value'].filter(function(k){ return num(dims[k]) > 0; }).length;
+      if(cat) filled++;
+      if(price > 0) filled++;
+      if(rating > 0) filled++;
+      if(tags.length) filled++;
+      if(dimN > 0) filled++;
+      if(!(cat || tags.length) || price <= 0) return;
+      var q = rating > 0 ? rating
+        : (dimN ? (num(dims.taste) + num(dims.env) + num(dims.service) + num(dims.value)) / dimN : 3);
+      var age = daysSince(r.visitDate);
+      var w = clamp(0.6 + (q - 3) / 2 * 0.8, 0.2, 1.8);
+      w *= age <= 60 ? 1.15 : age <= 180 ? 1 : age <= 365 ? 0.85 : 0.7;
+      valid.push({ cat:cat, tags:tags, price:price, weight:w });
+    });
+
+    var cuisineRaw = [], tasteRaw = [], priceItems = [];
+    valid.forEach(function(v){
+      if(v.cat) cuisineRaw.push({ name:v.cat, w:v.weight });
+      v.tags.forEach(function(t){ tasteRaw.push({ name:t, w:v.weight }); });
+      priceItems.push({ v:v.price, w:v.weight });
+    });
+
+    var stores = getStores().filter(function(s){ return !s.isWish; });
+    var kmItems = stores.map(function(s){ return storeKm(s); }).filter(function(k){ return k != null && k > 0; })
+      .map(function(k){ return { v:k, w:1 }; });
+    var repeatStores = stores.filter(function(s){ return num(s.visits) >= 2; }).length;
+    var repeatRatio = stores.length ? repeatStores / stores.length : 0;
+    var wishRatio = (db.wishlist || []).length / Math.max(1, stores.length + (db.wishlist || []).length);
+    var freshness = repeatRatio >= 0.5 ? 'repeat' : (repeatRatio <= 0.25 || wishRatio >= 0.4 ? 'new' : 'balanced');
+
+    var byKey = {};
+    getStores().concat(wishStores()).forEach(function(s){ byKey[s.key] = s; });
+
+    var n = valid.length;
+    var completeness = fields ? filled / fields : 0;
+    var confidence = n >= PROFILE_MIN_HIGH ? 'high' : (n >= PROFILE_MIN_MEDIUM ? 'medium' : 'low');
+    if(confidence !== 'low' && completeness < 0.6) confidence = confidence === 'high' ? 'medium' : 'low';
+
+    var lo = profilePct(priceItems, 0.2), hi = profilePct(priceItems, 0.8);
+    var profile = {
+      at: Date.now(),
+      effective: n,
+      total: recs.length,
+      completeness: completeness,
+      confidence: confidence,
+      amp: PROFILE_AMP[confidence],
+      cuisine: profileWeighted(cuisineRaw),
+      taste: profileWeighted(tasteRaw),
+      priceBand: (lo != null && hi != null) ? { low:Math.round(lo), high:Math.round(hi) } : null,
+      distanceKm: profilePct(kmItems, 0.75),
+      freshness: freshness,
+      repeatRatio: repeatRatio,
+      byKey: byKey,
+      ms: nowMs() - t0
+    };
+    return profile;
+  }
+  function currentProfile(){
+    if(!profileCache) profileCache = computeProfile();
+    return profileCache;
+  }
+  function profileStoreByKey(shopKey){
+    var p = currentProfile();
+    return (p.byKey && p.byKey[String(shopKey)]) || null;
+  }
+  /* 单店画像亲和度 [0,1]（0.5 为中性），缺项的维度自动剔除并重新归一 */
+  function profileAffinity(store, prof){
+    if(!store || !prof || prof.confidence === 'low') return null;
+    var parts = [];
+    var cat = String(store.category || '').trim();
+    if(prof.cuisine.length && cat){
+      var top = prof.cuisine[0].share || 1, hit = 0;
+      prof.cuisine.forEach(function(c){ if(c.name === cat) hit = c.share; });
+      parts.push({ v:clamp(hit / top, 0, 1), w:0.32 });
+    }
+    var tags = store.tags || [];
+    if(prof.taste.length && tags.length){
+      var ttop = prof.taste[0].share || 1, thit = 0;
+      prof.taste.slice(0, 5).forEach(function(t){ if(tags.indexOf(t.name) >= 0) thit += t.share; });
+      parts.push({ v:clamp(thit / ttop, 0, 1), w:0.24 });
+    }
+    if(prof.priceBand && num(store.perPrice) > 0){
+      var lo = prof.priceBand.low, hi = prof.priceBand.high;
+      var span = Math.max(1, hi - lo), p = num(store.perPrice);
+      var v = p < lo ? clamp(1 - (lo - p) / (span * 0.5), 0, 1)
+        : p > hi ? clamp(1 - (p - hi) / (span * 0.5), 0, 1) : 1;
+      parts.push({ v:v, w:0.18 });
+    }
+    var km = storeKm(store);
+    if(prof.distanceKm && km != null && km > 0){
+      var tol = Math.max(0.5, prof.distanceKm);
+      parts.push({ v:clamp(1 - Math.max(0, km - tol) / tol, 0.1, 1), w:0.12 });
+    }
+    if(!store.isWish){
+      var days = num(store.days);
+      if(!days) days = 999;
+      var v2;
+      if(prof.freshness === 'repeat') v2 = days <= 14 ? 1 : (days <= 45 ? 0.85 : 0.65);
+      else if(prof.freshness === 'new') v2 = days <= 14 ? 0.4 : (days <= 45 ? 0.7 : 1);
+      else v2 = 0.8;
+      parts.push({ v:v2, w:0.14 });
+    }
+    if(!parts.length) return null;
+    var s = 0, w = 0;
+    parts.forEach(function(x){ s += x.v * x.w; w += x.w; });
+    return clamp(s / w, 0, 1);
+  }
+  /* 画像乘数：无画像 / low / 无该店 → 严格 1.0；否则在 ±amp 内浮动。
+     手动「提升某菜系」是显式设置，可在 low 时仍然生效（×1.15）。 */
+  function profileMultiplier(shopKey){
+    if(profileForceNeutral) return 1;
+    var prof = currentProfile();
+    var st = profileStoreByKey(shopKey);
+    var m = 1;
+    if(prof.confidence !== 'low' && st){
+      var aff = profileAffinity(st, prof);
+      if(aff != null) m = clamp(1 + prof.amp * (aff - 0.5) * 2, 1 - prof.amp, 1 + prof.amp);
+    }
+    var cat = st ? String(st.category || '').trim() : '';
+    if(cat && profileManual.boost.indexOf(cat) >= 0) m *= 1.15;
+    return (isFinite(m) && m > 0) ? m : 1;
+  }
+  function profileBlockedCategory(store){
+    var cat = String((store && store.category) || '').trim();
+    return !!cat && profileManual.block.indexOf(cat) >= 0;
+  }
+  function profileOverBudget(store){
+    var cap = num(profileManual.budgetCap);
+    return cap > 0 && num(store && store.perPrice) > cap;
+  }
+  function profileReasonText(store, pm){
+    if(!store) return '';
+    var cat = String(store.category || '').trim();
+    if(cat && profileManual.boost.indexOf(cat) >= 0){
+      return '你手动提升了「' + cat + '」偏好（手动，×' + pm.toFixed(2) + '）';
+    }
+    var prof = currentProfile();
+    if(prof.confidence === 'low' || Math.abs(pm - 1) < 0.0005) return '';
+    if(pm > 1) return '符合你的' + (cat || '口味') + '偏好（自动识别，依据 ' + prof.effective + ' 条记录，×' + pm.toFixed(2) + '）';
+    return '与你当前的口味画像差异较大（依据 ' + prof.effective + ' 条记录，×' + pm.toFixed(2) + '）';
+  }
+
+  function afterProfileChange(msg){
+    invalidateProfile();
+    renderProfile();
+    if(dailyState) runDecideNow(false);
+    if(msg) toast(msg);
+  }
+  function toggleProfileBoost(cat, silent){
+    cat = String(cat || '').trim();
+    if(!cat) return;
+    if(profileManual.boost.indexOf(cat) >= 0){
+      profileManual.boost = profileManual.boost.filter(function(x){ return x !== cat; });
+      saveProfileManual();
+      afterProfileChange(silent ? '' : '已取消对「' + cat + '」的提升');
+      return;
+    }
+    if(profileManual.block.indexOf(cat) >= 0) profileManual.block = profileManual.block.filter(function(x){ return x !== cat; });
+    profileManual.boost = profileManual.boost.concat([cat]);
+    saveProfileManual();
+    afterProfileChange(silent ? '' : '已手动提升「' + cat + '」（×1.15）');
+  }
+  function toggleProfileBlock(cat, silent){
+    cat = String(cat || '').trim();
+    if(!cat) return;
+    if(profileManual.block.indexOf(cat) >= 0){
+      profileManual.block = profileManual.block.filter(function(x){ return x !== cat; });
+      saveProfileManual();
+      afterProfileChange(silent ? '' : '已取消对「' + cat + '」的屏蔽');
+      return;
+    }
+    profileManual.boost = profileManual.boost.filter(function(x){ return x !== cat; });
+    profileManual.block = profileManual.block.concat([cat]);
+    saveProfileManual();
+    afterProfileChange(silent ? '' : '已手动屏蔽「' + cat + '」，推荐与抽签都会跳过');
+  }
+  function setProfileBudgetValue(v, silent){
+    var n = num(v);
+    profileManual.budgetCap = n > 0 ? Math.round(n) : null;
+    saveProfileManual();
+    afterProfileChange(silent ? '' : (n > 0 ? '已设置人均上限 ¥' + Math.round(n) + '，超预算的店会被排除' : '已清除人均上限'));
+  }
+  function resetProfileManual(skipConfirm){
+    if(!skipConfirm && !confirm('重置为自动？将清除手动提升、手动屏蔽与人均上限，画像回到根据记录自动识别。')) return;
+    profileManual = { version:PROFILE_VERSION, boost:[], block:[], budgetCap:null };
+    saveProfileManual();
+    afterProfileChange(skipConfirm ? '' : '已重置为自动识别');
+  }
+
+  function profileConfText(conf){
+    return { low:'记录不足', medium:'中等可信', high:'高可信' }[conf] || '记录不足';
+  }
+  function profileFreshText(f){
+    return { repeat:'爱回头（常去熟悉的老店）', new:'爱尝新（更想试新店）', balanced:'回头与尝新都差不多' }[f] || '—';
+  }
+  function renderProfile(){
+    var box = $('#profileBox');
+    if(!box) return;
+    var p = currentProfile();
+    var hint = $('#profileHint');
+    if(hint) hint.textContent = p.effective ? '依据 ' + p.effective + ' 条记录' : '';
+    var low = p.confidence === 'low';
+    var manual = profileManual;
+    var topCuisine = profileTop(p.cuisine, 3);
+    var topTaste = profileTop(p.taste, 3);
+    var chi = function(share){ return Math.round(share * 100) + '%'; };
+
+    var head = '<div class="prof-head">' +
+      '<span class="prof-conf ' + p.confidence + '">可信度：' + profileConfText(p.confidence) + '</span>' +
+      '<span class="muted">依据 ' + p.effective + ' 条有效记录 / 共 ' + p.total + ' 条 · 完整度 ' + Math.round(p.completeness * 100) + '%</span>' +
+      '</div>' +
+      (low
+        ? '<p class="prof-note" style="color:#a56a12">记录还不够，画像暂不参与推荐（至少 10 条有效记录）。可以继续记录，或在下方手动设置口味。</p>'
+        : '<p class="prof-note">自动画像对排序的最大影响：' + (p.confidence === 'high' ? '±15%' : '±8%') + '（乘数 ' + (1 - p.amp).toFixed(2) + '–' + (1 + p.amp).toFixed(2) + '）</p>');
+
+    var autoCls = low ? 'prof-dim' : '';
+    var cuisineHtml = topCuisine.length
+      ? topCuisine.map(function(c){
+          var boosted = manual.boost.indexOf(c.name) >= 0;
+          var blocked = manual.block.indexOf(c.name) >= 0;
+          return '<span class="prof-chip">' + esc(c.name) + ' <span class="pct">' + chi(c.share) + '</span>' +
+            '<span class="prof-act" data-act="profBoost" data-cat="' + esc(c.name) + '">' + (boosted ? '取消提升' : '提升') + '</span>' +
+            '<span class="prof-act danger" data-act="profBlock" data-cat="' + esc(c.name) + '">' + (blocked ? '取消屏蔽' : '拉黑') + '</span></span>';
+        }).join('')
+      : '<span class="muted">还没有足够的菜系数据</span>';
+    var tasteHtml = topTaste.length
+      ? topTaste.map(function(t){ return '<span class="prof-chip">' + esc(t.name) + ' <span class="pct">' + chi(t.share) + '</span></span>'; }).join('')
+      : '<span class="muted">还没有口味标签</span>';
+
+    var manualBits = [];
+    manual.boost.forEach(function(c){ manualBits.push('<span class="prof-chip">提升 ' + esc(c) + ' <span class="prof-act" data-act="profBoost" data-cat="' + esc(c) + '">取消</span></span>'); });
+    manual.block.forEach(function(c){ manualBits.push('<span class="prof-chip">拉黑 ' + esc(c) + ' <span class="prof-act" data-act="profBlock" data-cat="' + esc(c) + '">取消</span></span>'); });
+    var manualHtml = manualBits.length ? manualBits.join('') : '<span class="muted">无手动设置（以自动识别为准）</span>';
+
+    box.innerHTML =
+      head +
+      '<div class="' + autoCls + '">' +
+        '<div class="prof-sec"><label>菜系 Top3（自动）</label><div class="prof-chips">' + cuisineHtml + '</div></div>' +
+        '<div class="prof-sec"><label>口味标签 Top3（自动）</label><div class="prof-chips">' + tasteHtml + '</div></div>' +
+        '<div class="prof-sec"><label>价格与距离（自动）</label>' +
+          '<p class="muted">价格带 ' + (p.priceBand ? '¥' + p.priceBand.low + '–¥' + p.priceBand.high : '数据不足') +
+          ' · 距离容忍度 ' + (p.distanceKm != null ? p.distanceKm.toFixed(1) + ' km' : '数据不足') +
+          ' · ' + esc(profileFreshText(p.freshness)) + '</p></div>' +
+      '</div>' +
+      '<div class="prof-manual">' +
+        '<div class="prof-sec"><label>手动设置（优先级高于自动画像）</label>' +
+          '<div class="prof-chips">' + manualHtml + '</div>' +
+          '<div class="frow" style="margin-top:8px">' +
+            '<input class="input" id="profBudgetInput" type="number" min="1" step="1" placeholder="人均上限（元，留空=不限）" value="' + (manual.budgetCap ? manual.budgetCap : '') + '">' +
+            '<button type="button" class="btn" id="btnProfBudget" data-act="profBudget" style="flex:none">保存上限</button>' +
+          '</div>' +
+          '<p class="prof-note">' + (manual.budgetCap ? '当前上限 ¥' + manual.budgetCap + '：超预算的店在推荐与抽签里都会被排除。' : '未设置人均上限。') + ' 手动提升 ×1.15；拉黑菜系=排除该菜系所有店。</p>' +
+        '</div>' +
+        '<div class="actions" style="margin-top:8px">' +
+          '<button type="button" class="btn btn-sm" data-act="profReset">重置为自动</button>' +
+        '</div>' +
+      '</div>';
   }
 
   function quickScore(rec){
@@ -3781,6 +4146,7 @@
     renderWishlist();
     renderBlacklist();
     renderFeedback();
+    renderProfile();
     renderSettings();
     renderPlaces();
     $('#st-records').textContent = db.records.length;
@@ -6819,6 +7185,78 @@
       }catch(e){ logError('恢复本机标记', e); }
     });
   }
+  /* ---- 反馈段（fandazi.feedback）纳入备份 ---- */
+  /* 反馈不参与记录去重：备份/恢复都按原样整段还原，不按「城市+店名+日期」判定。 */
+  function feedbackBackupData(){
+    return {
+      version: feedbackStore.version,
+      items: JSON.parse(JSON.stringify(feedbackStore.items || []))
+    };
+  }
+  /* 只校验不改写：旧备份（payload.feedback 缺失）返回 null，表示「保持现状」；
+     结构损坏直接抛错，让整包在写任何数据之前被拒绝。 */
+  function feedbackBackupValidate(fb, where){
+    if(fb == null) return null;
+    if(typeof fb !== 'object' || Array.isArray(fb)){
+      throw new Error('备份里的反馈数据格式不正确（' + where + '）');
+    }
+    var items = fb.items == null ? [] : fb.items;
+    if(!Array.isArray(items)) throw new Error('备份里的反馈列表格式不正确（' + where + '）');
+    for(var i=0;i<items.length;i++){
+      var it = items[i];
+      if(!it || typeof it !== 'object' || typeof it.key !== 'string' || !it.key){
+        throw new Error('备份里的反馈条目缺少店家标识（第 ' + (i+1) + ' 条）');
+      }
+      if(!FB_ACTIONS[it.action] || it.action === 'neutral' || it.action === 'today'){
+        throw new Error('备份里的反馈条目类型无效（第 ' + (i+1) + ' 条：' + String(it.action) + '）');
+      }
+      if(it.action === 'never' && it.blackKey != null && typeof it.blackKey !== 'string'){
+        throw new Error('备份里的反馈条目黑名单标识不正确（第 ' + (i+1) + ' 条）');
+      }
+    }
+    return { version: num(fb.version) || FB_VERSION, items: items };
+  }
+  /* 还原反馈到 localStorage 与内存；返回 {applied, count}。applied=false 表示旧备份，
+     此时不碰任何反馈数据（不清空）。 */
+  function applyBackupFeedback(fb){
+    var norm = feedbackBackupValidate(fb, '恢复');
+    if(!norm) return { applied:false, count:0, legacy:true };
+    var items = [];
+    norm.items.forEach(function(it){
+      var at = Date.parse(it.at);
+      var until = it.until ? Date.parse(it.until) : NaN;
+      items.push({
+        key: String(it.key),
+        action: it.action,
+        at: new Date(isFinite(at) ? at : Date.now()).toISOString(),
+        until: isFinite(until) ? new Date(until).toISOString() : (it.action === 'tired' ? new Date(Date.now() + FB_TIRED_DAYS * 86400000).toISOString() : null),
+        name: String(it.name || ''),
+        blackKey: it.blackKey ? String(it.blackKey) : null
+      });
+    });
+    feedbackStore = { version: norm.version, items: items };
+    feedbackToday = { date: todayStr(), items: {} };
+    try{ localStorage.setItem(FB_KEY, JSON.stringify({ version:norm.version, items:items })); }
+    catch(e){
+      logError('反馈恢复', e);
+      throw new Error('空间不足：反馈写入失败，本机数据未改动');
+    }
+    return { applied:true, count:items.length };
+  }
+  /* 永不推荐必须同时存在于黑名单；缺失则补上，保证「黑名单 > 其它一切」 */
+  function ensureNeverBlacklist(list, fb){
+    if(!Array.isArray(list) || !fb || !Array.isArray(fb.items)) return 0;
+    var added = 0;
+    fb.items.forEach(function(it){
+      if(!it || it.action !== 'never') return;
+      var key = String(it.blackKey || it.key || '');
+      if(!key || list.some(function(b){ return b && b.key === key; })) return;
+      var parts = key.split('|');
+      list.push({ key:key, name:String(it.name || ''), city:parts.length > 1 ? parts[0] : '', at:new Date().toISOString() });
+      added++;
+    });
+    return added;
+  }
   function backupPayloadOf(){
     return JSON.parse(JSON.stringify({
       version: db.version,
@@ -6828,6 +7266,7 @@
       votes: db.votes,
       places: db.places,
       localConfig: backupLocalConfig(),
+      feedback: feedbackBackupData(),
       records: db.records
     }));
   }
@@ -6838,11 +7277,12 @@
       var total = text + num(ps.bytes) + 320;
       return {
         records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length,
+        feedback: feedbackStore.items.length,
         photos: ps.count, photoBytes: num(ps.bytes), textBytes: text,
         sizeBytes: total, warn: total > BACKUP_WARN_BYTES
       };
     }).catch(function(){
-      return { records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length, photos: 0, photoBytes: 0, textBytes: 0, sizeBytes: 0, warn: false };
+      return { records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length, feedback: feedbackStore.items.length, photos: 0, photoBytes: 0, textBytes: 0, sizeBytes: 0, warn: false };
     });
   }
   function backupPhotos(){
@@ -6898,6 +7338,7 @@
             records: payload.records.length, stores: getStores().length,
             wishlist: payload.wishlist.length, blacklist: payload.blacklist.length,
             votes: payload.votes.length, places: payload.places.length,
+            feedback: payload.feedback.items.length,
             settingsKeys: Object.keys(payload.settings || {}).length,
             localConfigKeys: Object.keys(payload.localConfig || {}).length,
             photos: photos.length, photoBytes: photoBytes
@@ -6949,6 +7390,8 @@
     if(!ver) throw new Error('备份文件缺少 schemaVersion，无法判断版本兼容性');
     if(ver > db.version) throw new Error('备份版本 '+ver+' 高于当前应用支持的 '+db.version+'，请先升级应用再恢复');
     if(!obj.payload || !Array.isArray(obj.payload.records)) throw new Error('备份内容缺少记录列表');
+    /* 反馈段：存在则校验结构，缺失（旧备份）视为「保持现状」 */
+    feedbackBackupValidate(obj.payload.feedback, '恢复');
     if(!obj.checksum || !obj.checksum.value) throw new Error('备份文件缺少校验值，无法确认完整性');
     if(!Array.isArray(obj.photos)) obj.photos = [];
     for(var i = 0; i < obj.photos.length; i++){
@@ -6993,7 +7436,8 @@
         wishlist: db.wishlist,
         votes: db.votes,
         places: db.places,
-        localConfig: backupLocalConfig()
+        localConfig: backupLocalConfig(),
+        feedback: feedbackBackupData()
       }))
     };
     return snapshotStore('readwrite').then(function(store){
@@ -7108,6 +7552,7 @@
       var next, stats;
       if(mode === 'replace'){
         next = norm;
+        ensureNeverBlacklist(next.blacklist, obj.payload.feedback);
         stats = { added:norm.records.length, skipped:0, replaced:true };
       }else{
         next = JSON.parse(JSON.stringify(db));
@@ -7125,12 +7570,31 @@
           next.records.unshift(rec);
           added++;
         });
+        // 反馈整段还原（不按记录去重）：永不推荐若有反馈、黑名单缺失，一并补上
+        ensureNeverBlacklist(next.blacklist, obj.payload.feedback);
         stats = { added:added, skipped:skipped, replaced:false };
       }
+      /* 反馈先写、数据库后写；任何一步失败都回滚反馈，保持「整包拒绝」语义 */
+      var fbPrevRaw = null, fbPrevStore = JSON.parse(JSON.stringify(feedbackStore));
+      try{ fbPrevRaw = localStorage.getItem(FB_KEY); }catch(e){ fbPrevRaw = null; }
+      function rollbackFeedback(){
+        feedbackStore = fbPrevStore;
+        feedbackToday = { date: todayStr(), items: {} };
+        try{
+          if(fbPrevRaw == null) localStorage.removeItem(FB_KEY);
+          else localStorage.setItem(FB_KEY, fbPrevRaw);
+        }catch(_e){}
+      }
+      var fbResult = { applied:false, count:0 };
       var str;
-      try{ str = JSON.stringify(next); }
-      catch(e){ throw new Error('数据序列化失败，本机数据未改动'); }
-      commitDbString(str);
+      try{
+        fbResult = applyBackupFeedback(obj.payload.feedback);
+        str = JSON.stringify(next);
+        commitDbString(str);
+      }catch(e){
+        rollbackFeedback();
+        throw e;
+      }
       db = next;
       invalidateStores();
       lastSavedStr = str;
@@ -7140,6 +7604,7 @@
       return {
         ok:true, mode:mode, added:stats.added, skipped:stats.skipped, replaced:!!stats.replaced,
         photos:obj.photos.length, photoBytes:num(obj.stats && obj.stats.photoBytes),
+        feedback:fbResult.count, feedbackApplied:!!fbResult.applied,
         missingPhotos:countMissingPhotos(norm, photoMap), ms:Math.round(nowMs() - t0),
         snapshotId:snapRef ? snapRef.id : null
       };
@@ -7155,14 +7620,33 @@
       if(!snap) throw new Error('恢复点不存在或已被覆盖');
       var norm = migrate(snap.data);
       norm.votes = JSON.parse(JSON.stringify(Array.isArray(snap.data.votes) ? snap.data.votes : []));
-      var str = JSON.stringify(norm);
-      commitDbString(str);
+      ensureNeverBlacklist(norm.blacklist, snap.data.feedback);
+      var fbPrevRaw = null, fbPrevStore = JSON.parse(JSON.stringify(feedbackStore));
+      try{ fbPrevRaw = localStorage.getItem(FB_KEY); }catch(e){ fbPrevRaw = null; }
+      function rollbackFeedback(){
+        feedbackStore = fbPrevStore;
+        feedbackToday = { date: todayStr(), items: {} };
+        try{
+          if(fbPrevRaw == null) localStorage.removeItem(FB_KEY);
+          else localStorage.setItem(FB_KEY, fbPrevRaw);
+        }catch(_e){}
+      }
+      var fbResult = { applied:false, count:0 };
+      var str;
+      try{
+        fbResult = applyBackupFeedback(snap.data.feedback);
+        str = JSON.stringify(norm);
+        commitDbString(str);
+      }catch(e){
+        rollbackFeedback();
+        throw e;
+      }
       db = norm;
       invalidateStores();
       lastSavedStr = str;
       applyBackupLocalConfig(snap.data.localConfig, true);
       renderAll();
-      return { ok:true, records:db.records.length, photos:snap.photoIds ? snap.photoIds.length : 0, at:snap.at };
+      return { ok:true, records:db.records.length, photos:snap.photoIds ? snap.photoIds.length : 0, at:snap.at, feedback:fbResult.count, feedbackApplied:!!fbResult.applied };
     });
   }
 
@@ -7195,6 +7679,7 @@
           '<div class="stat"><b>' + fmtBytes(est.sizeBytes) + '</b><span>预计体积</span></div>' +
         '</div>' +
         '<p class="dist-note">照片以 base64 文本内联进 JSON，体积约等于现有照片总量（' + fmtBytes(est.photoBytes) + '）加记录文本；照片压缩规则沿用每张 ≤360px、最多 80 张。</p>' +
+        '<p class="dist-note">另含推荐反馈 ' + est.feedback + ' 条（想吃 / 吃腻了 / 不喜欢 / 永不推荐），随备份一起还原；反馈不按记录去重。</p>' +
         (est.warn ? '<p class="notice" style="margin-top:8px">体积超过 50 MB：生成与下载会占用较多内存和时间，仍可继续。低内存设备建议先清理旧照片。</p>' : '') +
         '<p class="muted" style="margin-top:8px">' + (last ? '上次备份：' + backupAgoText(last) : '还没有生成过完整备份。') + '</p>' +
         '<div class="actions" style="margin-top:14px">' +
@@ -7240,6 +7725,7 @@
           '<div class="stat"><b>' + fmtBytes(totalPhotoBytes) + '</b><span>照片体积</span></div>' +
         '</div>' +
         '<p class="dist-note">配置：偏好 ' + Object.keys(norm.settings || {}).length + ' 项 · 黑名单 ' + norm.blacklist.length + ' · 常用地点 ' + norm.places.length + ' · 想去 ' + norm.wishlist.length + ' · 投票 ' + (obj.payload.votes ? obj.payload.votes.length : 0) +
+          ' · 反馈 ' + (obj.payload.feedback && Array.isArray(obj.payload.feedback.items) ? obj.payload.feedback.items.length : 0) +
           '；校验值已通过（SHA-256）。' + (missing ? ' 有 ' + missing + ' 条记录引用的照片不在备份里，这些记录会保留无图状态。' : '') + '</p>' +
         '<div class="field" style="margin-top:12px"><label>恢复方式</label>' +
           '<select class="input" id="restoreMode">' +
@@ -7271,6 +7757,7 @@
         '<div class="sheet-head" style="margin-bottom:8px"><h3>恢复完成</h3>' +
           '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">✕</button></div>' +
         '<p class="muted">' + (res.replaced ? '已完整替换为备份内容' : '合并完成') + '：写入 ' + res.added + ' 条，跳过 ' + res.skipped + ' 条，恢复照片 ' + res.photos + ' 张（' + fmtBytes(res.photoBytes) + '），用时 ' + fmtMs(res.ms) + '。</p>' +
+        '<p class="dist-note">' + (res.feedbackApplied ? '推荐反馈已按备份还原（' + res.feedback + ' 条，不按记录去重）。' : '该备份不含反馈段（旧版本备份），本机反馈保持不变。') + '</p>' +
         (res.missingPhotos ? '<p class="dist-note">有 ' + res.missingPhotos + ' 条记录引用的照片缺失，已保留无图状态。</p>' : '') +
         '<p class="dist-note">恢复前的本机数据已存为恢复点；若结果不对，可点下方按钮回到恢复前。</p>' +
         '<div class="actions" style="margin-top:12px">' +
@@ -7678,6 +8165,13 @@
       if(sfb && fbAction) applyFeedback(fbAction, sfb);
     }
     else if(act === 'fbUndo'){ if(fbKey && fbPrev) undoFeedback(fbKey, fbPrev); }
+    else if(act === 'profBoost'){ toggleProfileBoost(actEl.getAttribute('data-cat')); }
+    else if(act === 'profBlock'){ toggleProfileBlock(actEl.getAttribute('data-cat')); }
+    else if(act === 'profBudget'){
+      var pbud = $('#profBudgetInput');
+      setProfileBudgetValue(pbud ? pbud.value : '');
+    }
+    else if(act === 'profReset'){ resetProfileManual(false); }
     else if(act === 'setDefaultPlace'){ if(pid) setDefaultPlaceById(pid); }
     else if(act === 'delPlace'){ if(pid) delPlaceById(pid); }
     else if(act === 'delAvoid'){
@@ -8556,6 +9050,8 @@
             });
           }
           if(opts.records) obj.payload.records = JSON.parse(JSON.stringify(opts.records));
+          if(opts.dropFeedback){ try{ delete obj.payload.feedback; }catch(e){} }
+          if(opts.feedback !== undefined){ obj.payload.feedback = JSON.parse(JSON.stringify(opts.feedback)); }
           return backupChecksum(obj.payload, obj.photos).then(function(sum){
             obj.checksum.value = sum;
             return JSON.stringify(obj);
@@ -8643,6 +9139,57 @@
         return { text:$('#feedbackBox') ? $('#feedbackBox').innerText : '', hint:$('#fbHint') ? $('#fbHint').textContent : '' };
       },
       filter: function(v){ $('#fbFilter').value = v || ''; renderFeedback(); return $('#feedbackBox').innerText; }
+    },
+    profile: {
+      auto: function(){
+        var p = currentProfile();
+        return {
+          confidence:p.confidence, effective:p.effective, total:p.total,
+          completeness:Math.round(p.completeness*100)/100, amp:p.amp,
+          cuisine:p.cuisine.slice(0,5), taste:p.taste.slice(0,5),
+          priceBand:p.priceBand, distanceKm:p.distanceKm, freshness:p.freshness,
+          ms:p.ms
+        };
+      },
+      manual: function(){ return JSON.parse(JSON.stringify(profileManual)); },
+      mult: function(key){ return profileMultiplier(key); },
+      reason: function(key){
+        var s = profileStoreByKey(key);
+        return s ? profileReasonText(s, profileMultiplier(key)) : '';
+      },
+      boost: function(cat){ toggleProfileBoost(cat, true); return JSON.parse(JSON.stringify(profileManual)); },
+      block: function(cat){ toggleProfileBlock(cat, true); return JSON.parse(JSON.stringify(profileManual)); },
+      budget: function(v){ setProfileBudgetValue(v, true); return profileManual.budgetCap; },
+      reset: function(){ resetProfileManual(true); return true; },
+      rank: function(){
+        return dailyState ? dailyState.list.map(function(x){ return { name:x.store.name, score:x.score, fb:x.feedback, prof:x.profile, reasons:x.reasons }; }) : [];
+      },
+      skipped: function(){ return dailyState ? dailyState.skipped.map(function(x){ return { name:x.name, why:x.why }; }) : []; },
+      drawPool: function(){ return drawState && drawState.pool ? drawState.pool.map(function(x){ return x.store.name; }) : []; },
+      panel: function(){
+        renderProfile();
+        var box = $('#profileBox');
+        return {
+          text: box ? box.innerText : '',
+          conf: currentProfile().confidence,
+          dimmed: !!(box && box.querySelector('.prof-dim')),
+          manual: JSON.parse(JSON.stringify(profileManual)),
+          scrollW: box ? box.scrollWidth : 0,
+          clientW: box ? box.clientWidth : 0
+        };
+      },
+      computeMs: function(){ invalidateProfile(); var p = currentProfile(); return p.ms; },
+      off: function(on){
+        profileForceNeutral = !!on;
+        invalidateProfile();
+        if(dailyState) runDecideNow(false);
+        return profileForceNeutral;
+      },
+      resetCache: function(){ invalidateProfile(); return true; },
+      cache: function(){
+        return { cached:!!profileCache, ms:profileCache ? profileCache.ms : null, at:profileCache ? profileCache.at : null,
+          effective:profileCache ? profileCache.effective : null, confidence:profileCache ? profileCache.confidence : null };
+      }
     },
     map: {
       urls: function(o){
