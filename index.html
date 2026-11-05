@@ -528,6 +528,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .annual-year select{flex:1;min-width:0;padding:8px 10px;font-size:13px}
   .annual-actions{display:flex;gap:8px;margin-top:12px}
   .annual-actions .btn{flex:1}
+  .annual-snap{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;border:1px solid var(--notice-line);background:var(--notice-bg);color:var(--notice-ink);border-radius:12px;padding:9px 10px;margin-bottom:10px;font-size:12px;line-height:1.6}
+  .annual-snap.on{border-color:var(--accent-line);background:var(--soft);color:var(--soft-ink)}
+  .annual-snap .annual-snap-acts{display:flex;gap:6px;flex-wrap:wrap}
+  .annual-snap .hint{color:var(--ink3);font-size:11px}
+  .annual-stale{color:var(--danger,#b42318);font-weight:700}
+  .annual-photo-missing{margin-bottom:8px;font-size:12px}
   @media(max-width:480px){
     .stat-grid{grid-template-columns:repeat(2,1fr)}
     .stat b{font-size:17px}
@@ -2004,7 +2010,24 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <button class="btn btn-primary" id="btnAnnualImage">生成长图</button>
       <button class="btn btn-soft" id="btnAnnualCopy">复制文案</button>
     </div>
-    <p class="dist-note">长图 1080 宽、自动分页；金额只用真实记录，缺失会标注「未记录 N 次」；分享图固定浅色。</p>
+    <div class="annual-actions" style="margin-top:8px">
+      <button class="btn btn-sm" id="btnAnnualArchive">存档这一年</button>
+      <button class="btn btn-sm btn-danger hidden" id="btnAnnualDelete">删除存档</button>
+      <button class="btn btn-sm" id="btnAnnualCsv">导出存档 CSV</button>
+    </div>
+    <p class="dist-note">长图 1080 宽、自动分页；金额只用真实记录，缺失会标注「未记录 N 次」；分享图固定浅色。存档只保存聚合数字与最满意一餐的文字/照片引用，不复制照片原图；一年一份，覆盖后旧数字不可恢复。</p>
+  </div>
+</div>
+
+<!-- 年度存档预览与确认 -->
+<div class="modal-mask hidden" id="annualArchMask" style="z-index:78">
+  <div class="modal" id="annualArchModal" style="max-width:460px">
+    <h3 id="annualArchTitle">存档这一年</h3>
+    <div id="annualArchBody" style="margin-top:10px"></div>
+    <div class="actions" style="margin-top:12px;flex-wrap:wrap">
+      <button class="btn btn-primary" id="btnAnnualArchConfirm">确认存档</button>
+      <button class="btn" id="btnAnnualArchCancel">取消</button>
+    </div>
   </div>
 </div>
 
@@ -3034,6 +3057,23 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         photoCache[pid] = url;
         img.src = url;
       }).catch(function(e){ logError('照片读取', e); });
+    });
+  }
+  function hydrateArchivedPhotos(root){
+    $$('img[data-arch-photo]', root || document).forEach(function(img){
+      var pid = img.getAttribute('data-arch-photo');
+      if(!pid) return;
+      var box = img.parentNode;
+      var miss = box ? box.querySelector('.annual-photo-missing') : null;
+      function show(url){
+        if(url){ img.src = url; img.style.display = ''; if(miss) miss.style.display = 'none'; }
+        else if(miss) miss.style.display = '';
+      }
+      if(photoCache[pid]) return show(photoCache[pid]);
+      photoGet(pid).then(function(url){
+        if(url) photoCache[pid] = url;
+        show(url);
+      }).catch(function(e){ logError('存档照片读取', e); show(null); });
     });
   }
   function storeFormPhoto(dataUrl){
@@ -7341,15 +7381,145 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
 
   /* ---- 年度美食报告：只统计所选年份有日期的真实记录；缺失金额不推算 ---- */
-  var annualState = { year:0, open:false, pages:0, lastMs:0, computeMs:0, genMs:0 };
+  var annualState = { year:0, open:false, pages:0, lastMs:0, computeMs:0, genMs:0, showLive:false, curD:null, curSource:'live', curItem:null };
   var annualText = '';
+  var annualArchYear = 0;
   var ANNUAL_MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];
 
+  /* ---- 年度报告存档：独立键 fandazi.reports，一年一份，只存聚合结果（不存整份记录） ---- */
+  var REPORT_KEY = 'fandazi.reports';
+  var REPORT_VERSION = 1;
+  var REPORT_CALC_VERSION = 1;
+  var REPORT_MAX = 30;
+
+  function reportNum(v, def){
+    var n = Number(v);
+    return isFinite(n) && n >= 0 ? Math.round(n) : (def == null ? 0 : def);
+  }
+  function reportStr(v, max){ return String(v == null ? '' : v).slice(0, max || 80); }
+  function reportNormItem(x){
+    if(!x || typeof x !== 'object') return null;
+    var y = parseInt(x.year, 10);
+    if(!isFinite(y) || y < 1990 || y > 2100) return null;
+    var s = x.stats || {};
+    var months = Array.isArray(s.months) ? s.months.slice(0, 12).map(function(m){
+      return { key: reportStr(m && m.key, 7), total: reportNum(m && m.total), sum: reportNum(m && m.sum), amountN: reportNum(m && m.amountN) };
+    }) : [];
+    while(months.length < 12) months.push({ key: String(y)+'-'+String(months.length+1).padStart(2, '0'), total:0, sum:0, amountN:0 });
+    var tc = s.topCat, bv = s.bestVisit, br = s.bestRated, hm = x.highlight;
+    return {
+      year: y,
+      archivedAt: reportStr(x.archivedAt, 40) || new Date().toISOString(),
+      calcVersion: reportNum(x.calcVersion, REPORT_CALC_VERSION) || REPORT_CALC_VERSION,
+      stats: {
+        records: reportNum(s.records), stores: reportNum(s.stores),
+        money: {
+          sum: reportNum(s.money && s.money.sum), n: reportNum(s.money && s.money.n),
+          miss: reportNum(s.money && s.money.miss),
+          avgVisit: (s.money && s.money.avgVisit != null) ? reportNum(s.money.avgVisit) : null
+        },
+        topCat: (tc && reportStr(tc.name, 40)) ? { name: reportStr(tc.name, 40), count: reportNum(tc.count), pct: reportNum(tc.pct) } : null,
+        bestVisit: (bv && reportStr(bv.name, 40)) ? { name: reportStr(bv.name, 40), visits: reportNum(bv.visits), lastDate: reportStr(bv.lastDate, 12) } : null,
+        bestRated: (br && reportStr(br.name, 40)) ? { name: reportStr(br.name, 40), rating: num(br.rating), visits: reportNum(br.visits) } : null,
+        firstDate: reportStr(s.firstDate, 12), lastDate: reportStr(s.lastDate, 12),
+        months: months
+      },
+      highlight: (hm && reportStr(hm.name, 60)) ? {
+        id: reportStr(hm.id, 40), name: reportStr(hm.name, 60), date: reportStr(hm.date, 12),
+        rating: num(hm.rating), note: reportStr(hm.note, 200), people: reportNum(hm.people, 1),
+        photoId: hm.photoId ? reportStr(hm.photoId, 60) : null
+      } : null
+    };
+  }
+  function reportNormStore(o){
+    if(!o || typeof o !== 'object' || !Array.isArray(o.items)) return null;
+    var out = { version: REPORT_VERSION, items: [] }, seen = {};
+    o.items.forEach(function(x){
+      var it = reportNormItem(x);
+      if(!it || seen[it.year]) return;
+      seen[it.year] = 1;
+      out.items.push(it);
+    });
+    out.items.sort(function(a, b){ return b.year - a.year; });
+    if(out.items.length > REPORT_MAX) out.items = out.items.slice(0, REPORT_MAX);
+    return out;
+  }
+  function reportAll(){
+    var raw = null;
+    try{ raw = localStorage.getItem(REPORT_KEY); }catch(e){ raw = null; }
+    if(!raw) return { version: REPORT_VERSION, items: [] };
+    try{ return reportNormStore(JSON.parse(raw)) || { version: REPORT_VERSION, items: [] }; }
+    catch(e){ return { version: REPORT_VERSION, items: [] }; }
+  }
+  function reportRawText(){
+    try{ return localStorage.getItem(REPORT_KEY) || ''; }catch(e){ return ''; }
+  }
+  function reportWrite(store){
+    var text = JSON.stringify(store);
+    try{ localStorage.setItem(REPORT_KEY, text); }
+    catch(e){ logError('年度存档写入', e); return false; }
+    return true;
+  }
+  function reportArchived(year){
+    var ys = String(year), items = reportAll().items;
+    for(var i = 0; i < items.length; i++){ if(String(items[i].year) === ys) return items[i]; }
+    return null;
+  }
+  function reportUpsert(item){
+    var st = reportAll(), at = -1;
+    for(var i = 0; i < st.items.length; i++){ if(st.items[i].year === item.year){ at = i; break; } }
+    if(at >= 0) st.items[at] = item;
+    else { st.items.push(item); st.items.sort(function(a, b){ return b.year - a.year; }); }
+    if(st.items.length > REPORT_MAX) st.items = st.items.slice(0, REPORT_MAX);
+    return reportWrite(st) ? st : null;
+  }
+  function reportRemove(year){
+    var st = reportAll();
+    st.items = st.items.filter(function(x){ return String(x.year) !== String(year); });
+    return reportWrite(st);
+  }
+  function reportStatsOf(d){
+    return {
+      records: d.records, stores: d.stores,
+      money: {
+        sum: d.money.sum, n: d.money.n, miss: d.money.miss,
+        avgVisit: d.money.avgVisit == null ? null : d.money.avgVisit
+      },
+      topCat: d.topCat ? { name: d.topCat.name, count: d.topCat.count, pct: d.topCat.pct } : null,
+      bestVisit: d.bestVisit ? { name: d.bestVisit.name, visits: d.bestVisit.visits, lastDate: d.bestVisit.lastDate || '' } : null,
+      bestRated: d.bestRated ? { name: d.bestRated.name, rating: d.bestRated.rating, visits: d.bestRated.visits } : null,
+      firstDate: d.firstDate || '', lastDate: d.lastDate || '',
+      months: d.months.map(function(m){ return { key: m.key, total: m.total, sum: m.sum, amountN: m.amountN || 0 }; })
+    };
+  }
+  function reportHighlightOf(d){
+    if(!d.bestMeal) return null;
+    var b = d.bestMeal;
+    return { id: b.id || '', name: b.name, date: b.date || '', rating: b.rating, note: b.note || '', people: b.people || 1, photoId: b.photoId || null };
+  }
+  function reportD(item){
+    var s = item.stats;
+    return {
+      year: item.year, records: s.records, stores: s.stores,
+      money: { total: s.records, sum: s.money.sum, n: s.money.n, miss: s.money.miss, avgVisit: s.money.avgVisit },
+      cats: s.topCat ? [{ name: s.topCat.name, count: s.topCat.count, pct: s.topCat.pct }] : [],
+      topCat: s.topCat, bestVisit: s.bestVisit, bestRated: s.bestRated,
+      bestMeal: item.highlight ? {
+        id: item.highlight.id, name: item.highlight.name, date: item.highlight.date,
+        rating: item.highlight.rating, note: item.highlight.note,
+        photoId: item.highlight.photoId, people: item.highlight.people
+      } : null,
+      months: s.months.map(function(m){ return { key: m.key, total: m.total, sum: m.sum, amountN: m.amountN }; }),
+      storeRows: [], firstDate: s.firstDate, lastDate: s.lastDate,
+      computeMs: 0, archived: true, archivedAt: item.archivedAt
+    };
+  }
   function annualYearList(){
     var seen = {}, cy = String(new Date().getFullYear());
     db.records.forEach(function(r){ var m = statsMonthOf(r); if(m) seen[m.slice(0,4)] = 1; });
     seen[cy] = 1;
-    return Object.keys(seen).sort(function(a,b){ return parseInt(b,10) - parseInt(a,10); });
+    reportAll().items.forEach(function(it){ seen[String(it.year)] = 1; });
+    return Object.keys(seen).sort(function(a, b){ return parseInt(b, 10) - parseInt(a, 10); });
   }
   function annualYearRecords(year){
     var y = String(year);
@@ -7432,19 +7602,44 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return lines.join('\n');
   }
 
+  function annualArchiveBarHtml(item, useArchive, d){
+    if(!item) return '';
+    var date = String(item.archivedAt).slice(0, 10);
+    var stale = item.calcVersion !== REPORT_CALC_VERSION;
+    if(useArchive){
+      return '<div class="annual-snap on"><div><b>存档快照</b> · 存档于 '+esc(date)+' · 共 '+item.stats.records+' 条记录'+
+        (stale ? ' · <span class="annual-stale">旧口径</span>' : '')+
+        '<br><span class="hint">这份数字固定，不随后续记录修改而变；当前记录共 '+annualYearRecords(d.year).length+' 条。</span></div>'+
+        '<div class="annual-snap-acts">'+
+          '<button class="btn btn-sm" data-annual-mode="live">看实时（当前记录）</button>'+
+          (stale ? '<button class="btn btn-sm" data-annual-regen="1">用当前口径重新生成</button>' : '')+
+        '</div></div>';
+    }
+    return '<div class="annual-snap"><div>当前显示<b>实时数据</b> · 共 '+d.records+' 条记录；本年已有 '+esc(date)+' 的存档'+
+      (stale ? '（<span class="annual-stale">旧口径</span>）' : '')+'</div>'+
+      '<div class="annual-snap-acts"><button class="btn btn-sm" data-annual-mode="archive">查看存档</button></div></div>';
+  }
   function renderAnnual(){
-    var t0 = nowMs();
+    var t0 = nowMs(), items = reportAll().items, archByYear = {};
+    items.forEach(function(it){ archByYear[String(it.year)] = it; });
     if(!annualState.year) annualState.year = new Date().getFullYear();
     var ys = $('#annualYear');
     if(ys){
-      ys.innerHTML = annualYearList().map(function(y){ return '<option value="'+y+'">'+y+' 年</option>'; }).join('');
+      ys.innerHTML = annualYearList().map(function(y){
+        var it = archByYear[String(y)];
+        return '<option value="'+y+'">'+y+' 年'+(it ? '（已存档 · '+String(it.archivedAt).slice(5, 10)+'）' : '')+'</option>';
+      }).join('');
       ys.value = String(annualState.year);
     }
-    var d = annualCompute(annualState.year);
+    var item = archByYear[String(annualState.year)] || null;
+    var useArchive = !!item && !annualState.showLive;
+    var d = useArchive ? reportD(item) : annualCompute(annualState.year);
+    annualState.curD = d; annualState.curSource = useArchive ? 'archive' : 'live'; annualState.curItem = item || null;
     var html = '';
+    html += annualArchiveBarHtml(item, useArchive, d);
     if(!d.records){
       var others = annualYearList().filter(function(y){ return String(y) !== String(d.year) && annualYearRecords(y).length; });
-      html = '<div class="empty card flat" style="margin:0"><h3>'+d.year+' 年还没有记录</h3>'+
+      html += '<div class="empty card flat" style="margin:0"><h3>'+d.year+' 年还没有记录</h3>'+
         '<p>这一年没有带日期的到访，所以不生成报告长图。可以切换到有记录的年份看看。</p>'+
         (others.length ? '<div class="actions" style="flex-wrap:wrap;justify-content:center;margin-top:10px">'+
           others.map(function(y){ return '<button class="btn btn-sm" data-annual-year="'+y+'">'+y+' 年 · '+annualYearRecords(y).length+' 次</button>'; }).join('')+'</div>' : '')+
@@ -7465,8 +7660,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '</div>';
       html += '<div class="stat-sub"><h3>最满意的一餐</h3><span class="hint">评分最高</span></div>';
       if(d.bestMeal){
-        html += '<div class="annual-hero" style="margin-bottom:0">'+
-          (d.bestMeal.photoId ? '<img data-photo="'+esc(d.bestMeal.photoId)+'" alt="这一餐的照片" style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-bottom:8px">' : '')+
+        var photo = '';
+        if(d.bestMeal.photoId){
+          photo = useArchive
+            ? '<img data-arch-photo="'+esc(d.bestMeal.photoId)+'" alt="这一餐的照片" style="display:none;width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-bottom:8px">'+
+              '<p class="muted annual-photo-missing" style="display:none">照片已缺失（存档只保存引用，原图不在本机）</p>'
+            : '<img data-photo="'+esc(d.bestMeal.photoId)+'" alt="这一餐的照片" style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;margin-bottom:8px">';
+        }
+        html += '<div class="annual-hero" style="margin-bottom:0">'+photo+
           '<b style="font-size:15px">'+esc(d.bestMeal.name)+'</b>'+
           '<p>'+esc(d.bestMeal.date||'日期未知')+' · '+d.bestMeal.rating+' 分'+(d.bestMeal.people>1?' · '+d.bestMeal.people+' 人':'')+'</p>'+
           (d.bestMeal.note ? '<p>「'+esc(d.bestMeal.note)+'」</p>' : '<p class="muted">没有写评价。</p>')+'</div>';
@@ -7476,29 +7677,45 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       html += '<div class="stat-sub"><h3>月度到访与消费</h3><span class="hint">12 个月</span></div>';
       html += annualMonthHtml(d);
       html += '<p class="stat-note">金额样本 <b>'+d.money.n+'</b> 笔 / 未记录 <b>'+d.money.miss+'</b> 次；缺失金额的到访不计入总额与平均每次的分母，也不按人均推算。</p>';
+      if(useArchive) html += '<p class="stat-note muted">存档只保存聚合数字，因此不包含「这一年在吃过的店」明细页。</p>';
     }
     $('#annualBody').innerHTML = html;
-    hydratePhotos($('#annualBody'));
+    if(useArchive) hydrateArchivedPhotos($('#annualBody'));
+    else hydratePhotos($('#annualBody'));
+    var liveN = useArchive ? annualYearRecords(d.year).length : d.records;
     $('#btnAnnualImage').disabled = !d.records;
     $('#btnAnnualImage').style.opacity = d.records ? '1' : '.55';
+    var ab = $('#btnAnnualArchive');
+    if(ab){
+      ab.disabled = !liveN;
+      ab.style.opacity = liveN ? '1' : '.55';
+      ab.textContent = item ? '覆盖存档' : '存档这一年';
+      ab.title = liveN ? '' : '这一年没有记录，不能存档';
+    }
+    var dbn = $('#btnAnnualDelete');
+    if(dbn) dbn.classList.toggle('hidden', !item);
     annualState.pages = annualPages(d);
     annualState.lastMs = nowMs() - t0;
     annualText = annualTextOf(d);
+    if(useArchive) annualText = '（存档快照 · 存档于 '+String(item.archivedAt).slice(0, 10)+' · 共 '+item.stats.records+' 条记录）\n'+annualText;
     return d;
   }
   function openAnnual(){
     if(!annualState.year) annualState.year = new Date().getFullYear();
     annualState.open = true;
+    annualState.showLive = false;
     $('#annualMask').classList.remove('hidden');
     return renderAnnual();
   }
   function closeAnnual(){
     annualState.open = false;
+    if(!$('#annualArchMask').classList.contains('hidden')) closeAnnualArchivePreview();
     $('#annualMask').classList.add('hidden');
   }
   function annualSetYear(y){
     var n = parseInt(y, 10);
     if(isFinite(n) && n > 0) annualState.year = n;
+    annualState.showLive = false;
     return renderAnnual();
   }
 
@@ -7518,14 +7735,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     ctx.fillText('第 '+(page+1)+' / '+pages+' 页', W-M, 104);
     ctx.textAlign = 'left';
   }
-  function annualDrawFooter(ctx, W, M, H, page, pages){
+  function annualDrawFooter(ctx, W, M, H, page, pages, d){
     var fy = H - 176 + 40;
     ctx.strokeStyle = '#eee6db'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(M, fy); ctx.lineTo(W-M, fy); ctx.stroke();
     ctx.fillStyle = '#8a8078'; ctx.font = '500 26px ' + SHARE_FONT;
     ctx.fillText('数据来自本人记录，不代表平台评价', M, fy+48);
     ctx.fillStyle = '#9a8f86'; ctx.font = '400 22px ' + SHARE_FONT;
-    ctx.fillText('由 i吃饭 生成 · 金额为手填真实记录，缺失不推算 · '+todayStr(), M, fy+88);
+    var src = d && d.archived ? ' · 存档快照 '+String(d.archivedAt).slice(0, 10) : ' · 实时数据';
+    ctx.fillText('由 i吃饭 生成 · 金额为手填真实记录，缺失不推算'+src+' · '+todayStr(), M, fy+88);
     ctx.textAlign = 'right'; ctx.font = '400 22px ' + SHARE_FONT;
     ctx.fillText('第 '+(page+1)+' / '+pages+' 页', W-M, fy+88);
     ctx.textAlign = 'left';
@@ -7561,7 +7779,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     ctx.fillStyle = '#faf7f2'; ctx.fillRect(0, 0, W, H);
 
     if(idx === 0){
-      annualDrawHeader(ctx, W, M, d, '共 '+d.records+' 次到访 · '+d.stores+' 家餐厅', 0, pages, HH);
+      annualDrawHeader(ctx, W, M, d, '共 '+d.records+' 次到访 · '+d.stores+' 家餐厅'+(d.archived ? ' · 存档快照' : ' · 实时数据'), 0, pages, HH);
       ctx.fillStyle = '#221d19'; ctx.font = '700 40px ' + SHARE_FONT;
       ctx.fillText('这一年，吃得怎么样', M, 330);
       var cells = [
@@ -7597,7 +7815,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         ctx.fillStyle = '#9a8f86'; ctx.font = '400 24px ' + SHARE_FONT;
         ctx.fillText('这一年没有带评分的到访。', M+24, by+100);
       }
-      annualDrawFooter(ctx, W, M, H, 0, pages);
+      annualDrawFooter(ctx, W, M, H, 0, pages, d);
     }else if(idx === 1){
       annualDrawHeader(ctx, W, M, d, '月度到访与消费 · 12 个月', 1, pages, HH);
       ctx.fillStyle = '#221d19'; ctx.font = '700 36px ' + SHARE_FONT;
@@ -7624,7 +7842,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         ctx.textAlign = 'left';
         ry += 90;
       });
-      annualDrawFooter(ctx, W, M, H, 1, pages);
+      annualDrawFooter(ctx, W, M, H, 1, pages, d);
     }else{
       annualDrawHeader(ctx, W, M, d, '这一年在吃过的店 · 第 '+(part+1)+' / '+storePages+' 部分', idx, pages, HH);
       ctx.fillStyle = '#221d19'; ctx.font = '700 36px ' + SHARE_FONT;
@@ -7654,16 +7872,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         ctx.textAlign = 'left';
         sy += 96;
       });
-      annualDrawFooter(ctx, W, M, H, idx, pages);
+      annualDrawFooter(ctx, W, M, H, idx, pages, d);
     }
     return c;
   }
 
   function generateAnnualImages(){
     if(longGenerating) return false;
-    var d = annualCompute(annualState.year || new Date().getFullYear());
+    var d = annualState.curD || annualCompute(annualState.year || new Date().getFullYear());
     if(!d.records){ toast('这一年还没有记录，先切换年份'); return false; }
     longText = annualTextOf(d);
+    if(d.archived) longText = '（存档快照 · 存档于 '+String(d.archivedAt).slice(0, 10)+'）\n'+longText;
     var pages = annualPages(d);
     annualState.pages = pages;
     var wrap = $('#longWrap');
@@ -7671,7 +7890,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     longUrls = []; longBlobs = [];
     longGenerating = true;
     wrap.innerHTML = '';
-    $('#longTitle').textContent = d.year+' 年度报告长图';
+    $('#longTitle').textContent = d.year+' 年度报告长图'+(d.archived ? '（存档快照）' : '（实时数据）');
     $('#longHint').textContent = '正在生成 0/'+pages+' 页…';
     openLongMask();
     var t0 = nowMs();
@@ -7692,7 +7911,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       }
       canvas.toBlob(function(blob){
         if(blob){
-          longBlobs.push({ blob: blob, name:'i吃饭-年度报告-'+d.year+'-'+(i+1)+'.png' });
+          longBlobs.push({ blob: blob, name:'i吃饭-年度报告-'+d.year+(d.archived?'-存档':'')+'-'+(i+1)+'.png' });
           var img = document.createElement('img');
           var url = URL.createObjectURL(blob);
           longUrls.push(url);
@@ -7708,6 +7927,87 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return true;
   }
   function openLongMask(){ $('#longMask').classList.remove('hidden'); }
+
+  /* ---- 年度存档：预览 → 确认 → 写入独立键 fandazi.reports ---- */
+  function annualArchBodyHtml(year, live, item){
+    var stale = item && item.calcVersion !== REPORT_CALC_VERSION;
+    var lines = [];
+    lines.push('<div class="annual-grid" style="margin-top:0">'+
+      annualCellHtml(String(live.records), '到访次数', '有日期的记录')+
+      annualCellHtml(String(live.stores), '餐厅数', '不同店名去重')+
+      annualCellHtml(live.money.n ? money(live.money.sum) : '—', '消费总额', '样本 '+live.money.n+' 笔')+
+      annualCellHtml(live.money.avgVisit != null ? money(live.money.avgVisit) : '—', '平均每次', '缺失 '+live.money.miss+' 次')+
+      annualCellHtml(live.topCat ? esc(live.topCat.name) : '—', '最喜欢菜系', live.topCat ? live.topCat.count+' 次 · '+live.topCat.pct+'%' : '没有菜系')+
+      annualCellHtml(live.bestVisit ? esc(live.bestVisit.name) : '—', '到访最多', live.bestVisit ? live.bestVisit.visits+' 次' : '没有记录')+
+      annualCellHtml(live.bestRated ? esc(live.bestRated.name) : '暂无', '最高评分', live.bestRated ? live.bestRated.rating+' 分' : '没有 ≥2 次评分的店')+
+      annualCellHtml(live.bestMeal ? esc(live.bestMeal.name) : '—', '最满意一餐', live.bestMeal ? live.bestMeal.date : '没有评分')+
+      '</div>');
+    if(item){
+      lines.push('<p class="stat-note" style="margin-top:10px;color:var(--danger,#b42318)">已有 '+year+' 年存档（存档于 '+esc(String(item.archivedAt).slice(0, 10))+'），覆盖后旧数字不可恢复。'+
+        (stale ? '<br>当前存档为旧口径（v'+item.calcVersion+'），将用当前口径 v'+REPORT_CALC_VERSION+' 重新生成。' : '')+'</p>');
+    }else{
+      lines.push('<p class="stat-note" style="margin-top:10px">存档后这一年的数字固定，不随后续记录修改而变；只保存聚合数字与「最满意的一餐」的文字/照片引用，不复制照片原图。可随时删除存档或切「看实时」做对比。</p>');
+    }
+    return lines.join('');
+  }
+  function openAnnualArchivePreview(){
+    var y = annualState.year;
+    var live = annualCompute(y);
+    if(!live.records){ toast(y+' 年没有记录，不能存档'); return; }
+    annualArchYear = y;
+    var item = reportArchived(y);
+    $('#annualArchTitle').textContent = (item ? '覆盖 ' : '存档 ')+y+' 年报告';
+    $('#annualArchBody').innerHTML = annualArchBodyHtml(y, live, item);
+    $('#btnAnnualArchConfirm').textContent = item ? '确认覆盖' : '确认存档';
+    $('#annualArchMask').classList.remove('hidden');
+  }
+  function closeAnnualArchivePreview(){
+    annualArchYear = 0;
+    $('#annualArchMask').classList.add('hidden');
+  }
+  function confirmAnnualArchive(){
+    var y = annualArchYear;
+    if(!y){ closeAnnualArchivePreview(); return; }
+    var live = annualCompute(y);
+    if(!live.records){ toast(y+' 年没有记录，不能存档'); closeAnnualArchivePreview(); return; }
+    var item = { year: y, archivedAt: new Date().toISOString(), calcVersion: REPORT_CALC_VERSION, stats: reportStatsOf(live), highlight: reportHighlightOf(live) };
+    if(!reportUpsert(item)){ toast('存档失败：本机存储空间不足'); closeAnnualArchivePreview(); return; }
+    closeAnnualArchivePreview();
+    annualState.showLive = false;
+    renderAnnual();
+    toast('已存档 '+y+' 年报告（'+item.stats.records+' 条记录）');
+  }
+  function deleteAnnualArchive(){
+    var y = annualState.year, item = reportArchived(y);
+    if(!item) return;
+    if(!confirm(y+' 年存档删除后旧数字不可恢复，确定删除？')) return;
+    if(!reportRemove(y)){ toast('删除失败：本机存储异常'); return; }
+    annualState.showLive = false;
+    renderAnnual();
+    toast('已删除 '+y+' 年存档');
+  }
+  function annualArchiveCsvText(){
+    var head = ['年份','存档时间','口径版本','到访次数','餐厅数','消费总额','金额样本','缺失金额','平均每次','最喜欢菜系','最喜欢次数','最喜欢占比','到访最多','到访次数','最高评分店','最高评分','最满意一餐','日期','最满意评分'];
+    var rows = reportAll().items.map(function(it){
+      var s = it.stats, m = s.money, tc = s.topCat, bv = s.bestVisit, br = s.bestRated, hm = it.highlight;
+      return [it.year, String(it.archivedAt).slice(0, 19).replace('T', ' '), it.calcVersion,
+        s.records, s.stores, m.n ? m.sum : '', m.n, m.miss,
+        m.avgVisit == null ? '' : m.avgVisit,
+        tc ? tc.name : '', tc ? tc.count : '', tc ? tc.pct : '',
+        bv ? bv.name : '', bv ? bv.visits : '',
+        br ? br.name : '', br ? br.rating : '',
+        hm ? hm.name : '', hm ? hm.date : '', hm ? hm.rating : ''];
+    });
+    return '\ufeff' + [head].concat(rows).map(function(row){
+      return row.map(function(v){ return csvCell(v); }).join(',');
+    }).concat(['', csvCell('由 i吃饭 生成 · 年度存档只存聚合数字')]).join('\r\n');
+  }
+  function exportAnnualArchiveCsv(){
+    var items = reportAll().items;
+    if(!items.length){ toast('还没有年度存档可导出'); return; }
+    download('i吃饭-年度存档-' + todayStr() + '.csv', annualArchiveCsvText(), 'text/csv');
+    toast('已导出 '+items.length+' 份年度存档');
+  }
 
 
   function renderWishlist(){
@@ -9536,6 +9836,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function exportJson(){
     if(!db.records.length){ toast('还没有数据可导出'); return; }
     var out = JSON.parse(JSON.stringify(db));
+    out.reports = reportAll();
     out.署名 = '由 i吃饭 生成';
     download('i吃饭-美食记录-'+todayStr()+'.json', JSON.stringify(out, null, 2), 'application/json');
     toast('已导出 JSON');
@@ -11865,6 +12166,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       votes: db.votes,
       places: db.places,
       gathers: db.gathers,
+      reports: reportAll(),
       localConfig: backupLocalConfig(),
       feedback: feedbackBackupData(),
       profile: profileBackupData(),
@@ -12058,6 +12360,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         votes: db.votes,
         places: db.places,
         gathers: db.gathers,
+        reports: reportAll(),
         localConfig: backupLocalConfig(),
         feedback: feedbackBackupData(),
         profile: profileBackupData()
@@ -12140,6 +12443,24 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       try{ if(old != null) localStorage.setItem(KEY, old); }catch(_e){}
       throw new Error('写入校验失败，已还原原数据');
     }
+  }
+  /* 年度存档（独立键 fandazi.reports）：旧备份没有该段时保持本机现状，不覆盖、不报错 */
+  function applyBackupReports(section, mode){
+    var incoming = reportNormStore(section);
+    if(!incoming) return { applied:false, legacy:true, count:reportAll().items.length, added:0 };
+    var cur = reportAll(), next;
+    if(mode === 'replace'){
+      next = incoming;
+    }else{
+      next = { version: REPORT_VERSION, items: cur.items.slice() };
+      incoming.items.forEach(function(it){
+        if(!next.items.some(function(x){ return x.year === it.year; })) next.items.push(it);
+      });
+      next.items.sort(function(a, b){ return b.year - a.year; });
+      if(next.items.length > REPORT_MAX) next.items = next.items.slice(0, REPORT_MAX);
+    }
+    if(!reportWrite(next)) return { applied:false, legacy:false, count:cur.items.length, added:0 };
+    return { applied:true, legacy:false, count:next.items.length, added:Math.max(0, next.items.length - cur.items.length) };
   }
   function applyBackupRestore(obj, mode){
     if(restoreBusy) return Promise.reject(new Error('正在恢复，请稍候'));
@@ -12227,17 +12548,28 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           else localStorage.setItem(PROFILE_KEY, pmPrevRaw);
         }catch(_e){}
       }
+      var rpPrevRaw = null;
+      try{ rpPrevRaw = localStorage.getItem(REPORT_KEY); }catch(e){ rpPrevRaw = null; }
+      function rollbackReports(){
+        try{
+          if(rpPrevRaw == null) localStorage.removeItem(REPORT_KEY);
+          else localStorage.setItem(REPORT_KEY, rpPrevRaw);
+        }catch(_e){}
+      }
       var fbResult = { applied:false, count:0 };
       var pmResult = { applied:false, boost:0, block:0, budgetCap:null };
+      var rpResult = { applied:false, legacy:true, count:0, added:0 };
       var committed;
       try{
         pmResult = applyBackupProfile(obj.payload.profile);
         fbResult = applyBackupFeedback(obj.payload.feedback);
+        rpResult = applyBackupReports(obj.payload.reports, mode);
         /* v2 模式下写 v2（读回校验），v1 模式下沿用 commitDbString */
         committed = commitDbNext(next);
       }catch(e){
         rollbackFeedback();
         rollbackProfile();
+        rollbackReports();
         throw e;
       }
       db = next;
@@ -12253,6 +12585,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         feedback:fbResult.count, feedbackApplied:!!fbResult.applied,
         profileApplied:!!pmResult.applied, profileBoost:pmResult.boost,
         profileBlock:pmResult.block, profileBudget:pmResult.budgetCap,
+        reports:rpResult.count, reportsApplied:!!rpResult.applied, reportsAdded:rpResult.added,
         missingPhotos:countMissingPhotos(norm, photoMap), ms:Math.round(nowMs() - t0),
         snapshotId:snapRef ? snapRef.id : null
       };
@@ -12289,16 +12622,27 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           else localStorage.setItem(PROFILE_KEY, pmPrevRaw);
         }catch(_e){}
       }
+      var rpPrevRaw = null;
+      try{ rpPrevRaw = localStorage.getItem(REPORT_KEY); }catch(e){ rpPrevRaw = null; }
+      function rollbackReports(){
+        try{
+          if(rpPrevRaw == null) localStorage.removeItem(REPORT_KEY);
+          else localStorage.setItem(REPORT_KEY, rpPrevRaw);
+        }catch(_e){}
+      }
       var fbResult = { applied:false, count:0 };
       var pmResult = { applied:false, boost:0, block:0, budgetCap:null };
+      var rpResult = { applied:false, legacy:true, count:0, added:0 };
       var committed;
       try{
         pmResult = applyBackupProfile(snap.data.profile);
         fbResult = applyBackupFeedback(snap.data.feedback);
+        rpResult = applyBackupReports(snap.data.reports, 'replace');
         committed = commitDbNext(norm);
       }catch(e){
         rollbackFeedback();
         rollbackProfile();
+        rollbackReports();
         throw e;
       }
       db = norm;
@@ -12308,7 +12652,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       applyBackupLocalConfig(snap.data.localConfig, true);
       renderAll();
       return { ok:true, records:db.records.length, photos:snap.photoIds ? snap.photoIds.length : 0, at:snap.at, feedback:fbResult.count, feedbackApplied:!!fbResult.applied,
-        profileApplied:!!pmResult.applied, profileBoost:pmResult.boost, profileBlock:pmResult.block, profileBudget:pmResult.budgetCap };
+        profileApplied:!!pmResult.applied, profileBoost:pmResult.boost, profileBlock:pmResult.block, profileBudget:pmResult.budgetCap,
+        reports:rpResult.count, reportsApplied:!!rpResult.applied };
     });
   }
 
@@ -12423,6 +12768,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<p class="muted">' + (res.replaced ? '已完整替换为备份内容' : '合并完成') + '：写入 ' + res.added + ' 条，跳过 ' + res.skipped + ' 条，恢复照片 ' + res.photos + ' 张（' + fmtBytes(res.photoBytes) + '），用时 ' + fmtMs(res.ms) + '。</p>' +
         '<p class="dist-note">' + (res.feedbackApplied ? '推荐反馈已按备份还原（' + res.feedback + ' 条，不按记录去重）。' : '该备份不含反馈段（旧版本备份），本机反馈保持不变。') + '</p>' +
         '<p class="dist-note">' + (res.profileApplied ? '「我的口味」手动设置已还原（提升 ' + res.profileBoost + ' 项 / 拉黑 ' + res.profileBlock + ' 项 / 上限 ' + (res.profileBudget ? '¥' + res.profileBudget : '未设置') + '）。' : '该备份不含口味设置段（旧版本备份），本机口味设置保持不变。') + '</p>' +
+        '<p class="dist-note">' + (res.reportsApplied ? '年度报告存档已还原（' + res.reports + ' 份）。' : '该备份不含年度存档段（旧版本备份），本机存档保持不变。') + '</p>' +
         (res.missingPhotos ? '<p class="dist-note">有 ' + res.missingPhotos + ' 条记录引用的照片缺失，已保留无图状态。</p>' : '') +
         '<p class="dist-note">恢复前的本机数据已存为恢复点；若结果不对，可点下方按钮回到恢复前。</p>' +
         '<div class="actions" style="margin-top:12px">' +
@@ -13634,11 +13980,25 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   $('#annualMask').addEventListener('click', function(e){ if(e.target === this) closeAnnual(); });
   $('#annualYear').addEventListener('change', function(){ annualSetYear(this.value); });
   $('#annualBody').addEventListener('click', function(e){
-    var b = e.target.closest ? e.target.closest('[data-annual-year]') : null;
-    if(b) annualSetYear(b.getAttribute('data-annual-year'));
+    var yb = e.target.closest ? e.target.closest('[data-annual-year]') : null;
+    if(yb) annualSetYear(yb.getAttribute('data-annual-year'));
+    var mb = e.target.closest ? e.target.closest('[data-annual-mode]') : null;
+    if(mb){
+      annualState.showLive = mb.getAttribute('data-annual-mode') === 'live';
+      renderAnnual();
+      return;
+    }
+    var rb = e.target.closest ? e.target.closest('[data-annual-regen]') : null;
+    if(rb) openAnnualArchivePreview();
   });
   $('#btnAnnualImage').addEventListener('click', function(){ generateAnnualImages(); });
   $('#btnAnnualCopy').addEventListener('click', function(){ copyText(annualText); });
+  $('#btnAnnualArchive').addEventListener('click', openAnnualArchivePreview);
+  $('#btnAnnualDelete').addEventListener('click', deleteAnnualArchive);
+  $('#btnAnnualCsv').addEventListener('click', exportAnnualArchiveCsv);
+  $('#btnAnnualArchConfirm').addEventListener('click', confirmAnnualArchive);
+  $('#btnAnnualArchCancel').addEventListener('click', closeAnnualArchivePreview);
+  $('#annualArchMask').addEventListener('click', function(e){ if(e.target === this) closeAnnualArchivePreview(); });
   $('#statBox').addEventListener('click', function(e){
     var trend = e.target.closest ? e.target.closest('[data-stat-trend]') : null;
     if(trend){ statsSet({ trend:trend.getAttribute('data-stat-trend') }); return; }
@@ -14297,6 +14657,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           if(opts.feedback !== undefined){ obj.payload.feedback = JSON.parse(JSON.stringify(opts.feedback)); }
           if(opts.dropProfile){ try{ delete obj.payload.profile; }catch(e){} }
           if(opts.profile !== undefined){ obj.payload.profile = JSON.parse(JSON.stringify(opts.profile)); }
+          if(opts.dropReports){ try{ delete obj.payload.reports; }catch(e){} }
+          if(opts.reports !== undefined){ obj.payload.reports = JSON.parse(JSON.stringify(opts.reports)); }
           return backupChecksum(obj.payload, obj.photos).then(function(sum){
             obj.checksum.value = sum;
             return JSON.stringify(obj);
@@ -14533,8 +14895,41 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       longOpen: function(){ return !$('#longMask').classList.contains('hidden'); },
       closeLong: closeLongImages,
       controls: function(){
-        return { imageDisabled:$('#btnAnnualImage').disabled, yearValue:$('#annualYear').value, yearOptions:$('#annualYear').options.length };
-      }
+        return { imageDisabled:$('#btnAnnualImage').disabled, yearValue:$('#annualYear').value, yearOptions:$('#annualYear').options.length,
+          archiveDisabled:$('#btnAnnualArchive').disabled, archiveLabel:$('#btnAnnualArchive').textContent,
+          archiveDeleteHidden:$('#btnAnnualDelete').classList.contains('hidden'),
+          selectedText:$('#annualYear').options[$('#annualYear').selectedIndex] ? $('#annualYear').options[$('#annualYear').selectedIndex].textContent : '' };
+      },
+      archived: function(y){ return JSON.parse(JSON.stringify(reportArchived(y) || null)); },
+      reportsRaw: function(){ return reportRawText(); },
+      archive: function(y){
+        var yy = y || annualState.year, live = annualCompute(yy);
+        if(!live.records) return false;
+        reportUpsert({ year:yy, archivedAt:new Date().toISOString(), calcVersion:REPORT_CALC_VERSION, stats:reportStatsOf(live), highlight:reportHighlightOf(live) });
+        annualState.showLive = false;
+        renderAnnual();
+        return true;
+      },
+      drop: function(y){
+        var ok = reportRemove(y || annualState.year);
+        if(ok){ annualState.showLive = false; renderAnnual(); }
+        return ok;
+      },
+      preview: function(y){
+        if(y) annualState.year = y;
+        openAnnualArchivePreview();
+        return { open:!$('#annualArchMask').classList.contains('hidden'), text:$('#annualArchBody').innerText,
+          title:$('#annualArchTitle').innerText, confirmText:$('#btnAnnualArchConfirm').textContent };
+      },
+      cancelPreview: function(){ closeAnnualArchivePreview(); return $('#annualArchMask').classList.contains('hidden'); },
+      confirmPreview: function(){ confirmAnnualArchive(); return $('#annualArchMask').classList.contains('hidden'); },
+      mode: function(){ return annualState.curSource; },
+      setMode: function(live){ annualState.showLive = !!live; renderAnnual(); return annualState.curSource; },
+      current: function(){
+        return { year:annualState.year, source:annualState.curSource, records:annualState.curD ? annualState.curD.records : 0,
+          archived:!!(annualState.curD && annualState.curD.archived), body:$('#annualBody').innerText, pages:annualState.pages };
+      },
+      size: function(){ var raw = reportRawText(); return { bytes:raw.length, items:reportAll().items.length, perYear:reportAll().items.map(function(it){ return { year:it.year, bytes:JSON.stringify(it).length }; }) }; }
     },
     gather: {
       list: function(){ return JSON.parse(JSON.stringify(db.gathers || [])); },
