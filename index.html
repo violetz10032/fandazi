@@ -8567,6 +8567,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     if(name === 'record' || name === 'recommend') safeRender('renderReminder', renderReminder);
     safeRender('renderBackupReminder', renderBackupReminder);
+    try{ syncBackGuard(); }catch(e){}
     try{ window.scrollTo(0, viewScroll[name] || 0); }catch(e){}
   }
   function renderRecoPanel(){
@@ -8597,6 +8598,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       $$('#recoSeg button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-panel') === recoPanel); });
       renderRecoPanel();
     }
+    try{ syncBackGuard(); }catch(e){}
   }
 
   /* ================= 表单 ================= */
@@ -14495,7 +14497,116 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     renderInstall();
   });
 
-  /* ================= 启动 ================= */
+  /* ================= 返回层级：弹层 → 子视图 → 最外层 =================
+     只用内存状态与 history，不新增存储键。弹层逐层关闭后才允许退出。 */
+  var MASK_CLOSERS = {
+    diaryMask: closeDiaryDetail,
+    mapStoreMask: closeMapStoreSheet,
+    statDetailMask: closeStatDetail,
+    sheetMask: closeForm,
+    jumpMask: closeJump,
+    mapMask: closeMapModal,
+    patrolMask: closePatrol,
+    placeCoordMask: closePlaceCoord,
+    sampleMask: closeSamplePreview,
+    sampleCleanMask: closeSampleCleanDialog,
+    fanziMask: closeFanzi,
+    importMask: closeImport,
+    backupMask: closeBackupModal,
+    shareMask: closeShare,
+    exportMask: closeExport,
+    textMask: closeTextList,
+    gatherMask: closeGather,
+    annualMask: closeAnnual,
+    annualArchMask: closeAnnualArchivePreview,
+    longMask: closeLongImages,
+    imgMask: closeShareImage,
+    guideMask: closeGuide,
+    tutMask: closeTutorial
+  };
+  function topVisibleMask(){
+    if(!MASK_CLOSERS) return null;
+    var best = null, bestZ = -1;
+    Object.keys(MASK_CLOSERS).forEach(function(id){
+      var el = document.getElementById(id);
+      if(!el || el.classList.contains('hidden')) return;
+      var z = parseInt(window.getComputedStyle(el).zIndex, 10);
+      if(isNaN(z)) z = 0;
+      if(z > bestZ){
+        bestZ = z; best = el;
+      }else if(z === bestZ && best && (best.compareDocumentPosition(el) & 4)){
+        best = el; /* 同层级时后开（DOM 靠后）的优先 */
+      }
+    });
+    return best;
+  }
+  function inSubView(){
+    if(activeView === 'record'){
+      var list = $('#panel-list');
+      return !!(list && list.classList.contains('hidden'));
+    }
+    if(activeView === 'recommend') return !!(recoPanel && recoPanel !== 'daily');
+    return false;
+  }
+  function backOneLevel(){
+    var mask = topVisibleMask();
+    if(mask){
+      var fn = MASK_CLOSERS[mask.id];
+      if(fn){ try{ fn(); return true; }catch(e){} }
+      mask.classList.add('hidden');
+      return true;
+    }
+    if(inSubView()){
+      if(activeView === 'record') showPanel('record','list');
+      else showPanel('recommend','daily');
+      return true;
+    }
+    return false;
+  }
+  var backArmed = false, backSelf = false;
+  function syncBackGuard(){
+    try{
+      if(!MASK_CLOSERS) return;
+      if(topVisibleMask() || inSubView()){
+        if(!backArmed){ backArmed = true; history.pushState({ fzBack:1 }, ''); }
+      }else if(backArmed){
+        backArmed = false; backSelf = true; history.back();
+      }
+    }catch(e){}
+  }
+  window.addEventListener('popstate', function(){
+    if(backSelf){ backSelf = false; return; }
+    backArmed = false;
+    if(backOneLevel()){ /* 已关闭一层 */ }
+    setTimeout(syncBackGuard, 0);
+  });
+  function bindNativeBack(){
+    try{
+      var C = window.Capacitor;
+      if(!C || !C.isNativePlatform || !C.isNativePlatform()) return;
+      if(!C.Plugins || !C.Plugins.App || !C.Plugins.App.addListener) return;
+      C.Plugins.App.addListener('backButton', function(){
+        if(!backOneLevel()){
+          try{ C.Plugins.App.exitApp(); }catch(e){}
+        }
+      });
+    }catch(e){}
+  }
+  bindNativeBack();
+  /* 弹层是通过切换 .hidden 打开的，showView/showPanel 覆盖不到：监听 class 变化补齐守卫 */
+  var backSyncTimer = null;
+  function queueBackSync(){
+    if(backSyncTimer) return;
+    backSyncTimer = setTimeout(function(){ backSyncTimer = null; syncBackGuard(); }, 0);
+  }
+  try{
+    new MutationObserver(queueBackSync).observe(document.body, { attributes:true, attributeFilter:['class'], subtree:true });
+  }catch(e){}
+  /* 同 URL 重新加载时浏览器可能沿用上一条 entry 的 state，先归一化，避免残留一道守卫 */
+  try{ history.replaceState(null, ''); }catch(e){}
+  try{ syncBackGuard(); }catch(e){}
+
+
   var initGoal = db.settings.fitnessGoal || 'maintain';
   $('#goalSeg').setAttribute('data-goal', initGoal);
   $$('#goalSeg button').forEach(function(b){
