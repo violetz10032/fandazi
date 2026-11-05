@@ -1048,6 +1048,17 @@
           界面内不内置任何第三方平台 Logo、图标或品牌视觉，仅以文字提及平台名称，用于说明跳转去向。
         </div>
       </div>
+
+      <div class="card" id="aboutCard">
+        <div class="section-head" style="margin:0 0 10px">
+          <h2>关于</h2>
+          <span class="hint">名称与版权</span>
+        </div>
+        <p class="muted" style="line-height:1.75">
+          © <span id="aboutYear">2026</span> violetz10032 · i吃饭<br>
+          品牌名称、图标与文案保留所有权利；代码沿用 <a href="./LICENSE" target="_blank" rel="noopener" style="color:var(--accent)">MIT 许可证</a>。记录与照片只保存在本机。
+        </p>
+      </div>
     </section>
 
   </div>
@@ -6093,6 +6104,7 @@
   }
 
   function renderMore(){
+    var yEl = $('#aboutYear'); if(yEl) yEl.textContent = String(new Date().getFullYear());
     renderStats();
     renderWishlist();
     renderBlacklist();
@@ -7464,7 +7476,7 @@
         '｜'+(eta ? '预计 '+eta+' 到达' : '到达时间未填')+
         '｜'+patrolUrl(s));
     });
-    lines.push('', '链接为高德网页版；未填经纬度时是店名搜索链接。多途经点需要每站坐标，本清单按站逐个跳转。');
+    lines.push('', '链接为高德网页版；未填经纬度时是店名搜索链接。多途经点需要每站坐标，本清单按站逐个跳转。', '由 i吃饭 生成');
     return lines.join('\n');
   }
   function patrolCsvText(){
@@ -7475,7 +7487,7 @@
         patrolEta(s), patrolUrl(s)].map(csvCell).join(','));
     });
     lines.push('');
-    lines.push(csvCell('由「i吃饭」本地生成于 '+new Date().toISOString()));
+    lines.push(csvCell('由 i吃饭 生成 · '+new Date().toISOString()));
     lines.push(csvCell('链接为高德网页版，未填经纬度时为店名搜索'));
     return '\ufeff' + lines.join('\r\n');
   }
@@ -7599,7 +7611,9 @@
   }
   function exportJson(){
     if(!db.records.length){ toast('还没有数据可导出'); return; }
-    download('i吃饭-美食记录-'+todayStr()+'.json', JSON.stringify(db, null, 2), 'application/json');
+    var out = JSON.parse(JSON.stringify(db));
+    out.署名 = '由 i吃饭 生成';
+    download('i吃饭-美食记录-'+todayStr()+'.json', JSON.stringify(out, null, 2), 'application/json');
     toast('已导出 JSON');
   }
   function csvCell(v){
@@ -7613,7 +7627,7 @@
       var d = r.ratings || {};
       return [r.name,r.city,r.area,r.address,r.visitDate,MEAL_LABEL[r.mealType]||'',SCENE_LABEL[r.scene]||'',r.people,r.totalPrice,perPriceOf(r),r.category,r.rating,d.taste||'',d.env||'',d.service||'',d.value||'',(r.tags||[]).join(' '),r.kcal||'',r.protein||'',r.fitnessFriendly?'是':'',r.note];
     });
-    var csv = '\ufeff' + [head].concat(rows).map(function(row){ return row.map(csvCell).join(','); }).join('\r\n');
+    var csv = '\ufeff' + [head].concat(rows).map(function(row){ return row.map(csvCell).join(','); }).concat(['', csvCell('由 i吃饭 生成')]).join('\r\n');
     download('i吃饭-美食记录-'+todayStr()+'.csv', csv, 'text/csv');
     toast('已导出 CSV');
   }
@@ -8014,7 +8028,10 @@
     ctx.fillText('数据来自本人记录，不代表平台评价', 72, 1270);
     ctx.fillStyle = '#9a8f86';
     ctx.font = '400 22px ' + SHARE_FONT;
-    ctx.fillText('店铺、价格、距离均为手填或按坐标估算 · '+todayStr(), 72, 1310);
+    ctx.fillText('店铺、价格、距离均为手填或按坐标估算 · '+todayStr(), 72, 1308);
+    ctx.fillStyle = '#9a8f86';
+    ctx.font = '400 22px ' + SHARE_FONT;
+    ctx.fillText('由 i吃饭 生成', 72, 1340);
     return c;
   }
   function shareImageText(kind){
@@ -8022,7 +8039,7 @@
     if(!data) return '';
     return ['【i吃饭 · '+data.title+'】', data.name, data.meta, data.tag]
       .concat((data.lines||[]).map(function(l){ return '· '+l; }))
-      .concat(['数据来自本人记录，不代表平台评价'])
+      .concat(['数据来自本人记录，不代表平台评价', '由 i吃饭 生成'])
       .join('\n');
   }
   function openShareImage(kind){
@@ -8481,7 +8498,7 @@
       lines.push(head.map(function(k){ return csvCell(row[k]); }).join(','));
     });
     lines.push('');
-    lines.push(csvCell('由「i吃饭」本地生成于 '+new Date().toISOString()));
+    lines.push(csvCell('由 i吃饭 生成 · '+new Date().toISOString()));
     lines.push(csvCell('数据来自本人记录，不代表平台评价'));
     return '\uFEFF' + lines.join('\r\n');
   }
@@ -8526,7 +8543,8 @@
       免责声明: '数据来自本人记录，不代表平台评价',
       字段选项: opts,
       记录数: records.length,
-      记录: []
+      记录: [],
+      署名: '由 i吃饭 生成'
     };
     var i = 0;
     function next(){
@@ -8573,7 +8591,7 @@
       lines.push((i+1)+'. '+r.name+'｜'+bits.join('｜')+'｜'+reasonOfRecord(r, opts));
     });
     lines.push('');
-    lines.push('由「i吃饭」在本机生成，未上传服务器。');
+    lines.push('由 i吃饭 生成');
     lines.push('数据来自本人记录，不代表平台评价。');
     return lines.join('\n');
   }
@@ -8674,7 +8692,7 @@
     ctx.fillText('数据来自本人记录，不代表平台评价', M, fy+52);
     ctx.fillStyle = '#9a8f86';
     ctx.font = '400 22px ' + SHARE_FONT;
-    ctx.fillText('由「i吃饭」在本机生成 · 距离为手填或按坐标估算、价格手填 · '+todayStr(), M, fy+92);
+    ctx.fillText('由 i吃饭 生成 · 距离为手填或按坐标估算、价格手填 · '+todayStr(), M, fy+92);
     return c;
   }
   function generateLongImages(){
@@ -12002,7 +12020,8 @@
         var data = shareDataOf(kind || 'daily');
         if(!data) return { ok:false, reason:'no-data' };
         var c = renderShareCanvas(data);
-        return { ok:true, kind:data.kind, name:data.name, w:c.width, h:c.height, dataUrlLen:c.toDataURL('image/png').length };
+        var url = c.toDataURL('image/png');
+        return { ok:true, kind:data.kind, name:data.name, w:c.width, h:c.height, dataUrlLen:url.length, dataUrl:url };
       }catch(e){ return { ok:false, reason:String(e && e.message || e) }; }
     },
     shareText: function(kind){ return shareImageText(kind || 'daily'); },
