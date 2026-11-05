@@ -1433,6 +1433,10 @@
   var KEY = 'fandazi.v1';
   var BAK_KEY = KEY + '.bak';
   var RAW_KEY = KEY + '.raw';
+  /* 数据结构 v2：shops + visits。迁移后 v1 只读保留，仅作回退底稿，任何代码路径都不再写它 */
+  var V2_KEY = 'fandazi.v2';
+  var V2_MARK_KEY = 'fandazi.migrated';
+  var v2Active = false, v2Store = null, lastV2Str = null, v2Broken = false, v2Migrating = false, v2FailMode = null;
 
   /* ================= 诊断与容错基础设施 ================= */
   var BOOT_START = (window.performance && performance.now) ? performance.now() : Date.now();
@@ -1667,10 +1671,315 @@
   }
   /*@end*/
 
+  /* ================= 数据结构 v2（shops + visits）：纯函数 =================
+     约定：
+     1) shop.id = fnv1a32(城市|店名) 的 8 位十六进制，跨设备稳定，与审计口径一致；
+     2) visit.id 直接复用旧 record.id，迁移天然幂等；
+     3) 旧记录中 v2 字段表未覆盖的字段（距离、营业时间、四维评分、来源等）原样存入 visit.legacy，
+        投影时原样还原，保证 buildStores() 等下游零改动、双读 0 差异；
+     4) 迁移不虚构数据：缺 amount 写 null，缺 rating 写 null，缺日期保留哨兵并标 dateEstimated。
+  */
+  var V2_DATE_SENTINEL = '2000-01-01';
+  /* visit 上已有独立字段的键，不再重复放进 legacy */
+  var V2_MAPPED_KEYS = ['id','name','city','visitDate','totalPrice','people','rating','note','photoId','importedFrom','createdAt','updatedAt','dishes','wantReturn','dateEstimated'];
+
+  function cloneJson(v){ return v == null ? v : JSON.parse(JSON.stringify(v)); }
+  function imul32(a, b){
+    if(Math.imul) return Math.imul(a, b) >>> 0;
+    var ah = (a >>> 16) & 0xffff, al = a & 0xffff;
+    var bh = (b >>> 16) & 0xffff, bl = b & 0xffff;
+    return ((al * bl) + (((ah * bl + al * bh) << 16) >>> 0)) >>> 0;
+  }
+  function fnv1a32(str){
+    var h = 0x811c9dc5, s = String(str == null ? '' : str);
+    for(var i = 0; i < s.length; i++){
+      h ^= s.charCodeAt(i);
+      h = imul32(h, 0x01000193);
+    }
+    return h >>> 0;
+  }
+  function shopKeyOf(name, city){
+    return String(city || '').trim().toLowerCase() + '|' + String(name || '').trim().toLowerCase();
+  }
+  function shopIdOf(name, city){
+    var hex = fnv1a32(shopKeyOf(name, city)).toString(16);
+    while(hex.length < 8) hex = '0' + hex;
+    return hex;
+  }
+
+  /* 旧 record → visit（不虚构：缺失即 null / 空数组） */
+  function visitOfRecord(r, sid){
+    var legacy = {}, k;
+    for(k in r){
+      if(Object.prototype.hasOwnProperty.call(r, k) && V2_MAPPED_KEYS.indexOf(k) < 0) legacy[k] = cloneJson(r[k]);
+    }
+    var date = String(r.visitDate || V2_DATE_SENTINEL);
+    var v = {
+      id: String(r.id),
+      shopId: String(sid),
+      date: date,
+      dateEstimated: r.dateEstimated === true || date === V2_DATE_SENTINEL,
+      amount: num(r.totalPrice) > 0 ? num(r.totalPrice) : null,
+      people: Math.max(1, Math.round(num(r.people) || 1)),
+      rating: num(r.rating) > 0 ? Math.min(5, num(r.rating)) : null,
+      note: String(r.note == null ? '' : r.note),
+      photoIds: r.photoId ? [String(r.photoId)] : [],
+      importedFrom: String(r.importedFrom || ''),
+      createdAt: String(r.createdAt || ''),
+      updatedAt: String(r.updatedAt || ''),
+      legacy: legacy
+    };
+    if(r.dishes !== undefined) v.dishes = cloneJson(r.dishes);
+    if(r.wantReturn !== undefined) v.wantReturn = cloneJson(r.wantReturn);
+    return v;
+  }
+
+  /* visit + shop → 旧 record 形状（与 migrate() 归一化后的字段一致） */
+  function recordFromVisit(v, shop){
+    shop = shop || {};
+    var c = cloneJson(v.legacy) || {};
+    c.id = String(v.id);
+    c.name = String(shop.name || c.name || '');
+    c.city = String(shop.city || c.city || '');
+    c.area = c.area == null ? String(shop.area || '') : String(c.area);
+    c.address = c.address == null ? String(shop.address || '') : String(c.address);
+    c.lat = isFinite(Number(c.lat)) && c.lat !== null && Math.abs(Number(c.lat)) <= 90 ? Number(c.lat) : null;
+    c.lng = isFinite(Number(c.lng)) && c.lng !== null && Math.abs(Number(c.lng)) <= 180 ? Number(c.lng) : null;
+    c.distanceKm = c.distanceKm == null ? null : num(c.distanceKm);
+    c.openStart = String(c.openStart || '');
+    c.openEnd = String(c.openEnd || '');
+    c.fitMeals = Array.isArray(c.fitMeals) ? c.fitMeals : [];
+    c.dayType = c.dayType || 'any';
+    c.travelMode = c.travelMode || '';
+    c.travelMin = c.travelMin == null ? null : num(c.travelMin);
+    c.fromPlace = String(c.fromPlace || '');
+    c.visitDate = String(v.date || V2_DATE_SENTINEL);
+    c.dateEstimated = v.dateEstimated === true;
+    c.people = Math.max(1, Math.round(num(v.people) || 1));
+    c.totalPrice = v.amount == null ? null : num(v.amount);
+    c.perPrice = Math.round(num(c.perPrice) || 0);
+    c.category = String(c.category == null ? (shop.category || '') : c.category);
+    c.rating = v.rating == null ? null : num(v.rating);
+    c.note = String(v.note == null ? '' : v.note);
+    c.photo = c.photo ? String(c.photo) : null;
+    c.photoId = (v.photoIds && v.photoIds.length) ? String(v.photoIds[0]) : null;
+    c.createdAt = String(v.createdAt || '');
+    c.updatedAt = String(v.updatedAt || '');
+    c.mealType = c.mealType || '';
+    c.scene = c.scene || '';
+    c.tags = Array.isArray(c.tags) ? c.tags : [];
+    c.ratings = (c.ratings && typeof c.ratings === 'object') ? c.ratings : { taste:0, env:0, service:0, value:0 };
+    c.kcal = c.kcal == null ? null : num(c.kcal);
+    c.protein = c.protein == null ? null : num(c.protein);
+    c.fitnessFriendly = c.fitnessFriendly === true;
+    c.source = String(c.source || 'manual');
+    c.importedFrom = String(v.importedFrom || '');
+    c.importedAt = String(c.importedAt || '');
+    if(v.dishes !== undefined) c.dishes = cloneJson(v.dishes);
+    if(v.wantReturn !== undefined) c.wantReturn = cloneJson(v.wantReturn);
+    return c;
+  }
+
+  /* 店铺聚合：店铺级字段取最近一次到访；tags 取并集；ratingAgg 由 visits 重算 */
+  function shopOfVisits(sid, entries){
+    var latest = entries[0], i;
+    for(i = 1; i < entries.length; i++){
+      if(String(entries[i].v.date || '') > String(latest.v.date || '')) latest = entries[i];
+    }
+    var tags = [], perPrices = [], ratingSum = 0, ratingN = 0;
+    var dims = { taste:[0,0], env:[0,0], service:[0,0], value:[0,0] };
+    entries.forEach(function(e){
+      var v = e.v, lg = v.legacy || {};
+      if(Array.isArray(lg.tags)) tags = tags.concat(lg.tags);
+      if(num(lg.perPrice) > 0) perPrices.push(num(lg.perPrice));
+      if(num(v.rating) > 0){ ratingSum += num(v.rating); ratingN++; }
+      ['taste','env','service','value'].forEach(function(k){
+        if(lg.ratings && num(lg.ratings[k]) > 0){ dims[k][0] += num(lg.ratings[k]); dims[k][1]++; }
+      });
+    });
+    var dimOut = {};
+    ['taste','env','service','value'].forEach(function(k){
+      dimOut[k] = dims[k][1] ? Math.round(dims[k][0] / dims[k][1] * 10) / 10 : 0;
+    });
+    var lg = latest.v.legacy || {};
+    return {
+      id: sid,
+      name: String(latest.name || ''),
+      city: String(latest.city || ''),
+      area: String(lg.area || ''),
+      address: String(lg.address || ''),
+      lat: isFinite(Number(lg.lat)) && lg.lat !== null && Math.abs(Number(lg.lat)) <= 90 ? Number(lg.lat) : null,
+      lng: isFinite(Number(lg.lng)) && lg.lng !== null && Math.abs(Number(lg.lng)) <= 180 ? Number(lg.lng) : null,
+      category: String(lg.category || ''),
+      tags: uniq(tags),
+      avgPrice: perPrices.length ? Math.round(perPrices.reduce(function(a,b){ return a+b; }, 0) / perPrices.length) : null,
+      note: String(latest.v.note || ''),
+      photoId: (latest.v.photoIds && latest.v.photoIds.length) ? latest.v.photoIds[0] : null,
+      ratingAgg: {
+        rating: ratingN ? Math.round(ratingSum / ratingN * 10) / 10 : null,
+        dims: dimOut, n: ratingN, visits: entries.length,
+        latest: latest.v.rating == null ? null : latest.v.rating,
+        lastVisit: String(latest.v.date || '')
+      },
+      lastVisit: String(latest.v.date || '')
+    };
+  }
+
+  /* records + 应用状态 → 完整 v2 对象（内存中构建，纯函数） */
+  function buildV2FromRecords(records, opts){
+    opts = opts || {};
+    var at = num(opts.migratedAt) > 0 ? num(opts.migratedAt) : Date.now();
+    var photoSet = opts.photoSet || null;
+    var visits = [], byShop = {}, visitIds = {};
+    (records || []).forEach(function(r){
+      if(!r || !String(r.name || '').trim()) return;
+      var sid = shopIdOf(r.name, r.city);
+      var v = visitOfRecord(r, sid);
+      if(visitIds[v.id]) return;       /* 同一 id 只保留第一条（幂等） */
+      visitIds[v.id] = 1;
+      visits.push(v);
+      (byShop[sid] || (byShop[sid] = [])).push({ v: v, name: String(r.name || '').trim(), city: String(r.city || '') });
+    });
+    var shops = {};
+    Object.keys(byShop).forEach(function(sid){ shops[sid] = shopOfVisits(sid, byShop[sid]); });
+    var orphanPhotos = [];
+    visits.forEach(function(v){
+      (v.photoIds || []).forEach(function(pid){
+        if(photoSet && !photoSet[pid] && orphanPhotos.indexOf(pid) < 0) orphanPhotos.push(pid);
+      });
+    });
+    return {
+      version: 2,
+      migratedAt: at,
+      shops: shops,
+      visits: visits,
+      meta: {
+        recordsIn: (records || []).length,
+        source: 'fandazi.v1',
+        builtAt: at,
+        orphanPhotos: orphanPhotos,
+        state: opts.state ? cloneJson(opts.state) : null
+      }
+    };
+  }
+
+  /* v2 → 旧 db 结构（settings/places 复用 migrate 的归一化，records 由 visits 投影） */
+  function projectV2(v2){
+    v2 = v2 || {};
+    var shops = v2.shops || {};
+    var st = (v2.meta && v2.meta.state) || {};
+    var base = migrate({
+      records: [],
+      settings: st.settings, blacklist: st.blacklist, wishlist: st.wishlist, places: st.places
+    });
+    base.votes = Array.isArray(st.votes) ? cloneJson(st.votes) : [];
+    base.records = (v2.visits || []).map(function(v){ return recordFromVisit(v, shops[v.shopId]); });
+    base.version = 3;
+    return base;
+  }
+
+  /* 结构校验（不含照片存在性，读回校验时再传 photoSet） */
+  function v2ShapeCheck(v2){
+    if(!v2 || typeof v2 !== 'object') return { ok:false, error:'不是对象' };
+    if(v2.version !== 2) return { ok:false, error:'version 不是 2' };
+    if(!v2.shops || typeof v2.shops !== 'object' || Array.isArray(v2.shops)) return { ok:false, error:'shops 结构异常' };
+    if(!Array.isArray(v2.visits)) return { ok:false, error:'visits 不是数组' };
+    var ids = {}, shops = v2.shops;
+    for(var i = 0; i < v2.visits.length; i++){
+      var v = v2.visits[i];
+      if(!v || !v.id) return { ok:false, error:'第 ' + i + ' 条到访缺 id' };
+      if(ids[v.id]) return { ok:false, error:'到访 id 重复：' + v.id };
+      ids[v.id] = 1;
+      if(!v.shopId || !shops[v.shopId]) return { ok:false, error:'到访 ' + v.id + ' 引用了不存在的店铺' };
+    }
+    return { ok:true, error:'', shops:Object.keys(shops).length, visits:v2.visits.length };
+  }
+
+  /**
+   * 读回校验：数量、引用、字段合法性、照片引用是否存在。
+   * photoSet 为空时跳过照片存在性检查（只做结构与数值校验）。
+   */
+  function verifyV2(v2, photoSet){
+    var shape = v2ShapeCheck(v2);
+    if(!shape.ok) return { ok:false, error:shape.error, shops:0, visits:0, orphans:[], errors:[shape.error] };
+    var errors = [], orphans = [], shops = v2.shops;
+    v2.visits.forEach(function(v){
+      if(v.amount != null && !isFinite(Number(v.amount))) errors.push('到访 ' + v.id + ' 的 amount 不是数字');
+      if(v.rating != null && (num(v.rating) < 0 || num(v.rating) > 5)) errors.push('到访 ' + v.id + ' 的 rating 超出 0–5');
+      if(v.people != null && num(v.people) < 1) errors.push('到访 ' + v.id + ' 的 people 小于 1');
+      ['photoIds'].forEach(function(k){
+        if(v[k] !== undefined && !Array.isArray(v[k])) errors.push('到访 ' + v.id + ' 的 ' + k + ' 不是数组');
+      });
+      (v.photoIds || []).forEach(function(pid){
+        if(photoSet && !photoSet[pid] && orphans.indexOf(pid) < 0) orphans.push(pid);
+      });
+    });
+    Object.keys(shops).forEach(function(sid){
+      var s = shops[sid];
+      if(!s || !s.id) errors.push('店铺 ' + sid + ' 缺 id');
+      if(s && s.ratingAgg && s.ratingAgg.rating != null && (num(s.ratingAgg.rating) < 0 || num(s.ratingAgg.rating) > 5)) errors.push('店铺 ' + sid + ' 聚合评分异常');
+    });
+    return {
+      ok: errors.length === 0, error: errors[0] || '', errors: errors.slice(0, 5),
+      shops: Object.keys(shops).length, visits: v2.visits.length, orphans: orphans
+    };
+  }
+
+  /* 迁移自检：抽取至多 n 条到访，与源记录逐字段比对 */
+  function v2SampleDiff(v2, records, n){
+    n = n || 10;
+    var byId = {}, errors = [];
+    (records || []).forEach(function(r){ byId[String(r.id)] = r; });
+    var list = v2.visits || [], idxs = [];
+    if(list.length){
+      idxs.push(0);
+      if(list.length > 1) idxs.push(list.length - 1);
+      for(var i = 1; i < Math.min(n, list.length); i++){
+        var k = Math.floor(i * list.length / Math.min(n, list.length));
+        if(idxs.indexOf(k) < 0) idxs.push(k);
+      }
+    }
+    idxs.forEach(function(k){
+      var v = list[k], r = byId[v.id];
+      if(!r){ errors.push('抽样到访 ' + v.id + ' 找不到源记录'); return; }
+      if(String(r.visitDate || '') !== String(v.date)) errors.push('date 不一致：' + v.id);
+      var at = num(r.totalPrice) > 0 ? num(r.totalPrice) : null;
+      if(at !== v.amount) errors.push('amount 不一致：' + v.id);
+      if(Math.max(1, Math.round(num(r.people) || 1)) !== v.people) errors.push('people 不一致：' + v.id);
+      var rt = num(r.rating) > 0 ? Math.min(5, num(r.rating)) : null;
+      if(rt !== v.rating) errors.push('rating 不一致：' + v.id);
+      if(String(r.note || '') !== v.note) errors.push('note 不一致：' + v.id);
+      var pid = r.photoId ? String(r.photoId) : null;
+      var vp = (v.photoIds && v.photoIds.length) ? v.photoIds[0] : null;
+      if(pid !== vp) errors.push('photoIds 不一致：' + v.id);
+    });
+    return { ok: errors.length === 0, errors: errors.slice(0, 5), sampled: idxs.length };
+  }
+
+  /* 当前应用状态（settings/黑名单等），写进 v2.meta.state */
+  function stateOfDb(src){
+    src = src || db;
+    return {
+      version: src.version,
+      settings: cloneJson(src.settings),
+      blacklist: cloneJson(src.blacklist),
+      wishlist: cloneJson(src.wishlist),
+      votes: cloneJson(src.votes),
+      places: cloneJson(src.places)
+    };
+  }
+
   var legacyData = false;
   var recoveredBackup = false;
   var skipBakOnce = false;
   function loadDb(){
+    /* 双读：v2 存在且结构合法 → 读 v2；否则走原有 v1 逻辑（一个字节都不改） */
+    var got = readV2Raw();
+    if(got){
+      v2Active = true; v2Store = got.data; lastV2Str = got.str; v2Broken = false;
+      return projectV2(got.data);
+    }
+    v2Active = false; v2Store = null; lastV2Str = null;
     var str = null, raw = null;
     try{ str = localStorage.getItem(KEY); }catch(e){ logError('localStorage 读取', e); }
     if(str){
@@ -1699,6 +2008,8 @@
 
   function save(silent){
     invalidateStores();
+    /* 写入统一走 v2：v2 模式下只写 fandazi.v2，绝不同时写 v1 */
+    if(v2Active){ saveV2(silent); return; }
     var str;
     try{ str = JSON.stringify(db); }
     catch(e){ logError('数据序列化', e); toast('保存失败：数据结构异常'); return; }
@@ -1716,6 +2027,268 @@
       toast('保存失败：本机存储空间不足（照片可能过大）');
     }
     if(!silent) renderAll();
+  }
+
+  /* ================= 数据结构 v2：读写、迁移引擎、回退、重建 ================= */
+  function readV2Raw(){
+    var str = null;
+    try{ str = localStorage.getItem(V2_KEY); }catch(e){ return null; }
+    if(!str) return null;
+    var data = null;
+    try{ data = JSON.parse(str); }
+    catch(e){ v2Broken = true; logError('v2 解析', e); return null; }
+    var chk = v2ShapeCheck(data);
+    if(!chk.ok){ v2Broken = true; logError('v2 校验', new Error(chk.error)); return null; }
+    return { data: data, str: str };
+  }
+
+  /* v2 模式下的保存：由 db.records 重建 shops/visits，只写 V2_KEY */
+  function saveV2(silent){
+    var next = buildV2FromRecords(db.records, {
+      state: stateOfDb(db),
+      migratedAt: (v2Store && num(v2Store.migratedAt)) || Date.now()
+    });
+    if(v2Store && v2Store.meta){
+      next.meta.orphanPhotos = cloneJson(v2Store.meta.orphanPhotos || []);
+      next.meta.recordsIn = db.records.length;
+    }
+    var str;
+    try{ str = JSON.stringify(next); }
+    catch(e){ logError('v2 序列化', e); toast('保存失败：数据结构异常'); return; }
+    if(str === lastV2Str){
+      if(!silent) renderAll();
+      return;
+    }
+    var old = null;
+    try{ old = localStorage.getItem(V2_KEY); }catch(e){ old = null; }
+    try{
+      localStorage.setItem(V2_KEY, str);
+      v2Store = next;
+      lastV2Str = str;
+    }catch(e){
+      try{ if(old == null) localStorage.removeItem(V2_KEY); else localStorage.setItem(V2_KEY, old); }catch(_e){}
+      logError('v2 保存', e);
+      toast('保存失败：本机存储空间不足（照片可能过大）');
+    }
+    if(!silent) renderAll();
+  }
+
+  /* 恢复/导入等「整包替换」写入：v2 模式下写 v2 并读回校验，v1 模式沿用 commitDbString */
+  function commitDbNext(next){
+    if(!v2Active){
+      var s1 = JSON.stringify(next);
+      commitDbString(s1);
+      return { mode:'v1', str:s1 };
+    }
+    var built = buildV2FromRecords(next.records, {
+      state: stateOfDb(next),
+      migratedAt: (v2Store && num(v2Store.migratedAt)) || Date.now()
+    });
+    if(v2Store && v2Store.meta) built.meta.orphanPhotos = cloneJson(v2Store.meta.orphanPhotos || []);
+    var str = JSON.stringify(built);
+    var old = null;
+    try{ old = localStorage.getItem(V2_KEY); }catch(e){ old = null; }
+    try{ localStorage.setItem(V2_KEY, str); }
+    catch(e){ throw new Error('空间不足：本机 localStorage 写入失败，未改动原数据'); }
+    var back = null;
+    try{ back = JSON.parse(localStorage.getItem(V2_KEY) || 'null'); }catch(e){ back = null; }
+    var chk = v2ShapeCheck(back);
+    if(!chk.ok){
+      try{ if(old == null) localStorage.removeItem(V2_KEY); else localStorage.setItem(V2_KEY, old); }catch(_e){}
+      throw new Error('写入校验失败：' + chk.error + '，已还原原数据');
+    }
+    v2Store = back; lastV2Str = str; v2Broken = false;
+    return { mode:'v2', str:str };
+  }
+
+  /**
+   * 一次性迁移 v1 → v2。
+   * 顺序：内存构建 → 抽样自检 → IDB 快照 → 写 v2 → 读回校验（数量/引用/照片存在）
+   *      → 校验 v1 未被改动 → 才写 fandazi.migrated。
+   * 任何一步失败只回滚本次写入的 v2 与标记，v1 与照片不动，可重试。
+   * 幂等：已存在的同 id shop/visit 计入跳过；v2 独有的到访（迁移后新增）原样保留。
+   */
+  function migrateToV2(){
+    if(v2Migrating) return Promise.reject(new Error('迁移正在进行，请稍候重试'));
+    v2Migrating = true;
+    var t0 = nowMs();
+    var prevV2 = null, prevMark = null, v1Before = null;
+    try{
+      prevV2 = localStorage.getItem(V2_KEY);
+      prevMark = localStorage.getItem(V2_MARK_KEY);
+      v1Before = localStorage.getItem(KEY);
+    }catch(e){}
+    var records = db.records.slice();
+    var state = stateOfDb(db);
+    var existing = null;
+    if(prevV2){ try{ existing = JSON.parse(prevV2); }catch(e){ existing = null; } }
+    var failedMode = null;
+
+    return backupIdList().then(function(ids){
+      var photoSet = {};
+      ids.forEach(function(id){ photoSet[id] = 1; });
+      var built = buildV2FromRecords(records, {
+        state: state,
+        migratedAt: (existing && num(existing.migratedAt)) || Date.now(),
+        photoSet: photoSet
+      });
+      var addedVisits = 0, skippedVisits = 0, skippedShops = 0;
+      var prevVisits = {}, prevShops = {};
+      if(existing){
+        (existing.visits || []).forEach(function(v){ prevVisits[String(v.id)] = 1; });
+        Object.keys(existing.shops || {}).forEach(function(sid){ prevShops[sid] = 1; });
+        Object.keys(built.shops || {}).forEach(function(sid){ if(prevShops[sid]) skippedShops++; });
+        built.visits.forEach(function(v){ if(prevVisits[v.id]) skippedVisits++; else addedVisits++; });
+        /* 保留迁移后新增、v1 里没有的到访与店铺，避免重跑迁移丢数据 */
+        var have = {};
+        built.visits.forEach(function(v){ have[v.id] = 1; });
+        (existing.visits || []).forEach(function(v){
+          if(!have[String(v.id)]) built.visits.push(cloneJson(v));
+        });
+        Object.keys(existing.shops || {}).forEach(function(sid){
+          if(!built.shops[sid]) built.shops[sid] = cloneJson(existing.shops[sid]);
+        });
+      }else{
+        addedVisits = built.visits.length;
+      }
+      var sample = v2SampleDiff(built, records, 10);
+      if(!sample.ok) throw new Error('迁移自检失败：' + sample.errors[0]);
+      var builtStr = JSON.stringify(built);
+      failedMode = v2FailMode;
+
+      return makeSnapshot('before-migrate').catch(function(){ return null; }).then(function(snap){
+        if(failedMode === 'write') throw new Error('写入前失败（测试注入）');
+        try{ localStorage.setItem(V2_KEY, builtStr); }
+        catch(e){ throw new Error('空间不足：写入 fandazi.v2 失败'); }
+        if(failedMode === 'verify') throw new Error('读回校验前失败（测试注入）');
+        var back = null;
+        try{ back = JSON.parse(localStorage.getItem(V2_KEY) || 'null'); }
+        catch(e){ throw new Error('读回校验失败：写入内容无法解析'); }
+        var verify = verifyV2(back, photoSet);
+        if(!verify.ok) throw new Error('读回校验失败：' + verify.error);
+        if(verify.visits !== built.visits.length) throw new Error('读回校验失败：到访数量不一致');
+        if(verify.shops !== Object.keys(built.shops).length) throw new Error('读回校验失败：店铺数量不一致');
+        var v1After = null;
+        try{ v1After = localStorage.getItem(KEY); }catch(e){ v1After = null; }
+        if(v1Before !== null && v1After !== v1Before) throw new Error('内部校验失败：旧数据被改动，已中止');
+        if(failedMode === 'mark') throw new Error('写迁移标记前失败（测试注入）');
+
+        var mark = {
+          version: 2, at: Date.now(), shops: verify.shops, visits: verify.visits,
+          recordsIn: records.length, orphans: verify.orphans.length
+        };
+        try{ localStorage.setItem(V2_MARK_KEY, JSON.stringify(mark)); }
+        catch(e){ throw new Error('空间不足：写入迁移标记失败'); }
+
+        v2FailMode = null;
+        v2Store = back; lastV2Str = builtStr; v2Active = true; v2Broken = false;
+        db = projectV2(back);
+        invalidateStores();
+        v2Migrating = false;
+        renderAll();
+        return {
+          ok: true, shops: verify.shops, visits: verify.visits,
+          addedVisits: addedVisits, skippedVisits: skippedVisits, skippedShops: skippedShops,
+          recordsIn: records.length, orphans: verify.orphans.length, orphanIds: verify.orphans,
+          sampled: sample.sampled, ms: Math.round(nowMs() - t0), bytes: builtStr.length,
+          snapshotId: snap ? snap.id : null
+        };
+      });
+    }).catch(function(e){
+      v2Migrating = false;
+      v2FailMode = null;
+      try{
+        if(prevV2 == null) localStorage.removeItem(V2_KEY); else localStorage.setItem(V2_KEY, prevV2);
+        if(prevMark == null) localStorage.removeItem(V2_MARK_KEY); else localStorage.setItem(V2_MARK_KEY, prevMark);
+      }catch(_e){ logError('v2 迁移回滚', _e); }
+      var msg = (e && e.message) || String(e);
+      throw new Error('迁移未完成：' + msg + '。已回滚到迁移前状态，旧数据 fandazi.v1 未被改动，可直接重试。');
+    });
+  }
+
+  /* 重建 v2：按当前记录重算店铺聚合与照片引用，用于修复不一致 */
+  function rebuildV2(){
+    var t0 = nowMs();
+    var prevV2 = null;
+    try{ prevV2 = localStorage.getItem(V2_KEY); }catch(e){}
+    return backupIdList().then(function(ids){
+      var photoSet = {};
+      ids.forEach(function(id){ photoSet[id] = 1; });
+      var built = buildV2FromRecords(db.records, {
+        state: stateOfDb(db),
+        migratedAt: (v2Store && num(v2Store.migratedAt)) || Date.now(),
+        photoSet: photoSet
+      });
+      var str = JSON.stringify(built);
+      try{ localStorage.setItem(V2_KEY, str); }
+      catch(e){ throw new Error('空间不足：重建 v2 失败，原 v2 未改动'); }
+      var back = null;
+      try{ back = JSON.parse(localStorage.getItem(V2_KEY) || 'null'); }catch(e){ back = null; }
+      var verify = verifyV2(back, photoSet);
+      if(!verify.ok || verify.visits !== built.visits.length){
+        try{ if(prevV2 == null) localStorage.removeItem(V2_KEY); else localStorage.setItem(V2_KEY, prevV2); }catch(_e){}
+        throw new Error('重建校验失败：' + (verify.error || '数量不一致') + '，已还原原 v2');
+      }
+      v2Store = back; lastV2Str = str; v2Active = true; v2Broken = false;
+      db = projectV2(back);
+      invalidateStores();
+      try{
+        localStorage.setItem(V2_MARK_KEY, JSON.stringify({
+          version: 2, at: num(back.migratedAt) || Date.now(), rebuiltAt: Date.now(),
+          shops: verify.shops, visits: verify.visits, recordsIn: db.records.length, orphans: verify.orphans.length
+        }));
+      }catch(e){ logError('迁移标记写入', e); }
+      renderAll();
+      return {
+        ok: true, shops: verify.shops, visits: verify.visits, orphans: verify.orphans.length,
+        orphanIds: verify.orphans, ms: Math.round(nowMs() - t0), bytes: str.length
+      };
+    });
+  }
+
+  /* 回到旧版数据：只删 v2 与迁移标记，v1 一直在；迁移后新增的记录会丢失 */
+  function revertV2(){
+    var lost = 0;
+    try{
+      var raw2 = localStorage.getItem(V2_KEY);
+      var raw1 = localStorage.getItem(KEY);
+      if(raw2){
+        var o = JSON.parse(raw2), ids = {};
+        var r1 = raw1 ? JSON.parse(raw1) : null;
+        (r1 && Array.isArray(r1.records) ? r1.records : []).forEach(function(r){ ids[String(r.id)] = 1; });
+        (o.visits || []).forEach(function(v){ if(!ids[String(v.id)]) lost++; });
+      }
+      localStorage.removeItem(V2_KEY);
+      localStorage.removeItem(V2_MARK_KEY);
+    }catch(e){
+      throw new Error('回到旧版失败：浏览器拒绝写入，未做任何改动');
+    }
+    v2Active = false; v2Store = null; lastV2Str = null; v2Broken = false;
+    db = loadDb();
+    try{ lastSavedStr = localStorage.getItem(KEY); }catch(e){ lastSavedStr = null; }
+    invalidateStores();
+    renderAll();
+    return { ok: true, records: db.records.length, lostVisits: lost };
+  }
+
+  function v2Status(){
+    var out = {
+      active: v2Active, key: false, bytes: 0, mark: null, broken: v2Broken,
+      shops: 0, visits: 0, orphans: 0, records: db.records.length
+    };
+    try{
+      var raw = localStorage.getItem(V2_KEY);
+      if(raw){
+        out.key = true; out.bytes = raw.length;
+        var o = JSON.parse(raw);
+        out.shops = Object.keys(o.shops || {}).length;
+        out.visits = (o.visits || []).length;
+        out.orphans = (o.meta && o.meta.orphanPhotos ? o.meta.orphanPhotos.length : 0);
+      }
+      var m = localStorage.getItem(V2_MARK_KEY);
+      out.mark = m ? JSON.parse(m) : null;
+    }catch(e){ logError('v2 状态', e); }
+    return out;
   }
 
   /* ================= 照片：IndexedDB（localStorage 只留轻字段） ================= */
@@ -7749,7 +8322,7 @@
     };
   }
   function backupPayloadOf(){
-    return JSON.parse(JSON.stringify({
+    var p = {
       version: db.version,
       settings: db.settings,
       blacklist: db.blacklist,
@@ -7760,7 +8333,20 @@
       feedback: feedbackBackupData(),
       profile: profileBackupData(),
       records: db.records
-    }));
+    };
+    /* v2 模式下：records 仍是投影后的 v1 兼容结构（老版本也能读），
+       同时附带完整 v2 段（shops/visits），恢复时按当前模式重建。 */
+    if(v2Active && v2Store){
+      p.v2 = {
+        version: 2, migratedAt: v2Store.migratedAt,
+        shops: v2Store.shops, visits: v2Store.visits,
+        meta: {
+          recordsIn: v2Store.meta ? v2Store.meta.recordsIn : db.records.length,
+          orphanPhotos: (v2Store.meta && v2Store.meta.orphanPhotos) ? v2Store.meta.orphanPhotos : []
+        }
+      };
+    }
+    return JSON.parse(JSON.stringify(p));
   }
   function backupEstimate(){
     return photoStats().then(function(ps){
@@ -7991,6 +8577,7 @@
   function snapshotReasonText(reason){
     if(reason === 'before-import') return '导入好友分享前';
     if(reason === 'before-restore') return '恢复完整备份前';
+    if(reason === 'before-migrate') return '升级到新版数据前';
     return '导入前';
   }
   function commitDbString(str){
@@ -8097,12 +8684,12 @@
       }
       var fbResult = { applied:false, count:0 };
       var pmResult = { applied:false, boost:0, block:0, budgetCap:null };
-      var str;
+      var committed;
       try{
         pmResult = applyBackupProfile(obj.payload.profile);
         fbResult = applyBackupFeedback(obj.payload.feedback);
-        str = JSON.stringify(next);
-        commitDbString(str);
+        /* v2 模式下写 v2（读回校验），v1 模式下沿用 commitDbString */
+        committed = commitDbNext(next);
       }catch(e){
         rollbackFeedback();
         rollbackProfile();
@@ -8110,7 +8697,8 @@
       }
       db = next;
       invalidateStores();
-      lastSavedStr = str;
+      if(committed.mode === 'v2') lastV2Str = committed.str;
+      else lastSavedStr = committed.str;
       if(mode === 'replace') applyBackupLocalConfig(obj.payload.localConfig, true);
       restoreBusy = false;
       renderAll();
@@ -8158,12 +8746,11 @@
       }
       var fbResult = { applied:false, count:0 };
       var pmResult = { applied:false, boost:0, block:0, budgetCap:null };
-      var str;
+      var committed;
       try{
         pmResult = applyBackupProfile(snap.data.profile);
         fbResult = applyBackupFeedback(snap.data.feedback);
-        str = JSON.stringify(norm);
-        commitDbString(str);
+        committed = commitDbNext(norm);
       }catch(e){
         rollbackFeedback();
         rollbackProfile();
@@ -8171,7 +8758,8 @@
       }
       db = norm;
       invalidateStores();
-      lastSavedStr = str;
+      if(committed.mode === 'v2') lastV2Str = committed.str;
+      else lastSavedStr = committed.str;
       applyBackupLocalConfig(snap.data.localConfig, true);
       renderAll();
       return { ok:true, records:db.records.length, photos:snap.photoIds ? snap.photoIds.length : 0, at:snap.at, feedback:fbResult.count, feedbackApplied:!!fbResult.applied,
@@ -9288,6 +9876,7 @@
       bootMs: bootMs, lastRenderMs: lastRenderMs,
       decideMs: decideMs, drawMs: drawMs,
       storageBytes: storageBytes(), photos: recordPhotoCount(),
+      v2: { active: v2Active, broken: v2Broken, shops: v2Store ? Object.keys(v2Store.shops || {}).length : 0, visits: v2Store ? (v2Store.visits || []).length : 0 },
       errors: errorLog.slice()
     };
   };
@@ -9623,6 +10212,71 @@
             return JSON.stringify(obj);
           });
         });
+      }
+    },
+    v2: {
+      active: function(){ return v2Active; },
+      status: v2Status,
+      key: function(){ return V2_KEY; },
+      raw: function(){ try{ return localStorage.getItem(V2_KEY); }catch(e){ return null; } },
+      v1Raw: function(){ try{ return localStorage.getItem(KEY); }catch(e){ return null; } },
+      mark: function(){ try{ var m = localStorage.getItem(V2_MARK_KEY); return m ? JSON.parse(m) : null; }catch(e){ return null; } },
+      shopId: function(name, city){ return shopIdOf(name, city); },
+      fnv: function(s){ return fnv1a32(s); },
+      build: function(records){
+        var recs = Array.isArray(records) ? records : db.records;
+        return buildV2FromRecords(recs, { state: stateOfDb(db), photoSet: null });
+      },
+      preview: function(){
+        var built = buildV2FromRecords(db.records, { state: stateOfDb(db), photoSet: null });
+        var bytes = 0;
+        try{ bytes = JSON.stringify(built).length; }catch(e){}
+        return {
+          records: db.records.length,
+          shops: Object.keys(built.shops).length,
+          visits: built.visits.length,
+          estimatedBytes: bytes,
+          orphanPhotos: built.meta.orphanPhotos.length,
+          estimatedMs: Math.max(30, Math.round(db.records.length / 80))
+        };
+      },
+      migrate: function(){ return migrateToV2(); },
+      rebuild: function(){ return rebuildV2(); },
+      revert: function(){ return revertV2(); },
+      project: function(v2obj){
+        if(v2obj) return projectV2(v2obj);
+        var got = readV2Raw();
+        return got ? projectV2(got.data) : null;
+      },
+      verify: function(){
+        var got = readV2Raw();
+        if(!got) return { ok:false, error:'v2 不可读', shops:0, visits:0, orphans:[] };
+        return backupIdList().then(function(ids){
+          var photoSet = {}; ids.forEach(function(id){ photoSet[id] = 1; });
+          var r = verifyV2(got.data, photoSet);
+          r.bytes = got.str.length;
+          r.declaredOrphans = (got.data.meta && got.data.meta.orphanPhotos) ? got.data.meta.orphanPhotos.length : 0;
+          return r;
+        });
+      },
+      state: function(){ return JSON.parse(JSON.stringify(v2Store || {})); },
+      /* 绕过 localStorage 的纯函数：给定记录直接投影，供双读等价比对 */
+      projectOf: function(records, stateObj){ return projectV2(buildV2FromRecords(records, { state: stateObj || stateOfDb(db), photoSet: null })); },
+      /* 失败注入：'write' | 'verify' | 'mark' | null */
+      failMode: function(m){ v2FailMode = m || null; return v2FailMode; },
+      rebuildFromRecords: function(records){
+        db.records = JSON.parse(JSON.stringify(records || []));
+        save(); invalidateStores(); renderAll();
+        return db.records.length;
+      },
+      storage: function(){
+        var out = {};
+        try{
+          out.v1 = localStorage.getItem(KEY) ? localStorage.getItem(KEY).length : 0;
+          out.v2 = localStorage.getItem(V2_KEY) ? localStorage.getItem(V2_KEY).length : 0;
+          out.mark = localStorage.getItem(V2_MARK_KEY) ? localStorage.getItem(V2_MARK_KEY).length : 0;
+        }catch(e){}
+        return out;
       }
     },
     feedback: {
