@@ -748,6 +748,37 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .geo-state{font-size:11px;color:var(--ink3);line-height:1.5}
   .geo-state.on{color:var(--green)}
   .keyboard-open .sheet{padding-bottom:16px}
+
+  /* ================= 多人聚餐活动（本机投票，无实时同步） ================= */
+  .g-card{min-width:0}
+  .g-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .g-badge{font-size:10.5px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);color:var(--ink2);background:var(--chip);white-space:nowrap;flex:none}
+  .g-badge.open{color:var(--accent-text);border-color:var(--accent-line);background:var(--soft)}
+  .g-badge.done{color:var(--good-ink);border-color:var(--good-line);background:var(--good-bg)}
+  .g-meta{font-size:11.5px;color:var(--ink3);line-height:1.65;margin-top:3px;overflow-wrap:anywhere}
+  .g-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .g-chip{font-size:11.5px;padding:5px 9px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink2);min-height:28px}
+  .g-chip.on{border-color:var(--accent);background:var(--soft);color:var(--accent-text)}
+  .g-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .g-part{border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--panel);min-width:0}
+  .g-part + .g-part{margin-top:8px}
+  .g-grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0}
+  .g-grid2 > *{min-width:0}
+  .g-cand{border:1px solid var(--line);border-radius:12px;padding:11px;background:var(--card);min-width:0}
+  .g-cand + .g-cand{margin-top:8px}
+  .g-cand.win{border-color:var(--accent);box-shadow:var(--shadow)}
+  .g-cand-top{display:flex;gap:8px;align-items:flex-start;min-width:0}
+  .g-cnum{width:22px;height:22px;border-radius:6px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-size:11px;font-weight:700;flex:none}
+  .g-why{font-size:11.5px;color:var(--ink2);line-height:1.7;margin-top:6px;overflow-wrap:anywhere}
+  .g-line{font-size:11px;color:var(--ink3);line-height:1.6;margin-top:3px;overflow-wrap:anywhere}
+  .g-rule{font-size:11px;color:var(--ink3);line-height:1.6;margin:6px 0 10px;overflow-wrap:anywhere}
+  .g-relax{border:1px solid var(--notice-line);background:var(--notice-bg);border-radius:10px;padding:10px;font-size:11.5px;color:var(--notice-ink);line-height:1.7;min-width:0}
+  .g-relax + .g-relax{margin-top:8px}
+  .g-vote{display:flex;flex-wrap:wrap;gap:8px;min-width:0}
+  .g-pv{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink2);min-width:0}
+  .g-pv .input{width:58px;height:32px;padding:4px 6px;font-size:12px;text-align:center;min-width:0}
+  .g-vrow{font-size:11.5px;color:var(--ink2);line-height:1.7;overflow-wrap:anywhere}
+  .g-empty .btn{margin-top:8px}
 </style>
 </head>
 <body>
@@ -1093,6 +1124,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <p class="muted" style="margin-top:8px">方案基于你的历史记录，最多给 3 个，不含平台评价。</p>
       </div>
       <div id="partyBox"></div>
+
+      <div class="section-head">
+        <h2>聚餐活动</h2>
+        <span class="hint">本机 · 手动回填票数</span>
+      </div>
+      <div id="gatherBox"></div>
 
       <div class="section-head">
         <h2>投票清单</h2>
@@ -1943,6 +1980,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   </div>
 </div>
 
+<!-- 多人聚餐活动编辑 / 详情 -->
+<div class="sheet-mask hidden" id="gatherMask">
+  <div class="sheet" id="gatherModal" role="dialog" aria-modal="true" aria-label="多人聚餐活动"></div>
+</div>
+
 <!-- 年度美食报告 -->
 <div class="modal-mask hidden" id="annualMask">
   <div class="modal" id="annualModal" style="max-width:520px">
@@ -2120,7 +2162,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       blacklist: [],
       wishlist: [],
       votes: [],
-      places: []
+      places: [],
+      gathers: []
     };
     var i, r, n;
     function s(v){ return v == null ? '' : String(v); }
@@ -2236,6 +2279,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             lat: isFinite(Number(pl.lat)) && Math.abs(Number(pl.lat)) <= 90 ? Number(pl.lat) : null,
             lng: isFinite(Number(pl.lng)) && Math.abs(Number(pl.lng)) <= 180 ? Number(pl.lng) : null
           });
+        }
+      }
+      /* 聚餐活动段：缺失（旧备份 / 旧版本）视为空，不报错 */
+      if(Array.isArray(raw.gathers)){
+        for(i=0;i<raw.gathers.length;i++){
+          var gg = normalizeGather(raw.gathers[i]);
+          if(gg) out.gathers.push(gg);
         }
       }
     }
@@ -2485,6 +2535,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       settings: st.settings, blacklist: st.blacklist, wishlist: st.wishlist, places: st.places
     });
     base.votes = Array.isArray(st.votes) ? cloneJson(st.votes) : [];
+    base.gathers = Array.isArray(st.gathers) ? cloneJson(st.gathers) : [];
     base.records = (v2.visits || []).map(function(v){ return recordFromVisit(v, shops[v.shopId]); });
     base.version = 3;
     return base;
@@ -2577,7 +2628,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       blacklist: cloneJson(src.blacklist),
       wishlist: cloneJson(src.wishlist),
       votes: cloneJson(src.votes),
-      places: cloneJson(src.places)
+      places: cloneJson(src.places),
+      gathers: cloneJson(src.gathers || [])
     };
   }
 
@@ -5643,6 +5695,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       $('#partyBox').innerHTML = partyState.plans.map(planCard).join('');
     }
     renderVotes();
+    renderGather();
   }
 
   function renderVotes(){
@@ -5700,6 +5753,973 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     save();
     toast('已生成投票清单，把手机传给大家按 +1 计票');
   }
+
+  /* ================= 多人聚餐活动（P2） =================
+     数据落点：v1 模式随 fandazi.v1 保存；v2 模式存 meta.state.gathers。
+     不新增存储键，完全备份 / 恢复点 / JSON 导出自动带上；CSV 单独导出活动汇总。
+     无服务器、无实时同步：投票靠「群里投 + 手动回填票数」。 */
+  var gatherDraft = null;
+  var gatherDraftSource = '';   /* '' = 新建；否则为正在编辑的活动 id */
+
+  var GATHER_AVOID = {
+    '不吃辣': ['辣','川','湘','火锅','麻辣','烤鱼','小龙虾','串','烧烤'],
+    '不吃海鲜': ['海鲜','虾','蟹','鱼','贝','生蚝','刺身','海胆'],
+    '素食': ['烧烤','烤肉','火锅','日料','海鲜','牛排','小龙虾','烤鱼','串','卤味','肉','刺身'],
+    '不吃牛羊肉': ['牛','羊','牛排','烧肉','肥牛','羊肉','烤肉'],
+    '不吃香菜': ['香菜','芫荽'],
+    '不吃猪肉': ['猪','排骨','五花','红烧肉','卤肉'],
+    '不吃内脏': ['内脏','毛肚','肥肠','肝','腰子','鸭血'],
+    '不吃油炸': ['炸','天妇罗','油条','炸鸡'],
+    '不吃乳制品': ['奶','芝士','酸奶','奶油'],
+    '不喝酒': ['酒','酒吧','啤酒','清酒','米酒'],
+    '不吃甜': ['甜','糖','蛋糕','甜品'],
+    '不吃面': ['面','拉面','面馆','意面','粉']
+  };
+  var GATHER_TAGS = ['不吃辣','不吃海鲜','素食','不吃牛羊肉','不吃香菜','不吃猪肉','不吃内脏','不吃油炸','不吃乳制品','不喝酒'];
+
+  function gatherAvoidWords(tag){
+    var t = String(tag || '').trim();
+    if(!t) return [];
+    return GATHER_AVOID[t] || [t.toLowerCase()];
+  }
+  function gatherTextOf(s){
+    return [s.name, s.category, (s.tags || []).join(' '), s.area].join(' ').toLowerCase();
+  }
+  function gatherHit(store, tag){
+    var words = gatherAvoidWords(tag), text = gatherTextOf(store);
+    for(var i = 0; i < words.length; i++){
+      if(text.indexOf(String(words[i]).toLowerCase()) >= 0) return words[i];
+    }
+    return '';
+  }
+  function gatherEffectiveAvoid(p){
+    var out = (p.avoid || []).slice();
+    if(p.spicy === 'no' && out.indexOf('不吃辣') < 0) out.unshift('不吃辣');
+    return out;
+  }
+  function gatherTagsOf(str){
+    return String(str || '').split(/[,，、;；\s]+/).map(function(t){ return t.trim(); }).filter(Boolean).slice(0, 12);
+  }
+  function gatherNumOrNull(v){
+    var n = Number(v);
+    return isFinite(n) && n > 0 ? n : null;
+  }
+  function gatherHhmm(v){
+    var t = String(v || '');
+    return /^\d{2}:\d{2}$/.test(t) ? t : '';
+  }
+  function normalizeGather(x){
+    if(!x || typeof x !== 'object') return null;
+    var id = String(x.id || '').slice(0, 60);
+    if(!id) return null;
+    function st(v, n){ return String(v == null ? '' : v).slice(0, n || 200); }
+    var parts = [];
+    (Array.isArray(x.participants) ? x.participants : []).slice(0, 30).forEach(function(p, i){
+      if(!p || typeof p !== 'object') return;
+      var pid = st(p.id, 40) || ('gp' + i);
+      parts.push({
+        id: pid,
+        name: st(p.name, 20) || ('朋友' + (i + 1)),
+        avoid: Array.isArray(p.avoid) ? p.avoid.map(function(t){ return st(t, 20); }).filter(Boolean).slice(0, 12) : [],
+        cuisines: Array.isArray(p.cuisines) ? p.cuisines.map(function(t){ return st(t, 20); }).filter(Boolean).slice(0, 12) : [],
+        spicy: ['ok','no','love'].indexOf(p.spicy) >= 0 ? p.spicy : 'ok'
+      });
+    });
+    var cands = [];
+    (Array.isArray(x.candidates) ? x.candidates : []).slice(0, 20).forEach(function(c){
+      if(!c || typeof c !== 'object') return;
+      var key = st(c.key, 120);
+      if(!key) return;
+      cands.push({
+        key: key, name: st(c.name, 60), category: st(c.category, 40),
+        perPrice: Math.max(0, Math.round(gatherNumOrNull(c.perPrice) || 0)),
+        rating: gatherNumOrNull(c.rating),
+        distKm: gatherNumOrNull(c.distKm),
+        days: c.days == null ? null : Math.max(0, Math.round(Number(c.days) || 0)),
+        area: st(c.area, 40), city: st(c.city, 40),
+        score: Math.max(0, Math.min(100, Math.round(Number(c.score) || 0))),
+        reasons: Array.isArray(c.reasons) ? c.reasons.map(function(t){ return st(t, 90); }).slice(0, 8) : [],
+        okNames: Array.isArray(c.okNames) ? c.okNames.map(function(t){ return st(t, 20); }).slice(0, 30) : [],
+        badNames: Array.isArray(c.badNames) ? c.badNames.map(function(t){ return st(t, 20); }).slice(0, 30) : [],
+        votes: Math.max(0, Math.round(Number(c.votes) || 0))
+      });
+    });
+    var byPerson = {};
+    if(x.votesByPerson && typeof x.votesByPerson === 'object'){
+      Object.keys(x.votesByPerson).slice(0, 30).forEach(function(pid){
+        var row = x.votesByPerson[pid];
+        if(!row || typeof row !== 'object') return;
+        var out = {};
+        Object.keys(row).slice(0, 20).forEach(function(k){ out[k] = Math.max(0, Math.round(Number(row[k]) || 0)); });
+        byPerson[pid] = out;
+      });
+    }
+    var win = null;
+    if(x.winner && typeof x.winner === 'object' && String(x.winner.name || '')){
+      win = {
+        key: st(x.winner.key, 120), name: st(x.winner.name, 60),
+        perPrice: Math.max(0, Math.round(Number(x.winner.perPrice) || 0)),
+        votes: Math.max(0, Math.round(Number(x.winner.votes) || 0)),
+        estimated: x.winner.estimated === true, rule: st(x.winner.rule, 70)
+      };
+    }
+    return {
+      id: id, title: st(x.title, 60) || '聚餐',
+      date: /^\d{4}-\d{2}-\d{2}$/.test(String(x.date || '')) ? String(x.date) : '',
+      time: gatherHhmm(x.time),
+      people: Math.max(1, Math.min(60, Math.round(Number(x.people) || 1))),
+      budgetMode: x.budgetMode === 'total' ? 'total' : 'per',
+      budgetMin: gatherNumOrNull(x.budgetMin),
+      budgetMax: gatherNumOrNull(x.budgetMax),
+      area: st(x.area, 40), radiusKm: gatherNumOrNull(x.radiusKm),
+      participants: parts,
+      candidateCount: Math.max(3, Math.min(8, Math.round(Number(x.candidateCount) || 5))),
+      candidates: cands,
+      excluded: Array.isArray(x.excluded) ? x.excluded.slice(0, 60).map(function(e){
+        return { name: st(e && e.name, 60), reasons: Array.isArray(e && e.reasons) ? e.reasons.map(function(t){ return st(t, 85); }).slice(0, 5) : [] };
+      }) : [],
+      relax: Array.isArray(x.relax) ? x.relax.slice(0, 12).map(function(r){
+        return { kind: st(r && r.kind, 20), tag: st(r && r.tag, 20), count: Math.max(0, Math.round(Number(r && r.count) || 0)), cap: gatherNumOrNull(r && r.cap), label: st(r && r.label, 90) };
+      }).filter(function(r){ return r.label; }) : [],
+      votesMode: x.votesMode === 'person' ? 'person' : 'total',
+      votesByPerson: byPerson,
+      status: x.status === 'done' ? 'done' : 'open',
+      archived: x.archived === true,
+      winner: win,
+      recordId: st(x.recordId, 60),
+      createdAt: st(x.createdAt, 40), updatedAt: st(x.updatedAt, 40)
+    };
+  }
+
+  function gatherDefaultDraft(){
+    var d = new Date();
+    return {
+      id: '', title: '', date: todayStr(), time: '18:30', people: 6,
+      budgetMode: 'per', budgetMin: null, budgetMax: 150, area: '', radiusKm: null,
+      participants: [], candidateCount: 5,
+      candidates: [], excluded: [], relax: [], votesMode: 'total', votesByPerson: {},
+      status: 'open', archived: false, winner: null, recordId: '',
+      createdAt: '', updatedAt: ''
+    };
+  }
+  function gatherById(id){
+    var list = db.gathers || [];
+    for(var i = 0; i < list.length; i++){ if(list[i].id === id) return list[i]; }
+    return null;
+  }
+  function gatherUpsert(g){
+    g.updatedAt = new Date().toISOString();
+    var list = db.gathers || [];
+    var found = false;
+    for(var i = 0; i < list.length; i++){ if(list[i].id === g.id){ list[i] = g; found = true; break; } }
+    if(!found){ list.unshift(g); db.gathers = list; }
+    save(true);
+  }
+  function gatherStoreOf(c){
+    var stores = getStores();
+    for(var i = 0; i < stores.length; i++){ if(stores[i].key === c.key) return stores[i]; }
+    return null;
+  }
+  function gatherPerCap(g){
+    if(!g.budgetMax) return 0;
+    return g.budgetMode === 'total' ? Math.floor(g.budgetMax / Math.max(1, g.people)) : Math.round(g.budgetMax);
+  }
+  function gatherMealOf(time){
+    var m = parseClock(time);
+    if(m < 0) return '';
+    if(m < 10 * 60 + 30) return 'breakfast';
+    if(m < 14 * 60 + 30) return 'lunch';
+    if(m < 17 * 60) return 'tea';
+    if(m < 21 * 60 + 30) return 'dinner';
+    return 'night';
+  }
+
+  /* ---- 硬过滤：黑名单 / 预算 / 忌口 / 区域 / 距离 / 打烊 ---- */
+  function gatherFails(store, g, perCap){
+    var fails = [];
+    if(isBlack(store)) fails.push({ type:'blacklist', text:'在「不再推荐」名单' });
+    if(perCap > 0 && num(store.perPrice) > perCap){
+      fails.push({ type:'budget', text:'人均 ' + money(store.perPrice) + ' 超预算 ' + money(perCap) });
+    }
+    g.participants.forEach(function(p){
+      gatherEffectiveAvoid(p).forEach(function(tag){
+        var word = gatherHit(store, tag);
+        if(word) fails.push({ type:'avoid', tag:tag, text:p.name + ' 忌口「' + tag + '」（命中“' + word + '”）' });
+      });
+    });
+    if(g.area && String(store.area || '') !== g.area){
+      fails.push({ type:'area', text:'不在区域「' + g.area + '」' });
+    }
+    if(g.radiusKm){
+      var km = storeKm(store);
+      if(km == null) fails.push({ type:'distance', text:'距离未知，无法确认在 ' + g.radiusKm + ' km 内' });
+      else if(km > g.radiusKm) fails.push({ type:'distance', text:'距离 ' + km.toFixed(1) + ' km 超过 ' + g.radiusKm + ' km' });
+    }
+    var mins = parseClock(g.time);
+    if(mins >= 0 && isOpenAt(store, mins) === false){
+      fails.push({ type:'hours', text:g.time + ' 打烊' });
+    }
+    return fails;
+  }
+  function gatherPrefNames(store, g){
+    var text = gatherTextOf(store), names = [];
+    g.participants.forEach(function(p){
+      var cs = (p.cuisines || []).slice();
+      if(p.spicy === 'love') cs.push('辣');
+      if(!cs.length) return;
+      if(cs.some(function(c){ return text.indexOf(String(c).toLowerCase()) >= 0; })) names.push(p.name);
+    });
+    return names;
+  }
+  function gatherScore(store, g, prefNames){
+    var withPref = g.participants.filter(function(p){
+      return (p.cuisines || []).length > 0 || p.spicy === 'love';
+    }).length;
+    var hitRatio = withPref ? prefNames.length / withPref : 0.5;
+    var rating = num(store.rating);
+    var km = storeKm(store);
+    var distScore = km == null ? 0.5 : clamp(1 - km / 10, 0, 1);
+    var fresh = clamp(num(store.days) / 365, 0, 1);
+    return Math.round(100 * (0.4 * hitRatio + 0.25 * (rating / 5) + 0.2 * distScore + 0.15 * fresh));
+  }
+  function gatherReasons(store, g, prefNames, perCap){
+    var r = [];
+    if(prefNames.length) r.push(prefNames.length + ' 位参与者偏好命中：' + prefNames.join('、'));
+    if(num(store.rating) > 0) r.push('评分 ' + (Math.round(num(store.rating) * 10) / 10));
+    var km = storeKm(store);
+    if(km != null) r.push('距离 ' + km.toFixed(1) + ' km');
+    if(perCap > 0 && num(store.perPrice) > 0) r.push('人均 ' + money(store.perPrice) + '，预算内（≤' + money(perCap) + '）');
+    if(num(store.days) > 0 && num(store.days) < 90) r.push('最近 90 天内去过，口味熟悉');
+    else if(num(store.days) >= 365) r.push('一年没去了，换换口味');
+    else if(num(store.days) > 0) r.push(Math.round(num(store.days)) + ' 天没去了');
+    if(!g.participants.length) r.push('按 ' + g.people + ' 人估算，未设忌口');
+    return r;
+  }
+
+  function gatherPassCount(g){
+    var perCap = gatherPerCap(g), n = 0;
+    getStores().forEach(function(s){
+      if(!String(s.name || '').trim()) return;
+      if(!gatherFails(s, g, perCap).length) n++;
+    });
+    return n;
+  }
+  function gatherRelax(g, perCap, passCount){
+    var out = [];
+    var stores = getStores();
+    /* 只被预算挡住的店：取最低人均，看提到该值能多几家 */
+    var budgetOnly = stores.filter(function(s){
+      if(!String(s.name || '').trim()) return false;
+      var f = gatherFails(s, g, perCap);
+      return f.length && f.every(function(x){ return x.type === 'budget'; });
+    });
+    if(budgetOnly.length){
+      var lowest = Math.min.apply(null, budgetOnly.map(function(s){ return num(s.perPrice); }));
+      var g2 = Object.assign({}, g, { budgetMode:'per', budgetMax:lowest });
+      var n2 = gatherPassCount(g2);
+      if(n2 > passCount) out.push({ kind:'budget', cap:lowest, count:n2 - passCount,
+        label:'人均预算提到 ' + money(lowest) + ' 可多 ' + (n2 - passCount) + ' 家' });
+    }
+    /* 忌口：逐个标签单独放宽 */
+    var tags = [];
+    g.participants.forEach(function(p){
+      gatherEffectiveAvoid(p).forEach(function(t){ if(tags.indexOf(t) < 0) tags.push(t); });
+    });
+    tags.forEach(function(tag){
+      var people = g.participants.filter(function(p){ return gatherEffectiveAvoid(p).indexOf(tag) >= 0; }).length;
+      var g2 = Object.assign({}, g, { participants: g.participants.map(function(p){
+        var avoid = (p.avoid || []).filter(function(t){ return t !== tag; });
+        var spicy = p.spicy === 'no' ? 'ok' : p.spicy;
+        return { id:p.id, name:p.name, avoid:avoid, cuisines:(p.cuisines || []).slice(), spicy:spicy };
+      }) });
+      var n2 = gatherPassCount(g2);
+      if(n2 > passCount) out.push({ kind:'avoid', tag:tag, count:n2 - passCount,
+        label:'放宽 ' + people + ' 位参与者中的「' + tag + '」可多 ' + (n2 - passCount) + ' 家' });
+    });
+    if(g.area){
+      var g3 = Object.assign({}, g, { area:'' });
+      var n3 = gatherPassCount(g3);
+      if(n3 > passCount) out.push({ kind:'area', count:n3 - passCount,
+        label:'取消区域「' + g.area + '」限制可多 ' + (n3 - passCount) + ' 家' });
+    }
+    if(g.radiusKm){
+      var g4 = Object.assign({}, g, { radiusKm:null });
+      var n4 = gatherPassCount(g4);
+      if(n4 > passCount) out.push({ kind:'distance', count:n4 - passCount,
+        label:'取消 ' + g.radiusKm + ' km 距离限制可多 ' + (n4 - passCount) + ' 家' });
+    }
+    return out;
+  }
+  function gatherCompute(g){
+    var perCap = gatherPerCap(g), pass = [], excluded = [];
+    getStores().forEach(function(s){
+      if(!String(s.name || '').trim()) return;
+      var fails = gatherFails(s, g, perCap);
+      if(fails.length){ excluded.push({ store:s, fails:fails }); return; }
+      var prefNames = gatherPrefNames(s, g);
+      pass.push({
+        store:s, prefNames:prefNames,
+        score: gatherScore(s, g, prefNames),
+        reasons: gatherReasons(s, g, prefNames, perCap)
+      });
+    });
+    pass.sort(function(a, b){
+      if(b.score !== a.score) return b.score - a.score;
+      if(num(b.store.rating) !== num(a.store.rating)) return num(b.store.rating) - num(a.store.rating);
+      if(num(a.store.perPrice) !== num(b.store.perPrice)) return num(a.store.perPrice) - num(b.store.perPrice);
+      return String(a.store.name).localeCompare(String(b.store.name));
+    });
+    var cands = pass.slice(0, g.candidateCount).map(function(it){
+      var okNames = [], badNames = [];
+      g.participants.forEach(function(p){
+        var blocked = gatherEffectiveAvoid(p).some(function(tag){ return !!gatherHit(it.store, tag); });
+        if(blocked) badNames.push(p.name); else okNames.push(p.name);
+      });
+      return {
+        key: it.store.key, name: it.store.name, category: it.store.category || '',
+        perPrice: num(it.store.perPrice), rating: num(it.store.rating) > 0 ? num(it.store.rating) : null,
+        distKm: storeKm(it.store), days: num(it.store.days), area: it.store.area || '', city: it.store.city || '',
+        score: it.score, reasons: it.reasons.slice(0, 8), okNames: okNames, badNames: badNames, votes: 0
+      };
+    });
+    return {
+      perCap: perCap, candidates: cands,
+      excluded: excluded.map(function(e){ return { name:e.store.name || '', reasons:e.fails.map(function(f){ return f.text; }) }; }),
+      passCount: pass.length,
+      relax: gatherRelax(g, perCap, pass.length)
+    };
+  }
+
+  /* ---- 平票规则：票数 → 人均低 → 距离近 → 评分高 → 到访间隔长 ---- */
+  function gatherTieRule(a, b){
+    var ap = a.perPrice > 0 ? a.perPrice : Infinity, bp = b.perPrice > 0 ? b.perPrice : Infinity;
+    if(ap !== bp) return '人均低';
+    var ad = a.distKm == null ? Infinity : a.distKm, bd = b.distKm == null ? Infinity : b.distKm;
+    if(ad !== bd) return '距离近';
+    var ar = a.rating == null ? -1 : a.rating, br = b.rating == null ? -1 : b.rating;
+    if(ar !== br) return '评分高';
+    if(num(a.days) !== num(b.days)) return '到访间隔长';
+    return '完全并列';
+  }
+  function gatherRanking(g){
+    var list = (g.candidates || []).map(function(c, i){ return { c:c, idx:i }; });
+    list.sort(function(a, b){
+      if(b.c.votes !== a.c.votes) return b.c.votes - a.c.votes;
+      var ap = a.c.perPrice > 0 ? a.c.perPrice : Infinity, bp = b.c.perPrice > 0 ? b.c.perPrice : Infinity;
+      if(ap !== bp) return ap - bp;
+      var ad = a.c.distKm == null ? Infinity : a.c.distKm, bd = b.c.distKm == null ? Infinity : b.c.distKm;
+      if(ad !== bd) return ad - bd;
+      var ar = a.c.rating == null ? -1 : a.c.rating, br = b.c.rating == null ? -1 : b.c.rating;
+      if(ar !== br) return br - ar;
+      return num(b.c.days) - num(a.c.days);
+    });
+    var ties = [];
+    for(var i = 0; i + 1 < list.length; i++){
+      if(list[i].c.votes === list[i + 1].c.votes && list[i].c.votes > 0){
+        ties.push({ from:i, to:i + 1, rule:gatherTieRule(list[i].c, list[i + 1].c) });
+      }
+    }
+    return { items:list, ties:ties, total:gatherVoteSum(g), winner:list.length ? list[0].c : null,
+      ruleNote: ties.length ? ('票数并列 → 按' + ties[0].rule) : '票数最高' };
+  }
+  function gatherVoteSum(g){
+    var sum = 0;
+    (g.candidates || []).forEach(function(c){ sum += Math.max(0, num(c.votes)); });
+    return sum;
+  }
+  function gatherCsvText(){
+    var head = ['活动ID','标题','状态','日期','时间','人数','预算方式','预算上限','人均上限','区域','半径km','参与者','候选数','总票数','胜出店','胜出票数','胜出人均','结算记录ID','创建时间'];
+    var rows = (db.gathers || []).map(function(g){
+      return [g.id, g.title, g.status === 'open' ? (g.archived ? '已归档' : '进行中') : (g.archived ? '已归档' : '已完成'),
+        g.date, g.time, g.people, g.budgetMode === 'total' ? '总预算' : '人均',
+        g.budgetMax == null ? '' : g.budgetMax, gatherPerCap(g) || '', g.area, g.radiusKm == null ? '' : g.radiusKm,
+        g.participants.map(function(p){ return p.name; }).join(' '),
+        g.candidates.length, gatherVoteSum(g),
+        g.winner ? g.winner.name : '', g.winner ? g.winner.votes : '', g.winner ? g.winner.perPrice : '',
+        g.recordId || '', String(g.createdAt || '').slice(0, 10)];
+    });
+    return '\ufeff' + [head].concat(rows).map(function(row){
+      return row.map(function(v){ return csvCell(v); }).join(',');
+    }).concat(['', csvCell('由 i吃饭 生成 · 数据只在本机')]).join('\r\n');
+  }
+  function exportGatherCsv(){
+    if(!(db.gathers || []).length){ toast('还没有聚餐活动可导出'); return; }
+    download('i吃饭-聚餐活动-' + todayStr() + '.csv', gatherCsvText(), 'text/csv');
+    toast('已导出活动 CSV（' + db.gathers.length + ' 个活动）');
+  }
+
+  /* ---- 活动列表 ---- */
+  function gatherCard(g){
+    var isOpen = g.status === 'open' && !g.archived;
+    var badge = g.archived ? '已归档' : (isOpen ? '进行中' : '已完成');
+    var voteSum = gatherVoteSum(g);
+    var sub = [];
+    sub.push(esc(g.date || '未定日期') + (g.time ? ' ' + esc(g.time) : ''));
+    sub.push(g.people + ' 人');
+    if(g.budgetMax) sub.push((g.budgetMode === 'total' ? '总预算 ' : '人均 ') + '≤' + money(g.budgetMax));
+    if(g.area) sub.push(esc(g.area));
+    if(g.radiusKm) sub.push(g.radiusKm + ' km 内');
+    var line2 = g.candidates.length ? (g.candidates.length + ' 家候选 · ' + voteSum + ' 票') : '还没有生成候选';
+    if(g.winner) line2 += ' · 胜出 ' + esc(g.winner.name);
+    return '<article class="card g-card">' +
+      '<div class="g-head"><div style="min-width:0">' +
+        '<h3 style="font-size:15px;overflow-wrap:anywhere">' + esc(g.title) + '</h3>' +
+        '<p class="g-meta">' + sub.join(' · ') + '</p>' +
+        '<p class="g-meta">' + line2 + '</p>' +
+      '</div><span class="g-badge ' + (g.archived ? '' : (isOpen ? 'open' : 'done')) + '">' + badge + '</span></div>' +
+      '<div class="g-actions">' +
+        '<button class="btn btn-sm btn-primary" data-gact="gOpen" data-gid="' + esc(g.id) + '">' + (isOpen ? '继续投票' : '查看') + '</button>' +
+        (g.status === 'done' && !g.archived ? '<button class="btn btn-sm btn-soft" data-gact="gArchive" data-gid="' + esc(g.id) + '">归档</button>' : '') +
+        '<button class="btn btn-sm btn-danger" data-gact="gDelete" data-gid="' + esc(g.id) + '">删除</button>' +
+      '</div></article>';
+  }
+  function renderGather(){
+    var box = $('#gatherBox');
+    if(!box) return;
+    var list = db.gathers || [];
+    var open = list.filter(function(g){ return g.status === 'open' && !g.archived; });
+    var done = list.filter(function(g){ return g.status !== 'open' || g.archived; });
+    var head = '<div class="g-actions" style="margin:0 0 10px">' +
+      '<button class="btn btn-primary btn-sm" data-gact="gNew">新建聚餐活动</button>' +
+      (list.length ? '<button class="btn btn-sm btn-soft" data-gact="gCsv">导出活动 CSV</button>' : '') +
+      '</div>';
+    var body = '';
+    if(!list.length){
+      body = '<div class="empty card flat g-empty"><h3>还没有聚餐活动</h3><p>建一个活动，填人数、预算与参与者忌口，生成候选后把手机轮流传给大家投票，再回填票数。</p></div>';
+    }else{
+      if(open.length) body += '<p class="g-meta" style="margin:2px 0 8px">进行中 ' + open.length + ' 个</p>' + open.map(gatherCard).join('');
+      if(done.length) body += '<p class="g-meta" style="margin:14px 0 8px">已完成 / 已归档 ' + done.length + ' 个</p>' + done.map(gatherCard).join('');
+    }
+    box.innerHTML = head + body;
+  }
+
+  /* ---- 草稿表单 ---- */
+  function gatherAreaOptions(sel){
+    var areas = [];
+    getStores().forEach(function(s){
+      var a = String(s.area || '').trim();
+      if(a && areas.indexOf(a) < 0) areas.push(a);
+    });
+    areas.sort();
+    return '<option value="">不限</option>' + areas.map(function(a){
+      return '<option value="' + esc(a) + '"' + (a === sel ? ' selected' : '') + '>' + esc(a) + '</option>';
+    }).join('');
+  }
+  function gatherPartHtml(p, i){
+    var avoid = (p.avoid || []).join('，');
+    var cuis = (p.cuisines || []).join('，');
+    var spicy = p.spicy || 'ok';
+    return '<div class="g-part" data-part="' + i + '">' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+        '<input class="input" data-gp="name" data-pid="' + esc(p.id) + '" value="' + esc(p.name) + '" placeholder="名字" aria-label="参与者名字" style="flex:1;min-width:0">' +
+        '<button class="btn btn-sm" data-gact="gDelPart" data-pid="' + esc(p.id) + '">删</button>' +
+      '</div>' +
+      '<div class="g-grid2" style="margin-top:8px">' +
+        '<div class="field" style="margin-bottom:0"><label>忌口（逗号分隔）</label>' +
+          '<input class="input" data-gp="avoid" data-pid="' + esc(p.id) + '" value="' + esc(avoid) + '" placeholder="不吃辣，不吃香菜"></div>' +
+        '<div class="field" style="margin-bottom:0"><label>偏好菜系</label>' +
+          '<input class="input" data-gp="cuisines" data-pid="' + esc(p.id) + '" value="' + esc(cuis) + '" placeholder="川菜，日料"></div>' +
+      '</div>' +
+      '<div class="g-chips">' + GATHER_TAGS.slice(0, 6).map(function(t){
+        return '<button class="g-chip ' + ((p.avoid || []).indexOf(t) >= 0 ? 'on' : '') + '" data-gact="gChip" data-pid="' + esc(p.id) + '" data-tag="' + esc(t) + '">' + esc(t) + '</button>';
+      }).join('') + '</div>' +
+      '<div class="field" style="margin:8px 0 0"><label>吃辣</label>' +
+        '<div class="seg" data-gp="spicy" data-pid="' + esc(p.id) + '">' +
+          '<button data-v="ok" class="' + (spicy === 'ok' ? 'on' : '') + '">吃辣</button>' +
+          '<button data-v="no" class="' + (spicy === 'no' ? 'on' : '') + '">不吃辣</button>' +
+          '<button data-v="love" class="' + (spicy === 'love' ? 'on' : '') + '">爱吃辣</button>' +
+        '</div></div>' +
+    '</div>';
+  }
+  function gatherFormHtml(g){
+    var parts = (g.participants || []).map(gatherPartHtml).join('');
+    var title = g.title || '';
+    return '<div class="sheet-head"><h2>' + (gatherDraftSource ? '编辑聚餐活动' : '新建聚餐活动') + '</h2>' +
+      '<button class="btn btn-sm" data-gact="gClose">关闭</button></div>' +
+      '<div class="field"><label>标题（可选）</label>' +
+        '<input class="input" id="g-title" maxlength="40" value="' + esc(title) + '" placeholder="留空自动生成，如「11 月 8 日聚餐」"></div>' +
+      '<div class="g-grid2">' +
+        '<div class="field"><label>日期</label><input class="input" type="date" id="g-date" value="' + esc(g.date) + '"></div>' +
+        '<div class="field"><label>时间</label><input class="input" type="time" id="g-time" value="' + esc(g.time) + '"></div>' +
+      '</div>' +
+      '<div class="g-grid2">' +
+        '<div class="field"><label>人数</label><input class="input" type="number" min="1" max="60" id="g-people" value="' + g.people + '"></div>' +
+        '<div class="field"><label>预算方式</label><div class="seg" id="g-budgetMode">' +
+          '<button data-v="per" class="' + (g.budgetMode === 'per' ? 'on' : '') + '">人均</button>' +
+          '<button data-v="total" class="' + (g.budgetMode === 'total' ? 'on' : '') + '">总预算</button></div></div>' +
+      '</div>' +
+      '<div class="g-grid2">' +
+        '<div class="field"><label>预算下限（可选）</label><input class="input" type="number" min="0" id="g-budgetMin" value="' + (g.budgetMin == null ? '' : g.budgetMin) + '" placeholder="不限"></div>' +
+        '<div class="field"><label id="g-budgetLabel">' + (g.budgetMode === 'total' ? '总预算上限（元）' : '人均上限（元）') + '</label>' +
+          '<input class="input" type="number" min="0" step="10" id="g-budgetMax" value="' + (g.budgetMax == null ? '' : g.budgetMax) + '" placeholder="不限"></div>' +
+      '</div>' +
+      '<div class="g-grid2">' +
+        '<div class="field"><label>区域</label><select class="input" id="g-area">' + gatherAreaOptions(g.area) + '</select></div>' +
+        '<div class="field"><label>距离半径（km，可选）</label><input class="input" type="number" min="0" step="0.5" id="g-radiusKm" value="' + (g.radiusKm == null ? '' : g.radiusKm) + '" placeholder="不限"></div>' +
+      '</div>' +
+      '<div class="section-head" style="margin-top:6px"><h2 style="font-size:14px">参与者（可选）</h2>' +
+        '<button class="btn btn-sm" data-gact="gAddPart">+ 添加</button></div>' +
+      '<p class="dist-note">不填参与者也能按人数估算，只是无法做忌口硬过滤。忌口可自定义，命中的店会被直接排除。</p>' +
+      '<div id="g-parts">' + (parts || '<p class="g-meta">还没有参与者</p>') + '</div>' +
+      '<div class="field" style="margin-top:12px"><label>候选数量（3–8）</label>' +
+        '<input class="input" type="number" min="3" max="8" id="g-candidateCount" value="' + g.candidateCount + '"></div>' +
+      '<p class="dist-note">生成规则：黑名单 / 忌口命中 / 超预算 / 区域与距离 / 打烊时段直接排除；其余按「共同偏好命中 + 评分 + 距离 + 新鲜度」排序。</p>' +
+      '<button class="btn btn-primary btn-block" data-gact="gGen">' + (g.candidates.length ? '重新生成候选（会清空票数）' : '生成候选') + '</button>' +
+      '<button class="btn btn-block btn-soft" data-gact="gClose" style="margin-top:8px">取消</button>';
+  }
+
+  /* ---- 详情 ---- */
+  function gatherCandHtml(c, no, g, isWin){
+    var meta = [c.category, c.area, (c.distKm == null ? '' : '距离 ' + c.distKm.toFixed(1) + ' km'), (c.rating == null ? '' : '评分 ' + c.rating)].filter(Boolean).join(' · ');
+    return '<div class="g-cand' + (isWin ? ' win' : '') + '">' +
+      '<div class="g-cand-top"><span class="g-cnum">' + no + '</span>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:13.5px;font-weight:600;overflow-wrap:anywhere">' + esc(c.name) + ' <span class="muted" style="font-weight:400">' + (c.perPrice ? money(c.perPrice) + '/人' : '人均未记录') + '</span></div>' +
+          '<p class="g-meta">' + esc(meta || '未分类') + ' · 匹配分 ' + c.score + '</p>' +
+          '<div class="g-why">' + c.reasons.map(function(t){ return '· ' + esc(t); }).join('<br>') + '</div>' +
+          '<div class="g-line">' + (c.okNames.length ? '能吃：' + esc(c.okNames.join('、')) : '未设参与者，按人数估算') +
+            (c.badNames.length ? ' · 忌口冲突：' + esc(c.badNames.join('、')) : '') + '</div>' +
+        '</div>' +
+        '<div class="vote-score">' + c.votes + '</div>' +
+      '</div></div>';
+  }
+  function gatherVoteHtml(g){
+    if(!(g.candidates || []).length) return '';
+    var total = '<p class="g-vrow" id="g-voteSum">当前共 <b>' + gatherVoteSum(g) + '</b> 票 · 可在群里口头投票后手动回填</p>';
+    var mode = '<div class="field" style="margin-bottom:0"><label>回填方式</label><div class="seg" id="g-votesMode">' +
+      '<button data-v="total" class="' + (g.votesMode !== 'person' ? 'on' : '') + '">总票数</button>' +
+      '<button data-v="person" class="' + (g.votesMode === 'person' ? 'on' : '') + '">每人票数</button></div></div>';
+    var body;
+    if(g.votesMode === 'person'){
+      body = (g.participants || []).map(function(p){
+        var row = g.votesByPerson[p.id] || {};
+        return '<div class="g-part"><div style="font-size:12px;font-weight:600;margin-bottom:6px">' + esc(p.name) + '</div>' +
+          '<div class="g-vote">' + g.candidates.map(function(c, i){
+            return '<label class="g-pv">#' + (i + 1) + ' ' + esc(c.name.slice(0, 8)) +
+              ' <input class="input" type="number" min="0" data-gvp="' + esc(p.id) + '" data-gkey="' + esc(c.key) + '" value="' + num(row[c.key]) + '" aria-label="' + esc(p.name) + '给' + esc(c.name) + '的票数"></label>';
+          }).join('') + '</div></div>';
+      }).join('') + (g.participants.length ? '' : '<p class="g-meta">没有参与者，改用「总票数」回填。</p>');
+    }else{
+      body = '<div class="g-vote">' + g.candidates.map(function(c, i){
+        return '<label class="g-pv">#' + (i + 1) + ' ' + esc(c.name.slice(0, 8)) +
+          ' <input class="input" type="number" min="0" data-gv="' + esc(c.key) + '" value="' + c.votes + '" aria-label="' + esc(c.name) + '的票数"></label>';
+      }).join('') + '</div>';
+    }
+    return '<div class="section-head" style="margin-top:16px"><h2 style="font-size:14px">投票回填</h2><span class="hint">只有本机</span></div>' +
+      mode + total + body;
+  }
+  function gatherRankHtml(g){
+    if(!(g.candidates || []).length) return '';
+    var rank = gatherRanking(g);
+    var rows = rank.items.map(function(it, i){
+      var c = it.c;
+      var tie = '';
+      for(var k = 0; k < rank.ties.length; k++){
+        if(i === rank.ties[k].from) tie = '并列 → 按' + rank.ties[k].rule;
+      }
+      return '<div class="g-vrow">' + (i + 1) + '. <b>' + esc(c.name) + '</b> · ' + c.votes + ' 票' +
+        (tie ? ' <span class="tag warn">' + esc(tie) + '</span>' : '') + '</div>';
+    }).join('');
+    return '<div class="section-head" style="margin-top:16px"><h2 style="font-size:14px">票数与排序</h2><span class="hint">共 ' + rank.total + ' 票</span></div>' +
+      '<div class="g-rule">平票时依次比较：<b>人均低 → 距离近 → 评分高 → 到访间隔长</b>。本次判定：' + esc(rank.ruleNote) + '</div>' + rows;
+  }
+  function gatherDetailHtml(g){
+    var isDone = g.status === 'done';
+    var isOpen = !isDone;
+    var sub = [];
+    sub.push(esc(g.date || '未定日期') + (g.time ? ' ' + esc(g.time) : ''));
+    sub.push(g.people + ' 人');
+    if(g.budgetMax) sub.push((g.budgetMode === 'total' ? '总预算 ' : '人均 ') + '≤' + money(g.budgetMax));
+    if(g.area) sub.push(esc(g.area));
+    if(g.radiusKm) sub.push(g.radiusKm + ' km 内');
+    var head = '<div class="sheet-head"><div style="min-width:0"><h2 style="overflow-wrap:anywhere">' + esc(g.title) + '</h2>' +
+      '<p class="g-meta">' + sub.join(' · ') + ' · ' + g.participants.length + ' 位参与者</p></div>' +
+      '<button class="btn btn-sm" data-gact="gClose">关闭</button></div>';
+    var partsLine = g.participants.length
+      ? '<p class="g-meta">参与者：' + esc(g.participants.map(function(p){ return p.name + (p.spicy === 'no' ? '(不吃辣)' : '') + ((p.avoid || []).length ? '[' + p.avoid.join('，') + ']' : ''); }).join('、')) + '</p>'
+      : '<p class="g-meta">未填参与者，按 ' + g.people + ' 人估算（无法做忌口过滤）</p>';
+    var votes = isOpen ? gatherVoteHtml(g) : '';
+    var rank = (g.candidates || []).length ? gatherRanking(g) : null;
+    var winBlock = '';
+    if(isDone){
+      winBlock = '<div class="notice" style="margin-top:12px">已结算：<b>' + esc(g.winner ? g.winner.name : '') + '</b>' +
+        (g.winner ? ' · ' + g.winner.votes + ' 票' : '') +
+        (g.winner && g.winner.estimated ? ' · 金额按人均估算' : (g.winner ? ' · 未记录人均，金额留空' : '') ) +
+        '<br>已写入日记 1 条记录（' + g.people + ' 人 · 场景「朋友聚会」）' + (g.winner && g.winner.rule ? ' · ' + esc(g.winner.rule) : '') + '</div>';
+    }
+    var candList = (g.candidates || []).length
+      ? rank.items.map(function(it){ return gatherCandHtml(it.c, it.idx + 1, g, g.status === 'done' ? (g.winner && g.winner.key === it.c.key) : (it.c.votes > 0 && it.c === rank.winner)); }).join('')
+      : '';
+    var emptyBlock = '';
+    if(!g.candidates.length){
+      if(!g.relax || !g.relax.length){
+        g.relax = gatherRelax(g, gatherPerCap(g), gatherPassCount(g));
+      }
+      emptyBlock = '<div class="card flat g-empty" style="margin-top:12px"><h3>没有符合条件的店</h3>' +
+        '<p class="muted">放宽下面任意一条后可以再试一次，候选会立即重算。</p>' +
+        (g.relax && g.relax.length ? g.relax.map(function(r){
+          return '<button class="btn btn-sm btn-soft btn-block" data-gact="gRelax" data-kind="' + esc(r.kind) + '" data-tag="' + esc(r.tag || '') + '" data-cap="' + (r.cap || '') + '">' + esc(r.label) + '</button>';
+        }).join('') : '<p class="muted">尝试提高预算、减少忌口或取消区域限制。</p>') +
+        '</div>';
+    }
+    var exBlock = '';
+    if(g.excluded && g.excluded.length){
+      exBlock = '<details style="margin-top:14px"><summary style="font-size:12px;color:var(--ink2);cursor:pointer">已排除 ' + g.excluded.length + ' 家（点开看每位参与者因为什么被排除）</summary>' +
+        '<div class="g-excl" style="margin-top:8px">' + g.excluded.map(function(e){
+          return '<div class="g-vrow">· <b>' + esc(e.name) + '</b>：' + esc(e.reasons.join('；')) + '</div>';
+        }).join('') + '</div></details>';
+    }
+    var actions = '';
+    if(isOpen){
+      actions = '<div class="g-actions">' +
+        '<button class="btn btn-sm btn-soft" data-gact="gEdit">改条件并重新生成</button>' +
+        (g.candidates.length ? '<button class="btn btn-sm btn-primary" data-gact="gSettle">按当前第一名结算</button>' : '') +
+        '</div>' +
+        '<p class="dist-note">结算只在候选有真实人均时按「人均 × 人数」预填，并标注可改；没有人均就留空，绝不凭空填数。</p>';
+    }
+    return head + partsLine +
+      '<div class="section-head" style="margin-top:14px"><h2 style="font-size:14px">候选 ' + g.candidates.length + ' 家</h2>' +
+        '<span class="hint">' + (isDone ? '已结算' : '按匹配分排序') + '</span></div>' +
+      candList + emptyBlock + (isDone ? winBlock : '') +
+      (g.candidates.length ? (isDone ? '' : votes + gatherRankHtml(g) + actions) : '') +
+      exBlock +
+      '<button class="btn btn-block" data-gact="gClose" style="margin-top:14px">关闭</button>';
+  }
+
+  function renderGatherModal(){
+    var box = $('#gatherModal');
+    if(!box) return;
+    if(!gatherDraft){ box.innerHTML = ''; return; }
+    box.innerHTML = gatherDraft._showDetail && !gatherDraft._formOnly ? gatherDetailHtml(gatherDraft) : gatherFormHtml(gatherDraft);
+  }
+  function openGather(id){
+    var g = id ? gatherById(id) : null;
+    gatherDraft = g ? g : gatherDefaultDraft();
+    gatherDraftSource = g ? g.id : '';
+    gatherDraft._formOnly = false;
+    gatherDraft._showDetail = !!g;
+    renderGatherModal();
+    $('#gatherMask').classList.remove('hidden');
+  }
+  function closeGather(){
+    gatherDraft = null;
+    gatherDraftSource = '';
+    $('#gatherMask').classList.add('hidden');
+  }
+  function gatherSyncDraft(){
+    var g = gatherDraft;
+    if(!g) return;
+    var fields = [['g-title','title'],['g-date','date'],['g-time','time'],['g-people','people'],
+      ['g-budgetMin','budgetMin'],['g-budgetMax','budgetMax'],['g-area','area'],['g-radiusKm','radiusKm'],['g-candidateCount','candidateCount']];
+    fields.forEach(function(f){
+      var el = $('#' + f[0]);
+      if(!el) return;
+      if(f[1] === 'title' || f[1] === 'area' || f[1] === 'date' || f[1] === 'time') g[f[1]] = el.value;
+      else if(f[1] === 'budgetMin' || f[1] === 'budgetMax' || f[1] === 'radiusKm') g[f[1]] = gatherNumOrNull(el.value);
+      else g[f[1]] = Math.max(1, Math.round(num(el.value) || 1));
+    });
+    (g.participants || []).forEach(function(p){
+      var n = $('[data-gp="name"][data-pid="' + p.id + '"]');
+      var a = $('[data-gp="avoid"][data-pid="' + p.id + '"]');
+      var c = $('[data-gp="cuisines"][data-pid="' + p.id + '"]');
+      if(n) p.name = String(n.value || '').slice(0, 20) || p.name;
+      if(a) p.avoid = gatherTagsOf(a.value);
+      if(c) p.cuisines = gatherTagsOf(c.value);
+    });
+    g.candidateCount = Math.max(3, Math.min(8, Math.round(num(g.candidateCount) || 5)));
+  }
+  function gatherApplyRelax(kind, tag, cap){
+    var g = gatherDraft;
+    if(!g) return;
+    if(kind === 'budget' && cap){
+      var c = num(cap);
+      g.budgetMode = 'per';
+      g.budgetMax = c;
+    }else if(kind === 'avoid' && tag){
+      g.participants.forEach(function(p){
+        p.avoid = (p.avoid || []).filter(function(t){ return t !== tag; });
+        if(tag === '不吃辣' && p.spicy === 'no') p.spicy = 'ok';
+      });
+    }else if(kind === 'area'){
+      g.area = '';
+    }else if(kind === 'distance'){
+      g.radiusKm = null;
+    }
+    var res = gatherCompute(g);
+    g.candidates = res.candidates;
+    g.excluded = res.excluded;
+    g.relax = res.relax;
+    g.votesByPerson = {};
+    g.votesMode = 'total';
+    g.status = 'open';
+    g.archived = false;
+    g.winner = null;
+    g.recordId = '';
+    g._showDetail = true;
+    g._formOnly = false;
+    if(gatherDraftSource){ gatherUpsert(g); }
+    renderGatherModal();
+    renderGather();
+    toast(res.candidates.length ? ('已放宽，找到 ' + res.candidates.length + ' 家候选') : '放宽后仍没有候选，可以继续调整条件');
+  }
+  function gatherGenerate(){
+    var g = gatherDraft;
+    if(!g) return;
+    gatherSyncDraft();
+    if(!g.date) g.date = todayStr();
+    if(!g.time) g.time = '18:30';
+    if(!g.title){
+      var d = new Date(g.date + 'T00:00:00');
+      g.title = (isNaN(d.getTime()) ? todayStr() : (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日') + '聚餐';
+    }
+    var res = gatherCompute(g);
+    g.candidates = res.candidates;
+    g.excluded = res.excluded;
+    g.relax = res.relax;
+    g.votesByPerson = {};
+    g.votesMode = 'total';
+    g.status = 'open';
+    g.archived = false;
+    g.winner = null;
+    g.recordId = '';
+    g._formOnly = false;
+    g._showDetail = true;
+    if(!g.id){
+      g.id = newId('g');
+      g.createdAt = new Date().toISOString();
+      db.gathers = db.gathers || [];
+      db.gathers.unshift(g);
+      gatherDraftSource = g.id;
+    }
+    gatherUpsert(g);
+    renderGatherModal();
+    renderGather();
+    if(res.candidates.length) toast('已生成 ' + res.candidates.length + ' 家候选');
+    else toast('没有符合条件的店，看看下面的放宽建议');
+  }
+  function gatherSettle(id){
+    var g = gatherById(id);
+    if(!g) return { ok:false, error:'活动不存在' };
+    if(g.status === 'done') return { ok:false, error:'活动已结算' };
+    if(!g.candidates.length) return { ok:false, error:'还没有候选' };
+    var rank = gatherRanking(g);
+    if(!rank.total) return { ok:false, error:'还没有回填票数' };
+    var c = rank.winner;
+    var store = gatherStoreOf(c);
+    var est = num(c.perPrice) > 0;
+    var total = est ? Math.round(num(c.perPrice) * g.people) : null;
+    var now = new Date().toISOString();
+    var rec = {
+      id: newId('r'), name: c.name,
+      city: c.city || (store ? store.city : '') || '',
+      area: c.area || (store ? store.area : '') || '',
+      address: store ? String(store.address || '') : '',
+      lat: store && isFinite(Number(store.lat)) ? Number(store.lat) : null,
+      lng: store && isFinite(Number(store.lng)) ? Number(store.lng) : null,
+      distanceKm: c.distKm,
+      openStart: store ? String(store.openStart || '') : '',
+      openEnd: store ? String(store.openEnd || '') : '',
+      fitMeals: store && Array.isArray(store.fitMeals) ? store.fitMeals.slice() : [],
+      dayType: store ? (store.dayType || 'any') : 'any',
+      travelMode: store ? String(store.travelMode || '') : '',
+      travelMin: store && num(store.travelMin) > 0 ? num(store.travelMin) : null,
+      fromPlace: store ? String(store.fromPlace || '') : '',
+      visitDate: g.date || todayStr(), dateEstimated: false,
+      people: g.people, totalPrice: total, perPrice: Math.round(num(c.perPrice)),
+      category: c.category || '', rating: null,
+      note: '聚餐：' + g.title + (est ? '（金额按人均估算，可改）' : '（未记录人均，金额留空）'),
+      photo: null, photoId: null,
+      createdAt: now, updatedAt: now,
+      mealType: gatherMealOf(g.time), scene: 'friends', tags: [],
+      ratings: { taste:0, env:0, service:0, value:0 },
+      kcal: null, protein: null, fitnessFriendly: false,
+      source: 'gather', importedFrom: '', importedAt: ''
+    };
+    db.records.unshift(rec);
+    g.status = 'done';
+    g.winner = {
+      key: c.key, name: c.name, perPrice: Math.round(num(c.perPrice)), votes: c.votes,
+      estimated: est, rule: rank.ruleNote
+    };
+    g.recordId = rec.id;
+    gatherUpsert(g);
+    invalidateStores();
+    save();
+    renderGather();
+    if(gatherDraft === g || gatherDraftSource === g.id) renderGatherModal();
+    return { ok:true, recordId: rec.id, total: total, perPrice: c.perPrice, people: g.people, scene: 'friends', name: c.name, estimated: est };
+  }
+  function gatherDelete(id){
+    var g = gatherById(id);
+    if(!g) return false;
+    db.gathers = (db.gathers || []).filter(function(x){ return x.id !== id; });
+    if(gatherDraft && gatherDraft.id === id) closeGather();
+    save();
+    renderGather();
+    return true;
+  }
+  function gatherArchive(id){
+    var g = gatherById(id);
+    if(!g) return false;
+    g.archived = true;
+    gatherUpsert(g);
+    renderGather();
+    return true;
+  }
+
+  /* 活动弹层交互（事件委托，按钮全部可点中） */
+  (function bindGather(){
+    var mask = $('#gatherMask');
+    var list = $('#gatherBox');
+    if(list){
+      list.addEventListener('click', function(e){
+        var b = e.target.closest ? e.target.closest('[data-gact]') : null;
+        if(!b) return;
+        var act = b.getAttribute('data-gact');
+        if(act === 'gNew'){ openGather(null); return; }
+        if(act === 'gCsv'){ exportGatherCsv(); return; }
+        if(act === 'gOpen'){ openGather(b.getAttribute('data-gid')); return; }
+        if(act === 'gArchive'){ gatherArchive(b.getAttribute('data-gid')); toast('已归档'); return; }
+        if(act === 'gDelete'){
+          var id = b.getAttribute('data-gid');
+          var g = gatherById(id);
+          if(!g) return;
+          if(!confirm('删除活动「' + g.title + '」？候选与票数都会删除，且不可恢复。')) return;
+          gatherDelete(id);
+          toast('已删除活动');
+          return;
+        }
+      });
+    }
+    if(!mask) return;
+    mask.addEventListener('click', function(e){
+      if(e.target === mask){ closeGather(); return; }
+      var b = e.target.closest ? e.target.closest('[data-gact]') : null;
+      if(!b) return;
+      var act = b.getAttribute('data-gact');
+      if(act === 'gClose'){ closeGather(); return; }
+      if(act === 'gAddPart'){
+        gatherSyncDraft();
+        gatherDraft.participants.push({ id:newId('gp'), name:'朋友' + (gatherDraft.participants.length + 1), avoid:[], cuisines:[], spicy:'ok' });
+        renderGatherModal();
+        return;
+      }
+      if(act === 'gDelPart'){
+        gatherSyncDraft();
+        gatherDraft.participants = gatherDraft.participants.filter(function(p){ return p.id !== b.getAttribute('data-pid'); });
+        renderGatherModal();
+        return;
+      }
+      if(act === 'gChip'){
+        gatherSyncDraft();
+        var pid = b.getAttribute('data-pid'), tag = b.getAttribute('data-tag');
+        gatherDraft.participants.forEach(function(p){
+          if(p.id !== pid) return;
+          var on = (p.avoid || []).indexOf(tag) >= 0;
+          if(on) p.avoid = p.avoid.filter(function(t){ return t !== tag; });
+          else p.avoid = (p.avoid || []).concat([tag]);
+        });
+        renderGatherModal();
+        return;
+      }
+      if(act === 'gGen'){
+        gatherGenerate();
+        return;
+      }
+      if(act === 'gEdit'){
+        if(gatherDraft && gatherDraft.status === 'done'){ toast('已结算的活动不能再改条件'); return; }
+        gatherDraft._formOnly = true;
+        gatherDraftSource = gatherDraft.id || '';
+        renderGatherModal();
+        return;
+      }
+      if(act === 'gRelax'){
+        gatherApplyRelax(String(b.getAttribute('data-kind') || ''), String(b.getAttribute('data-tag') || ''), b.getAttribute('data-cap'));
+        return;
+      }
+      if(act === 'gSettle'){
+        if(!gatherDraft || !gatherDraft.id) return;
+        if(!confirm('把「' + (gatherRanking(gatherDraft).winner ? gatherRanking(gatherDraft).winner.name : '第一名') + '」记为一次聚餐？会写入 1 条到访记录。')) return;
+        var res = gatherSettle(gatherDraft.id);
+        if(!res.ok){ toast(res.error); return; }
+        toast('已记为聚餐 · 人数 ' + res.people + (res.total == null ? ' · 金额未填' : ' · 总价 ' + money(res.total)));
+        return;
+      }
+      if(act === 'gArchive'){
+        gatherArchive(b.getAttribute('data-gid'));
+        return;
+      }
+    });
+    mask.addEventListener('click', function(e){
+      var seg = e.target.closest ? e.target.closest('#g-budgetMode [data-v], #g-votesMode [data-v], [data-gp="spicy"] [data-v]') : null;
+      if(!seg || !gatherDraft) return;
+      var v = seg.getAttribute('data-v');
+      if(seg.parentElement.id === 'g-budgetMode'){
+        gatherSyncDraft();
+        gatherDraft.budgetMode = v === 'total' ? 'total' : 'per';
+        renderGatherModal();
+      }else if(seg.parentElement.id === 'g-votesMode'){
+        gatherDraft.votesMode = v === 'person' ? 'person' : 'total';
+        if(gatherDraft.votesMode === 'person'){
+          gatherDraft.participants.forEach(function(p){ if(!gatherDraft.votesByPerson[p.id]) gatherDraft.votesByPerson[p.id] = {}; });
+        }
+        gatherUpsert(gatherDraft);
+        renderGatherModal();
+      }else{
+        gatherSyncDraft();
+        var pid = seg.getAttribute('data-pid');
+        gatherDraft.participants.forEach(function(p){ if(p.id === pid) p.spicy = v; });
+        renderGatherModal();
+      }
+    });
+    mask.addEventListener('input', function(e){
+      var t = e.target;
+      if(!gatherDraft || !t || !t.getAttribute) return;
+      var gf = t.id && /^g-(title|date|time|people|budgetMin|budgetMax|area|radiusKm|candidateCount)$/.test(t.id);
+      var gp = t.getAttribute('data-gp');
+      var gv = t.getAttribute('data-gv'), gvp = t.getAttribute('data-gvp');
+      if(gf || gp){
+        gatherSyncDraft();
+        return;
+      }
+      if(gv){
+        gatherDraft.candidates.forEach(function(c){ if(c.key === gv) c.votes = Math.max(0, Math.round(num(t.value))); });
+        gatherUpsert(gatherDraft);
+        var sum = $('#g-voteSum');
+        if(sum) sum.innerHTML = '当前共 <b>' + gatherVoteSum(gatherDraft) + '</b> 票 · 可在群里口头投票后手动回填';
+        return;
+      }
+      if(gvp){
+        var pid2 = gvp, key = t.getAttribute('data-gkey');
+        if(!gatherDraft.votesByPerson[pid2]) gatherDraft.votesByPerson[pid2] = {};
+        gatherDraft.votesByPerson[pid2][key] = Math.max(0, Math.round(num(t.value)));
+        var sums = {};
+        gatherDraft.participants.forEach(function(p){
+          var row = gatherDraft.votesByPerson[p.id] || {};
+          (gatherDraft.candidates || []).forEach(function(c){ sums[c.key] = (sums[c.key] || 0) + Math.max(0, num(row[c.key])); });
+        });
+        gatherDraft.candidates.forEach(function(c){ c.votes = sums[c.key] || 0; });
+        gatherUpsert(gatherDraft);
+        var sum2 = $('#g-voteSum');
+        if(sum2) sum2.innerHTML = '当前共 <b>' + gatherVoteSum(gatherDraft) + '</b> 票 · 可在群里口头投票后手动回填';
+      }
+    });
+    mask.addEventListener('change', function(e){
+      if(!gatherDraft) return;
+      var t = e.target;
+      if(t && t.id === 'g-date'){ gatherSyncDraft(); var lb = $('#g-budgetLabel'); if(lb) lb.textContent = gatherDraft.budgetMode === 'total' ? '总预算上限（元）' : '人均上限（元）'; return; }
+      if(t && (t.id === 'g-budgetMax' || t.id === 'g-budgetMin')){
+        gatherSyncDraft();
+        return;
+      }
+      if(t && (t.getAttribute('data-gv') || t.getAttribute('data-gvp'))){
+        renderGatherModal();
+      }
+    });
+    mask.addEventListener('click', function(e){
+      if(e.target === mask) closeGather();
+    });
+  })();
 
   /* ================= 健身 ================= */
   function renderFitness(){
@@ -10844,6 +11864,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       wishlist: db.wishlist,
       votes: db.votes,
       places: db.places,
+      gathers: db.gathers,
       localConfig: backupLocalConfig(),
       feedback: feedbackBackupData(),
       profile: profileBackupData(),
@@ -11036,6 +12057,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         wishlist: db.wishlist,
         votes: db.votes,
         places: db.places,
+        gathers: db.gathers,
         localConfig: backupLocalConfig(),
         feedback: feedbackBackupData(),
         profile: profileBackupData()
@@ -11172,9 +12194,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           next.records.unshift(rec);
           added++;
         });
+        // 聚餐活动按 id 合并：同 id 以备份为准，避免重复
+        next.gathers = Array.isArray(next.gathers) ? next.gathers : [];
+        var gBefore = next.gathers.length;
+        (norm.gathers || []).forEach(function(g){
+          var at = -1;
+          for(var gi = 0; gi < next.gathers.length; gi++){ if(next.gathers[gi].id === g.id){ at = gi; break; } }
+          if(at >= 0) next.gathers[at] = g; else next.gathers.unshift(g);
+        });
         // 反馈整段还原（不按记录去重）：永不推荐若有反馈、黑名单缺失，一并补上
         ensureNeverBlacklist(next.blacklist, obj.payload.feedback);
-        stats = { added:added, skipped:skipped, replaced:false };
+        stats = { added:added, skipped:skipped, replaced:false, gathersAdded: next.gathers.length - gBefore };
       }
       /* 反馈与口味设置先写、数据库后写；任何一步失败都回滚，保持「整包拒绝」语义 */
       var fbPrevRaw = null, fbPrevStore = JSON.parse(JSON.stringify(feedbackStore));
@@ -12945,7 +13975,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     friend: function(){ var t0 = nowMs(); $('#btnFriend').click(); return nowMs() - t0; },
     cards: function(){ return $('#listBox').querySelectorAll('.rec-card').length; },
     view: function(name){ showView(name); },
-    panel: function(name){ showPanel('recommend', name); },
+    panel: function(name, group){ showPanel(group || 'recommend', name); },
     nearDaily: function(on){
       dailyNear = !!on;
       $('#dayNearOnly').classList.toggle('on', dailyNear);
@@ -13229,12 +14259,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       },
       seedState: function(st){
         st = st || {};
-        ['settings','blacklist','wishlist','votes','places'].forEach(function(k){
-          if(st[k] && typeof st[k] === 'object') db[k] = JSON.parse(JSON.stringify(st[k]));
+        ['settings','blacklist','wishlist','votes','places','gathers'].forEach(function(k){
+          if(st[k] && typeof st[k] === 'object'){
+            db[k] = (k === 'gathers' && Array.isArray(st[k])
+              ? st[k].map(normalizeGather).filter(Boolean)
+              : JSON.parse(JSON.stringify(st[k])));
+          }
         });
         if(Array.isArray(st.records)) db.records = JSON.parse(JSON.stringify(st.records));
         save(); invalidateStores(); renderAll();
-        return { records:db.records.length, settings:Object.keys(db.settings).length, places:db.places.length, blacklist:db.blacklist.length, wishlist:db.wishlist.length, votes:db.votes.length };
+        return { records:db.records.length, settings:Object.keys(db.settings).length, places:db.places.length, blacklist:db.blacklist.length, wishlist:db.wishlist.length, votes:db.votes.length, gathers:(db.gathers||[]).length };
       },
       recordLast: function(o){ setBackupLast(o || {}); renderMore(); renderBackupReminder(); return backupLast(); },
       seedPhoto: function(id, dataUrl){
@@ -13500,6 +14534,93 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       closeLong: closeLongImages,
       controls: function(){
         return { imageDisabled:$('#btnAnnualImage').disabled, yearValue:$('#annualYear').value, yearOptions:$('#annualYear').options.length };
+      }
+    },
+    gather: {
+      list: function(){ return JSON.parse(JSON.stringify(db.gathers || [])); },
+      get: function(id){ var g = gatherById(id); return g ? JSON.parse(JSON.stringify(g)) : null; },
+      create: function(input){
+        var g = normalizeGather(Object.assign(gatherDefaultDraft(), input || {}, {
+          id: newId('g'), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+        }));
+        if(!g) return { ok:false, error:'参数不合法' };
+        var res = gatherCompute(g);
+        g.candidates = res.candidates;
+        g.excluded = res.excluded;
+        g.relax = res.relax;
+        db.gathers = db.gathers || [];
+        db.gathers.unshift(g);
+        save();
+        return { ok:true, id:g.id, gather:JSON.parse(JSON.stringify(g)), compute:JSON.parse(JSON.stringify(res)) };
+      },
+      compute: function(input){
+        var g = normalizeGather(Object.assign(gatherDefaultDraft(), input || {}, { id:'tmp-gather' }));
+        if(!g) return null;
+        var t0 = performance.now();
+        var res = gatherCompute(g);
+        res.ms = Math.round((performance.now() - t0) * 10) / 10;
+        return JSON.parse(JSON.stringify(res));
+      },
+      computeOf: function(id){
+        var g = gatherById(id);
+        if(!g) return null;
+        var t0 = performance.now();
+        var res = gatherCompute(g);
+        res.ms = Math.round((performance.now() - t0) * 10) / 10;
+        return JSON.parse(JSON.stringify(res));
+      },
+      setVotes: function(id, map){
+        var g = gatherById(id);
+        if(!g) return null;
+        map = map || {};
+        g.candidates.forEach(function(c){
+          var n = map[c.name] != null ? map[c.name] : (map[c.key] != null ? map[c.key] : 0);
+          c.votes = Math.max(0, Math.round(Number(n) || 0));
+        });
+        gatherUpsert(g);
+        return { total:gatherVoteSum(g), rank:JSON.parse(JSON.stringify(gatherRanking(g))) };
+      },
+      rank: function(id){ var g = gatherById(id); return g ? JSON.parse(JSON.stringify(gatherRanking(g)) ) : null; },
+      settle: function(id){ return gatherSettle(id); },
+      relax: function(id, kind, tag, cap){
+        var g = gatherById(id);
+        if(!g) return null;
+        gatherDraft = g;
+        gatherDraftSource = g.id;
+        gatherApplyRelax(kind, tag, cap);
+        return JSON.parse(JSON.stringify({ candidates:g.candidates.length, relax:g.relax, excluded:g.excluded.length }));
+      },
+      remove: function(id){ return gatherDelete(id); },
+      archive: function(id){ return gatherArchive(id); },
+      csv: function(){ return gatherCsvText(); },
+      page: function(){ renderGather(); return $('#gatherBox').innerText; },
+      open: function(id){
+        openGather(id);
+        return { open:!$('#gatherMask').classList.contains('hidden'), text:$('#gatherModal').innerText, html:$('#gatherModal').innerHTML };
+      },
+      close: closeGather,
+      draft: function(){ return gatherDraft ? JSON.parse(JSON.stringify(gatherDraft)) : null; },
+      click: function(sel){ var el = $(sel); if(!el) return false; el.click(); return true; },
+      setInput: function(id, val){
+        var el = $('#' + id);
+        if(!el) return false;
+        el.value = String(val);
+        el.dispatchEvent(new Event('input', { bubbles:true }));
+        el.dispatchEvent(new Event('change', { bubbles:true }));
+        return true;
+      },
+      form: function(){
+        return {
+          open:!$('#gatherMask').classList.contains('hidden'),
+          title:$('#g-title') ? $('#g-title').value : null,
+          text:$('#gatherModal').innerText,
+          candidateCount:$('#g-candidateCount') ? $('#g-candidateCount').value : null,
+          participantCount:($('#gatherModal').querySelectorAll('[data-gp="name"]') || []).length
+        };
+      },
+      metrics: function(){
+        var box = $('#gatherBox');
+        return box ? { w:box.clientWidth, sw:box.scrollWidth, modalW:$('#gatherModal').clientWidth, modalSW:$('#gatherModal').scrollWidth } : null;
       }
     },
     v2: {
