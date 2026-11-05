@@ -48,8 +48,11 @@ jobs:
           cache: npm
           cache-dependency-path: android-app/package-lock.json
 
+      # 默认输入 "tools platform-tools" 里的 tools 包已从 SDK 仓库移除，会导致该 action 直接失败
       - name: 安装 Android SDK 命令行工具
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
 
       - name: 安装 SDK 平台与构建工具
         run: |
