@@ -65,6 +65,66 @@ python -m http.server 8765
 - `manifest.webmanifest` 应以 `application/manifest+json` 或 `application/json` 返回，`sw.js` 应返回 200。
 - 换了域名或移动了图标目录后，若旧缓存未更新，可在「我的 → 诊断」或浏览器开发者工具里清除站点数据。
 
+## Android APK
+
+不想装浏览器扩展、或想有个桌面图标直接用，可以用 Actions 云端打出来的 APK。**构建在 GitHub 的免费 runner 上完成，本地不需要 JDK / Android SDK**。
+
+### 拿现成的 APK
+
+1. 打开 <https://github.com/violetz10032/fandazi/actions/workflows/android.yml>；
+2. 选最近一次成功的运行，页面底部 **Artifacts → `fandazi-debug-<版本>-<提交短哈希>`**，下载解压得到 `app-debug.apk`（约 3.7 MB）；
+3. 手机上传该文件，安装时系统会要求「允许来自此来源安装应用」（未知来源），同意后即可安装。
+
+Artifact 只保留 **14 天**，过期后重新跑一次工作流即可。
+
+### 触发构建
+
+| 方式 | 说明 |
+| --- | --- |
+| 手动 | Actions → **Android APK** → **Run workflow**（分支 `main`） |
+| 自动 | 推送到 `main` 且改动了 `android-app/**`、`index.html`、`manifest.webmanifest`、`sw.js`、`icons/**`、工作流文件本身 |
+
+其他改动（文档、`docs/`）不会触发构建，避免每次提交都跑一遍。
+
+### 工程结构
+
+```
+android-app/
+├── capacitor.config.json     # appId com.fandazi.app，appName 饭搭子，webDir=www
+├── package.json              # Capacitor 6.2.3（对应 AGP 8.2.1 / JDK 17 / compileSdk 34）
+├── scripts/copy-www.js       # 从仓库根同步 index.html、manifest、sw.js、icons 到 www/
+├── www/                      # WebView 加载的本地资产（由脚本同步，勿手改）
+└── android/                  # Capacitor 生成的 Android 工程（Gradle + 原生壳）
+```
+
+`index.html` 仍然只有一份"源头"在仓库根，`www/` 里的副本在 CI 里用 `npm run sync:www` 重新生成，所以不必担心两边不同步。`node_modules/`、`android/build/`、`android/.gradle/` 都在 `.gitignore` 里。
+
+本地想自己改原生壳、重新出包：
+
+```bash
+cd android-app
+npm ci
+npm run sync:android        # 同步 web 资产 + 生成 Capacitor 桥接代码
+cd android && ./gradlew assembleDebug
+# 产物：android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+（这一步需要本机有 JDK 17 与 Android SDK；只想要 APK 的话用上面的 Actions 方式即可。）
+
+### 签名与分发限制
+
+- 当前是 **debug 签名**（Gradle 自动用 debug keystore 签名，`applicationId` = `com.fandazi.app`，`versionName` 1.0、`versionCode` 1）。
+- debug APK **只能自己装**：需要手动允许「未知来源」，也不能上传 Google Play / 国内应用商店，部分国产 ROM 会额外提示风险。
+- 真要正式发布，需要自己的 keystore + `release` 构建类型，并把 keystore 以 GitHub Secrets（base64）形式注入 CI，`./gradlew assembleRelease` 后再用 `apksigner` 校验；keystore 文件本身绝不能进仓库。
+
+### 运行形态与限制
+
+- WebView 加载的是**打包在 APK 里的本地资源**（`assets/public`），首次打开不需要联网，数据同样只存在本机 WebView 的存储里。
+- 已确认 APK 内包含 `assets/public/index.html`、`icons/`、`manifest.webmanifest`、`sw.js`；资源全部是 `./` 相对路径，因此在 `file://`、WebView 本地资源、GitHub Pages 子路径下都能找到图标与清单。
+- Service Worker 在 Capacitor 默认的 `https://localhost` 源下是可选的：注册失败只会在「我的 → 诊断」里记一条日志，不会白屏（页面是纯静态资源）。
+- **未在真机上验证的部分**：CSV/JSON 导出与分享图用的是 `<a download>` + Blob、`navigator.share`，Android WebView 一般不支持这两个能力，点按钮可能没有反应。如果要用，建议仍在浏览器里打开在线地址导出；要让 APK 内也支持，需要额外接入 `@capacitor/filesystem` + `@capacitor/share` 插件，属于后续工作。
+- APK 与在线 PWA 是**两份独立的数据**：APK 里的记录不会同步到网页版，反之亦然。想迁移就用「我的 → 数据 → 导出 JSON」再在另一侧导入。
+
 ## 功能清单
 
 | 能力 | 状态 |
@@ -102,6 +162,13 @@ fandazi/
 ├── docs/
 │   ├── framework.md          # 框架方案、算法、实测
 │   └── features.md           # 同类产品参考点与差异
+├── android-app/              # Capacitor Android 工程（见上文「Android APK」）
+│   ├── capacitor.config.json
+│   ├── package.json
+│   ├── scripts/copy-www.js
+│   ├── www/                  # 从根目录同步的 web 资产
+│   └── android/              # Gradle 工程
+├── .github/workflows/android.yml  # 云端构建 APK
 ├── LICENSE
 └── README.md
 ```
