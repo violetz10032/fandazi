@@ -168,10 +168,50 @@
   .empty h3{font-size:15px;color:var(--ink2);margin-bottom:6px}
   .empty p{font-size:12px;line-height:1.7}
 
-  .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 10px;text-align:center}
-  .stat b{display:block;font-size:19px;line-height:1.3}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 10px;text-align:center;min-width:0}
+  .stat b{display:block;font-size:18px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
   .stat span{font-size:11px;color:var(--ink3)}
   .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 12px}
+  .stats-scope{display:flex;gap:8px}
+  .stats-scope>select{flex:1;min-width:0;padding:8px 10px;font-size:13px}
+  .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .stat-sub{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:18px 0 8px}
+  .stat-sub h3{font-size:14px}
+  .stat-sub .hint{font-size:11px;color:var(--ink3);text-align:right}
+  .stat-label{font-size:12px;color:var(--ink2);font-weight:600;margin:10px 0 2px}
+  .stat-note{font-size:11px;color:var(--ink3);line-height:1.65;margin-top:6px}
+  .stat-note.warn{color:#8a4b0f}
+  .stat-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px;cursor:pointer;min-width:0}
+  .stat-row:last-child{border-bottom:0}
+  .stat-row .idx{width:30px;flex:none;font-size:11px;color:var(--ink3);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .stat-row .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .stat-row .num{flex:none;font-size:12px;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .stat-row .sub{display:block;font-size:11px;color:var(--ink3)}
+  .stat-mini{flex:2;min-width:40px;height:8px;background:#f1eae0;border-radius:99px;overflow:hidden}
+  .stat-mini>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent2),var(--accent))}
+  .stat-hero{background:#fcfaf7;border:1px dashed var(--line);border-radius:12px;padding:10px 12px;margin-top:8px}
+  .stat-hero b{font-size:14px}
+  .stat-hero p{font-size:12px;color:var(--ink2);line-height:1.6;margin-top:3px}
+  .stat-bar{display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:5px;cursor:pointer}
+  .stat-bar .lbl{width:34px;flex:none;color:var(--ink3);font-variant-numeric:tabular-nums}
+  .stat-bar .track{flex:1;min-width:0;height:8px;background:#f1eae0;border-radius:99px;overflow:hidden}
+  .stat-bar .track>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent2),var(--accent))}
+  .stat-bar .val{width:58px;flex:none;text-align:right;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .stat-chart{width:100%;max-width:100%;height:auto;display:block;margin-top:2px}
+  .stat-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;font-size:11px;color:var(--ink3)}
+  .stat-legend span{display:inline-flex;align-items:center;gap:4px;min-width:0}
+  .stat-legend i{width:9px;height:9px;border-radius:2px;flex:none}
+  .stat-legend em{font-style:normal;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px}
+  .stat-tags{display:flex;flex-wrap:wrap;gap:6px}
+  .stat-tag{border:1px solid var(--line);background:#f8f4ee;border-radius:999px;padding:4px 9px;font-size:12px;color:var(--ink2);cursor:pointer}
+  .stat-tag b{font-weight:600;color:#a8460a;margin-left:3px}
+  .stat-seg{display:inline-flex;background:#f1ebe2;border-radius:9px;padding:3px;gap:3px;margin-bottom:6px}
+  .stat-seg button{border:0;background:transparent;border-radius:7px;padding:5px 10px;font-size:11px;color:var(--ink2);cursor:pointer}
+  .stat-seg button.on{background:#fff;font-weight:600;color:var(--ink);box-shadow:0 1px 4px rgba(60,40,20,.1)}
+  @media(max-width:480px){
+    .stat-grid{grid-template-columns:repeat(2,1fr)}
+    .stat b{font-size:17px}
+  }
 
   .metric{margin-bottom:12px}
   .metric-row{display:flex;justify-content:space-between;font-size:12px;color:var(--ink2);margin-bottom:6px}
@@ -841,12 +881,15 @@
         <p class="dist-note">提醒只在本机运行，不依赖服务端推送；浏览器通知必须由你点击按钮才申请权限，拒绝后不会再自动询问。</p>
       </div>
 
-      <div class="card">
+      <div class="card" id="statsCard">
         <div class="section-head" style="margin:0 0 10px">
-          <h2>月度消费</h2>
+          <h2>统计</h2>
           <span class="hint" id="statHint"></span>
         </div>
-        <input class="input" type="month" id="statMonth" style="max-width:180px">
+        <div class="stats-scope">
+          <select class="input" id="statYear" aria-label="统计年份"></select>
+          <select class="input" id="statMonth" aria-label="统计月份"></select>
+        </div>
         <div id="statBox" style="margin-top:12px"></div>
       </div>
 
@@ -1029,6 +1072,17 @@
       <button type="button" class="icon-btn" id="mapStoreClose" aria-label="关闭">✕</button>
     </div>
     <div id="mapStoreBody"></div>
+  </div>
+</div>
+
+<!-- 统计明细（复用日记的到访行与详情） -->
+<div class="sheet-mask hidden" id="statDetailMask">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="statDetailTitle">统计明细</h2>
+      <button type="button" class="icon-btn" id="statDetailClose" aria-label="关闭">✕</button>
+    </div>
+    <div id="statDetailBody"></div>
   </div>
 </div>
 
@@ -5326,57 +5380,548 @@
   }
   function monthLabel(key){ return key.slice(0,4)+' 年 '+parseInt(key.slice(5,7),10)+' 月'; }
 
-  function renderStats(){
-    var month = $('#statMonth').value || monthOf(todayStr());
-    if(!$('#statMonth').value) $('#statMonth').value = month;
-    var recs = db.records.filter(function(r){ return monthOf(r.visitDate) === month; });
-    var spend = 0, peopleSum = 0;
-    recs.forEach(function(r){
-      var t = num(r.totalPrice) > 0 ? num(r.totalPrice) : perPriceOf(r)*num(r.people);
-      spend += t; peopleSum += num(r.people) || 1;
-    });
-    var catCount = {}, sceneCount = {};
-    recs.forEach(function(r){
-      var c = r.category || '未分类';
-      catCount[c] = (catCount[c]||0)+1;
-      var sc = r.scene ? (SCENE_LABEL[r.scene]||r.scene) : '未标注';
-      sceneCount[sc] = (sceneCount[sc]||0)+1;
-    });
-    var topCats = Object.keys(catCount).sort(function(a,b){ return catCount[b]-catCount[a]; }).slice(0,3);
-    var topScenes = Object.keys(sceneCount).sort(function(a,b){ return sceneCount[b]-sceneCount[a]; }).slice(0,3);
+  /* ---- 统计：只用真实记录；缺失金额不推算、不进金额均值 ---- */
+  var STATS_COLORS = ['#e8590c','#2f8c5a','#6b5bd6','#b7791f','#3d7ea6','#9a8f86'];
+  var statsState = { year:0, month:0, trend:6, lastMs:0, lastSwitchMs:0, lastSwitchWhat:'', detail:null };
 
-    $('#statHint').textContent = recs.length ? recs.length+' 笔' : '暂无';
+  function statsAmount(r){ var t = num(r.totalPrice); return t > 0 ? t : null; }
+  function statsDated(r){ return !diaryUnknown(r); }
+  function statsMonthOf(r){ return statsDated(r) ? String(r.visitDate||'').slice(0,7) : ''; }
+  function statsPad(n){ return (n<10?'0':'')+n; }
+  function statsDays(dateStr){
+    if(!dateStr) return null;
+    var a = new Date(String(dateStr)+'T00:00:00');
+    var b = new Date(todayStr()+'T00:00:00');
+    if(isNaN(a.getTime()) || isNaN(b.getTime())) return null;
+    return Math.round((b.getTime()-a.getTime())/86400000);
+  }
+  function statsAgo(days){
+    if(days == null) return '日期未知';
+    if(days <= 0) return '今天';
+    if(days === 1) return '昨天';
+    return days+' 天前';
+  }
+  function statsCatOf(r){ return String(r.category||'').trim() || '未分类'; }
+  function statsSceneOf(r){ return r.scene ? (SCENE_LABEL[r.scene]||String(r.scene)) : '未标注'; }
+  function statsShopKey(r){ return String(r.city||'').trim()+'|'+String(r.name||'').trim(); }
+  function statsScopeLabel(y, m){ return String(y)+' 年'+(m ? ' '+m+' 月' : '全年'); }
 
-    var months = [];
-    for(var i=5;i>=0;i--) months.push(shiftMonth(month, -i));
-    var vals = [], perCapVals = [];
-    months.forEach(function(key){
-      var sum = 0, ppl = 0;
-      db.records.forEach(function(r){
-        if(monthOf(r.visitDate) === key){
-          sum += num(r.totalPrice) > 0 ? num(r.totalPrice) : perPriceOf(r)*num(r.people);
-          ppl += num(r.people) || 1;
-        }
+  function statsMoneyInfo(recs){
+    var sum = 0, n = 0, miss = 0, people = 0;
+    recs.forEach(function(r){
+      var a = statsAmount(r);
+      if(a == null){ miss++; return; }
+      sum += a; n++;
+      people += Math.max(1, num(r.people) || 1);
+    });
+    return {
+      total: recs.length, sum: sum, n: n, miss: miss, people: people,
+      avgVisit: n ? Math.round(sum/n) : null,
+      avgPerson: n && people ? Math.round(sum/people) : null
+    };
+  }
+
+  function statsStoreRows(recs){
+    var by = {}, rows = [];
+    recs.forEach(function(r){
+      var name = String(r.name||'').trim();
+      if(!name) return;
+      var key = statsShopKey(r), g = by[key];
+      if(!g){
+        g = by[key] = { key:key, name:name, city:String(r.city||''), visits:0, sum:0, amountN:0, amountMiss:0,
+          ratingSum:0, ratingN:0, lastDate:'', lastDays:null, lastId:'' };
+        rows.push(g);
+      }
+      g.visits++;
+      var a = statsAmount(r);
+      if(a == null) g.amountMiss++;
+      else { g.sum += a; g.amountN++; }
+      var rt = num(r.rating);
+      if(rt > 0){ g.ratingSum += rt; g.ratingN++; }
+      if(statsDated(r)){
+        var d = String(r.visitDate||'');
+        if(d > g.lastDate){ g.lastDate = d; g.lastId = r.id; }
+      }
+    });
+    rows.forEach(function(g){
+      g.rating = g.ratingN ? Math.round((g.ratingSum/g.ratingN)*10)/10 : null;
+      g.lastDays = g.lastDate ? statsDays(g.lastDate) : null;
+    });
+    return rows.sort(function(a,b){
+      if(b.visits !== a.visits) return b.visits - a.visits;
+      if(a.lastDate !== b.lastDate) return b.lastDate > a.lastDate ? 1 : -1;
+      return a.name.localeCompare(b.name);
+    });
+  }
+  function statsStoreInfo(g){
+    return { key:g.key, name:g.name, city:g.city, visits:g.visits, sum:g.sum, amountN:g.amountN,
+      amountMiss:g.amountMiss, rating:g.rating, lastDate:g.lastDate, lastDays:g.lastDays };
+  }
+
+  function statsCatRows(recs){
+    var by = {}, rows = [];
+    recs.forEach(function(r){
+      var name = statsCatOf(r);
+      if(!by[name]){ by[name] = { name:name, count:0, sum:0, amountN:0, miss:0 }; rows.push(by[name]); }
+      var g = by[name]; g.count++;
+      var a = statsAmount(r);
+      if(a == null) g.miss++; else { g.sum += a; g.amountN++; }
+    });
+    var total = recs.length || 1;
+    rows.forEach(function(g){ g.pct = Math.round((g.count/total)*1000)/10; });
+    return rows.sort(function(a,b){ if(b.count !== a.count) return b.count - a.count; return a.name.localeCompare(b.name); });
+  }
+  function statsTagRows(recs){
+    var by = {}, rows = [];
+    recs.forEach(function(r){
+      uniq(r.tags || []).forEach(function(t){
+        if(!by[t]){ by[t] = { name:t, count:0 }; rows.push(by[t]); }
+        by[t].count++;
       });
-      vals.push(sum);
-      perCapVals.push(ppl ? Math.round(sum/ppl) : 0);
     });
-    var maxV = Math.max(1, Math.max.apply(null, vals));
+    return rows.sort(function(a,b){ if(b.count !== a.count) return b.count - a.count; return a.name.localeCompare(b.name); }).slice(0,8);
+  }
+  function statsSceneRows(recs){
+    var by = {}, rows = [];
+    recs.forEach(function(r){
+      var name = statsSceneOf(r);
+      if(!by[name]){ by[name] = { name:name, count:0, sum:0, amountN:0, miss:0 }; rows.push(by[name]); }
+      var g = by[name]; g.count++;
+      var a = statsAmount(r);
+      if(a == null) g.miss++; else { g.sum += a; g.amountN++; }
+    });
+    rows.forEach(function(g){ g.avg = g.amountN ? Math.round(g.sum/g.amountN) : null; });
+    return rows.sort(function(a,b){ if(b.count !== a.count) return b.count - a.count; return b.sum - a.sum; });
+  }
 
-    $('#statBox').innerHTML =
-      '<div class="stats">'+
-        '<div class="stat"><b>'+money(spend)+'</b><span>当月总花费</span></div>'+
-        '<div class="stat"><b>'+(peopleSum?money(Math.round(spend/peopleSum)):'—')+'</b><span>人均（加权）</span></div>'+
-        '<div class="stat"><b>'+recs.length+'</b><span>用餐笔数</span></div>'+
-      '</div>'+
-      '<div style="margin:6px 0 4px">'+months.map(function(key, i){
-        return '<div class="stat-bar"><span class="lbl">'+key.slice(5,7)+'月</span>'+
-          '<span class="track"><i style="width:'+(vals[i]/maxV*100)+'%"></i></span>'+
-          '<span class="val">'+(vals[i]?'¥'+Math.round(vals[i]):'—')+'</span></div>';
-      }).join('')+'</div>'+
-      '<p class="muted" style="margin-top:6px">近 6 个月人均：'+months.map(function(key, i){ return key.slice(5,7)+'月 '+(perCapVals[i]?'¥'+perCapVals[i]:'—'); }).join(' · ')+'</p>'+
-      '<p class="muted" style="margin-top:4px">当月常去品类：'+(topCats.length?topCats.map(function(c){ return c+' '+catCount[c]+' 次'; }).join('、'):'—')+'</p>'+
-      '<p class="muted" style="margin-top:4px">场景分布：'+(topScenes.length?topScenes.map(function(c){ return c+' '+sceneCount[c]+' 次'; }).join('、'):'—')+'</p>';
+  function statsMonthsBack(endKey, count){
+    var out = [];
+    for(var i=count-1;i>=0;i--) out.push(shiftMonth(endKey, -i));
+    return out;
+  }
+  function statsMonthRows(recs, keys){
+    var by = {};
+    recs.forEach(function(r){
+      var m = statsMonthOf(r);
+      if(!m) return;
+      var g = by[m];
+      if(!g) g = by[m] = { key:m, total:0, sum:0, amountN:0, miss:0 };
+      g.total++;
+      var a = statsAmount(r);
+      if(a == null) g.miss++; else { g.sum += a; g.amountN++; }
+    });
+    return keys.map(function(k){
+      var g = by[k] || { key:k, total:0, sum:0, amountN:0, miss:0 };
+      g.label = parseInt(k.slice(5,7),10)+' 月';
+      return g;
+    });
+  }
+  function statsTrend(recs, keys){
+    var byMonth = {}, catTotal = {}, seen = {};
+    keys.forEach(function(k){ seen[k] = 1; });
+    recs.forEach(function(r){
+      var m = statsMonthOf(r);
+      if(!m || !seen[m]) return;
+      var c = statsCatOf(r);
+      if(!byMonth[m]) byMonth[m] = {};
+      byMonth[m][c] = (byMonth[m][c]||0)+1;
+      catTotal[c] = (catTotal[c]||0)+1;
+    });
+    var top = Object.keys(catTotal).sort(function(a,b){ return catTotal[b]-catTotal[a] || a.localeCompare(b); }).slice(0,4);
+    var series = top.map(function(name, i){ return { name:name, color:STATS_COLORS[i%STATS_COLORS.length] }; });
+    var otherTotal = Object.keys(catTotal).filter(function(n){ return top.indexOf(n) < 0; }).reduce(function(s,n){ return s + catTotal[n]; }, 0);
+    if(otherTotal) series.push({ name:'其他', color:STATS_COLORS[top.length%STATS_COLORS.length] });
+    var months = keys.map(function(k){
+      var segs = series.map(function(s){
+        var v;
+        if(s.name === '其他'){
+          v = Object.keys(byMonth[k]||{}).filter(function(n){ return top.indexOf(n) < 0; })
+            .reduce(function(sum,n){ return sum + byMonth[k][n]; }, 0);
+        }else{
+          v = (byMonth[k] && byMonth[k][s.name]) ? byMonth[k][s.name] : 0;
+        }
+        return { name:s.name, color:s.color, val:v };
+      });
+      var total = byMonth[k] ? Object.keys(byMonth[k]).reduce(function(s,n){ return s + byMonth[k][n]; }, 0) : 0;
+      return { key:k, label:String(parseInt(k.slice(5,7),10)), total:total, segs:segs };
+    });
+    var max = 1;
+    months.forEach(function(m){ if(m.total > max) max = m.total; });
+    return { series: series, months: months, max: max, sample: months.reduce(function(s,m){ return s + m.total; }, 0) };
+  }
+  function statsTrendSvg(t){
+    if(!t || !t.sample) return '';
+    var W = 340, H = 150, L = 24, R = 8, T = 10, B = 24;
+    var pw = W-L-R, ph = H-T-B, n = t.months.length;
+    var bw = pw/n, barW = Math.max(5, Math.min(20, bw-6));
+    var y = function(v){ return T + ph - (v/t.max)*ph; };
+    var s = '<svg class="stat-chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="近 '+n+' 个月菜系构成">';
+    s += '<line x1="'+L+'" y1="'+(T+ph)+'" x2="'+(W-R)+'" y2="'+(T+ph)+'" stroke="#e8ded2" stroke-width="1"/>';
+    var ticks = t.max > 1 ? [0, Math.round(t.max/2), t.max] : [0, 1];
+    ticks.forEach(function(v){
+      var yy = y(v);
+      s += '<line x1="'+L+'" y1="'+yy+'" x2="'+(W-R)+'" y2="'+yy+'" stroke="#f1eae0" stroke-width="1" stroke-dasharray="2 3"/>';
+      s += '<text x="'+(L-4)+'" y="'+(yy+3)+'" text-anchor="end" font-size="8" fill="#9a8f86">'+v+'</text>';
+    });
+    t.months.forEach(function(m, i){
+      var x = L + bw*i + (bw-barW)/2;
+      var yy = T + ph;
+      m.segs.forEach(function(seg){
+        var h = (seg.val/t.max)*ph;
+        if(!h) return;
+        yy -= h;
+        s += '<rect x="'+x+'" y="'+yy+'" width="'+barW+'" height="'+h+'" fill="'+seg.color+'" rx="1.5"/>';
+      });
+      s += '<rect class="stat-hit" x="'+(L+bw*i)+'" y="'+T+'" width="'+bw+'" height="'+ph+'" fill="rgba(0,0,0,0)" data-stat-detail="month:'+m.key+'" style="cursor:pointer"/>';
+      if(n <= 6 || i % 2 === 0 || i === n-1){
+        s += '<text x="'+(L+bw*i+bw/2)+'" y="'+(H-8)+'" text-anchor="middle" font-size="8" fill="#9a8f86">'+m.label+'</text>';
+      }
+    });
+    s += '</svg>';
+    return s;
+  }
+
+  function statsPeriodRecords(){
+    var year = String(statsState.year), month = statsState.month || 0;
+    return db.records.filter(function(r){
+      var m = statsMonthOf(r);
+      if(!m || m.slice(0,4) !== year) return false;
+      return !month || parseInt(m.slice(5,7),10) === month;
+    });
+  }
+  function statsDataYears(){
+    var seen = {};
+    db.records.forEach(function(r){ var m = statsMonthOf(r); if(m) seen[m.slice(0,4)] = 1; });
+    var list = Object.keys(seen);
+    var cy = String(new Date().getFullYear());
+    if(list.indexOf(cy) < 0) list.push(cy);
+    return list.sort(function(a,b){ return b > a ? 1 : -1; });
+  }
+  function statsCompute(){
+    var all = db.records;
+    var years = statsDataYears();
+    if(!statsState.year){
+      var latest = '';
+      years.forEach(function(y){
+        if(!latest && all.some(function(r){ return statsMonthOf(r).slice(0,4) === y; })) latest = y;
+      });
+      statsState.year = parseInt(latest || String(new Date().getFullYear()), 10);
+    }
+    var year = statsState.year, month = statsState.month || 0;
+    var period = statsPeriodRecords();
+    var now = new Date(), endKey;
+    if(month) endKey = String(year)+'-'+statsPad(month);
+    else if(String(year) === String(now.getFullYear())) endKey = String(year)+'-'+statsPad(now.getMonth()+1);
+    else endKey = String(year)+'-12';
+
+    var momentum = statsMonthRows(all, statsMonthsBack(endKey, 6));
+    var trend = statsTrend(all, statsMonthsBack(endKey, statsState.trend));
+
+    var stores = statsStoreRows(all);
+    var periodStores = statsStoreRows(period);
+    var cats = statsCatRows(all);
+    var tags = statsTagRows(all);
+    var scenes = statsSceneRows(period);
+
+    var bestSingle = null;
+    period.forEach(function(r){
+      var a = statsAmount(r);
+      if(a == null) return;
+      if(!bestSingle || a > bestSingle.amount || (a === bestSingle.amount && String(r.visitDate||'') > bestSingle.date)){
+        bestSingle = { name:String(r.name||''), key:statsShopKey(r), amount:a, date:String(r.visitDate||''), id:r.id };
+      }
+    });
+    var bestTotal = null;
+    periodStores.forEach(function(s){
+      if(!s.amountN) return;
+      if(!bestTotal || s.sum > bestTotal.sum) bestTotal = { name:s.name, key:s.key, sum:s.sum, n:s.amountN, miss:s.amountMiss };
+    });
+
+    var recent = stores.filter(function(s){ return s.lastDate; })
+      .sort(function(a,b){ return b.lastDate > a.lastDate ? 1 : (a.lastDate > b.lastDate ? -1 : 0); })
+      .slice(0,10);
+
+    var recent90 = stores.filter(function(s){ return s.lastDays != null && s.lastDays <= 90; });
+    var frequent = null;
+    recent90.forEach(function(s){
+      if(!frequent || s.visits > frequent.visits || (s.visits === frequent.visits && s.lastDays < frequent.lastDays)) frequent = s;
+    });
+    var allTop = stores[0] || null;
+
+    var revisit = null;
+    stores.forEach(function(s){
+      if(s.rating == null || s.rating < 4 || s.lastDays == null) return;
+      var score = Math.round(s.rating * s.lastDays * 10)/10;
+      if(!revisit || score > revisit.score) revisit = { name:s.name, key:s.key, rating:s.rating, days:s.lastDays, score:score, visits:s.visits, lastDate:s.lastDate };
+    });
+
+    var bestRated = null;
+    stores.forEach(function(s){
+      if(s.rating == null || s.visits < 2) return;
+      if(!bestRated || s.rating > bestRated.rating || (s.rating === bestRated.rating && s.visits > bestRated.visits)){
+        bestRated = { name:s.name, key:s.key, rating:s.rating, visits:s.visits, days:s.lastDays, lastDate:s.lastDate };
+      }
+    });
+
+    return {
+      year:year, month:month, scopeLabel:statsScopeLabel(year, month),
+      records: all.length, dated: all.filter(statsDated).length,
+      unknownDate: all.filter(function(r){ return !statsDated(r); }).length,
+      period: statsMoneyInfo(period),
+      periodStores: periodStores.length,
+      momentum: {
+        months: momentum,
+        n: momentum.reduce(function(s,m){ return s + m.amountN; }, 0),
+        miss: momentum.reduce(function(s,m){ return s + m.miss; }, 0),
+        total: momentum.reduce(function(s,m){ return s + m.total; }, 0)
+      },
+      trend: trend,
+      topStores: stores.slice(0,10).map(statsStoreInfo),
+      recent: recent.map(statsStoreInfo),
+      frequent: frequent ? statsStoreInfo(frequent) : null,
+      allTop: allTop ? statsStoreInfo(allTop) : null,
+      revisit: revisit, bestRated: bestRated,
+      cats: cats, tags: tags, scenes: scenes,
+      bestSingle: bestSingle, bestTotal: bestTotal, stores: stores.length
+    };
+  }
+
+  function statsSet(o){
+    o = o || {};
+    var t0 = nowMs(), what = [];
+    if(o.year !== undefined){
+      var y = parseInt(o.year, 10);
+      if(isFinite(y) && y > 0){ statsState.year = y; what.push('year'); }
+    }
+    if(o.month !== undefined){
+      var m = parseInt(o.month, 10);
+      statsState.month = (m >= 1 && m <= 12) ? m : 0;
+      what.push('month');
+    }
+    if(o.trend !== undefined){
+      statsState.trend = parseInt(o.trend, 10) === 12 ? 12 : 6;
+      what.push('trend');
+    }
+    renderStats();
+    statsState.lastSwitchMs = nowMs() - t0;
+    statsState.lastSwitchWhat = what.join('+');
+    return statsState.lastSwitchMs;
+  }
+
+  function renderStats(){
+    var t0 = nowMs();
+    var d = statsCompute();
+    var p = d.period;
+    var ys = $('#statYear');
+    if(ys && ys.tagName === 'SELECT'){
+      ys.innerHTML = statsDataYears().map(function(y){
+        return '<option value="'+y+'">'+y+' 年</option>';
+      }).join('');
+      ys.value = String(d.year);
+    }
+    var ms = $('#statMonth');
+    if(ms && ms.tagName === 'SELECT'){
+      var opts = '<option value="0">全年</option>';
+      for(var mi=1;mi<=12;mi++) opts += '<option value="'+mi+'">'+mi+' 月</option>';
+      ms.innerHTML = opts;
+      ms.value = String(d.month || 0);
+    }
+    $('#statHint').textContent = p.total ? p.total+' 餐 · 金额 '+p.n+' 笔' : '暂无';
+
+    var html = '<p class="stat-note" style="margin:-2px 0 8px">范围 <b>'+esc(d.scopeLabel)+'</b> · 金额只用真实记录，缺失不按人均推算</p>';
+
+    html += '<div class="stat-grid">'+
+      '<div class="stat"><b>'+(p.n ? money(p.sum) : '—')+'</b><span>花费</span></div>'+
+      '<div class="stat"><b>'+(p.avgVisit != null ? money(p.avgVisit) : '—')+'</b><span>平均每次</span></div>'+
+      '<div class="stat"><b>'+(p.avgPerson != null ? money(p.avgPerson) : '—')+'</b><span>平均人均</span></div>'+
+      '<div class="stat"><b>'+p.total+'</b><span>到访笔数</span></div>'+
+    '</div>';
+    html += '<p class="stat-note">金额样本 <b>'+p.n+'</b> 笔 / 缺失 <b>'+p.miss+'</b> 笔'+
+      (p.miss ? '：缺失金额的到访不计入总额、平均每次与平均人均的分母。' : '。')+'</p>';
+
+    var mo = d.momentum;
+    var maxMo = 1;
+    mo.months.forEach(function(m){ if(m.sum > maxMo) maxMo = m.sum; });
+    html += '<div class="stat-sub"><h3>近 6 个月消费</h3><span class="hint">样本 '+mo.n+' / 缺失 '+mo.miss+'</span></div>';
+    if(!mo.total) html += '<p class="stat-note">这 6 个月没有带日期的到访记录。</p>';
+    html += mo.months.map(function(m){
+      var pct = m.sum ? Math.max(2, Math.round(m.sum/maxMo*100)) : 0;
+      var val = m.amountN ? money(m.sum) : (m.total ? '未记录' : '—');
+      return '<div class="stat-bar" data-stat-detail="month:'+m.key+'"><span class="lbl">'+m.key.slice(5)+'月</span>'+
+        '<span class="track"><i style="width:'+pct+'%"></i></span><span class="val">'+val+'</span></div>';
+    }).join('');
+
+    html += '<div class="stat-sub"><h3>消费最高餐厅</h3><span class="hint">'+esc(d.scopeLabel)+'</span></div>';
+    if(d.bestSingle || d.bestTotal){
+      if(d.bestSingle){
+        html += '<div class="stat-row" data-stat-detail="shop:'+esc(d.bestSingle.key)+'" data-stat-title="'+esc(d.bestSingle.name+' · 单次最高')+'">'+
+          '<span class="idx">单次</span><span class="name">'+esc(d.bestSingle.name)+'<span class="sub">'+esc(d.bestSingle.date)+'</span></span>'+
+          '<span class="num">'+money(d.bestSingle.amount)+'</span></div>';
+      }
+      if(d.bestTotal){
+        html += '<div class="stat-row" data-stat-detail="shop:'+esc(d.bestTotal.key)+'" data-stat-title="'+esc(d.bestTotal.name+' · 累计最高')+'">'+
+          '<span class="idx">累计</span><span class="name">'+esc(d.bestTotal.name)+'<span class="sub">'+d.bestTotal.n+' 笔有金额'+(d.bestTotal.miss?' · '+d.bestTotal.miss+' 笔未记录':'')+'</span></span>'+
+          '<span class="num">'+money(d.bestTotal.sum)+'</span></div>';
+      }
+    }else if(p.total){
+      html += '<p class="stat-note warn">'+p.total+' 笔到访都没有记录金额，无法比较消费；补记实付后会自动更新。</p>';
+    }else{
+      html += '<p class="stat-note">所选范围没有到访记录。</p>';
+    }
+
+    html += '<div class="stat-sub"><h3>餐厅</h3><span class="hint">全部记录 · '+d.stores+' 家</span></div>';
+    html += '<p class="stat-label">到访次数 Top 10</p>';
+    if(d.topStores.length){
+      html += d.topStores.map(function(s, i){
+        return '<div class="stat-row" data-stat-detail="shop:'+esc(s.key)+'" data-stat-title="'+esc(s.name+' · '+s.visits+' 次')+'">'+
+          '<span class="idx">'+(i+1)+'</span><span class="name">'+esc(s.name)+
+          '<span class="sub">'+esc([s.city, s.lastDays == null ? '日期未知' : '上次 '+statsAgo(s.lastDays)].filter(Boolean).join(' · '))+'</span></span>'+
+          '<span class="num">'+s.visits+' 次</span></div>';
+      }).join('');
+    }else{
+      html += '<p class="stat-note">还没有记录店铺。</p>';
+    }
+
+    html += '<p class="stat-label">最近到访 10 家</p>';
+    if(d.recent.length){
+      html += d.recent.map(function(s){
+        return '<div class="stat-row" data-stat-detail="shop:'+esc(s.key)+'" data-stat-title="'+esc(s.name+' · '+s.lastDate)+'">'+
+          '<span class="name">'+esc(s.name)+'<span class="sub">'+esc(s.lastDate)+'</span></span>'+
+          '<span class="num">'+esc(statsAgo(s.lastDays))+'</span></div>';
+      }).join('');
+    }else{
+      html += '<p class="stat-note">没有带日期的到访记录。</p>';
+    }
+
+    html += '<div class="stat-hero"><p class="muted">最常光顾（最近 90 天内有到访）</p>';
+    if(d.frequent){
+      html += '<b>'+esc(d.frequent.name)+'</b> <span class="muted">'+d.frequent.visits+' 次 · 上次 '+statsAgo(d.frequent.lastDays)+'</span>';
+      if(d.allTop && d.allTop.key !== d.frequent.key){
+        html += '<p class="stat-note">全部记录第一是 '+esc(d.allTop.name)+'（'+d.allTop.visits+' 次，上次 '+statsAgo(d.allTop.lastDays)+'），不在 90 天窗口内。</p>';
+      }
+    }else{
+      html += '<b>最近 90 天未去过</b><p>'+
+        (d.allTop ? '全部记录里最常去 '+esc(d.allTop.name)+'（'+d.allTop.visits+' 次，上次 '+statsAgo(d.allTop.lastDays)+'）。' : '还没有到访记录。')+'</p>';
+    }
+    html += '</div>';
+
+    html += '<div class="stat-hero"><p class="muted">最值得再光顾（评分 ≥ 4.0 × 距上次天数）</p>';
+    if(d.revisit){
+      html += '<b>'+esc(d.revisit.name)+'</b> <span class="muted">'+d.revisit.visits+' 次 · 上次 '+statsAgo(d.revisit.days)+'</span>'+
+        '<p class="stat-note">评分 '+d.revisit.rating+' × '+d.revisit.days+' 天 = '+d.revisit.score+'</p>';
+    }else{
+      html += '<b>暂无候选</b><p>需要有评分 ≥ 4.0 且带日期的到访。</p>';
+    }
+    html += '</div>';
+
+    html += '<div class="stat-hero"><p class="muted">个人评分最高（至少 2 次到访）</p>';
+    if(d.bestRated){
+      html += '<b>'+esc(d.bestRated.name)+'</b> <span class="muted">'+d.bestRated.visits+' 次 · 平均 '+d.bestRated.rating+' 分</span>'+
+        '<p class="stat-note">上次 '+statsAgo(d.bestRated.days)+'（'+esc(d.bestRated.lastDate)+'）</p>';
+    }else{
+      html += '<b>暂无</b><p>还没有到访 ≥ 2 次且有评分的店。</p>';
+    }
+    html += '</div>';
+
+    html += '<div class="stat-sub"><h3>口味偏好</h3><span class="hint">全部记录 · '+d.records+' 餐</span></div>';
+    html += '<p class="stat-label">最常吃菜系</p>';
+    if(d.cats.length){
+      html += d.cats.slice(0,5).map(function(c){
+        return '<div class="stat-row" data-stat-detail="cat:'+esc(c.name)+'" data-stat-title="'+esc(c.name+' · '+c.count+' 餐')+'">'+
+          '<span class="name">'+esc(c.name)+'</span>'+
+          '<span class="stat-mini"><i style="width:'+c.pct+'%"></i></span>'+
+          '<span class="num">'+c.count+' 次 · '+c.pct+'%</span></div>';
+      }).join('');
+      html += '<p class="stat-note">占比分母 = 全部 '+d.records+' 餐（含未分类、含日期未知）。</p>';
+    }else{
+      html += '<p class="stat-note">还没有记录菜系。</p>';
+    }
+
+    html += '<p class="stat-label">最常选口味标签 Top 8</p>';
+    if(d.tags.length){
+      html += '<div class="stat-tags">'+d.tags.map(function(t){
+        return '<button class="stat-tag" data-stat-detail="tag:'+esc(t.name)+'" data-stat-title="'+esc('标签：'+t.name)+'">'+esc(t.name)+'<b>'+t.count+'</b></button>';
+      }).join('')+'</div>';
+    }else{
+      html += '<p class="stat-note">还没有填写口味标签。</p>';
+    }
+
+    html += '<div class="stat-sub"><h3>逐月饮食变化</h3><span class="hint">近 '+statsState.trend+' 个月</span></div>';
+    html += '<div class="stat-seg">'+
+      '<button type="button" data-stat-trend="6" class="'+(statsState.trend===6?'on':'')+'">近 6 月</button>'+
+      '<button type="button" data-stat-trend="12" class="'+(statsState.trend===12?'on':'')+'">近 12 月</button></div>';
+    if(d.trend.sample){
+      html += statsTrendSvg(d.trend);
+      html += '<div class="stat-legend">'+d.trend.series.map(function(s){
+        return '<span><i style="background:'+s.color+'"></i><em>'+esc(s.name)+'</em></span>';
+      }).join('')+'</div>';
+      html += '<p class="stat-note">样本 '+d.trend.sample+' 餐 · 日期未知 '+d.unknownDate+' 条未计入；'+esc(d.trend.months[0].key)+' → '+esc(d.trend.months[d.trend.months.length-1].key)+'</p>';
+    }else{
+      html += '<p class="stat-note">这 '+d.trend.months.length+' 个月没有带日期的到访，图表暂无数据。</p>';
+    }
+
+    html += '<div class="stat-sub"><h3>场景消费</h3><span class="hint">'+esc(d.scopeLabel)+'</span></div>';
+    if(d.scenes.length){
+      html += d.scenes.map(function(s){
+        var moneyText = s.amountN ? money(s.sum) : (s.count ? '未记录' : '—');
+        var sub = s.count+' 餐'+(s.amountN ? ' · 均 '+money(s.avg) : '');
+        return '<div class="stat-row" data-stat-detail="scene:'+esc(s.name)+'" data-stat-title="'+esc('场景：'+s.name)+'">'+
+          '<span class="name">'+esc(s.name)+'<span class="sub">'+esc(sub)+(s.miss?' · '+s.miss+' 笔未记录':'')+'</span></span>'+
+          '<span class="num">'+moneyText+'</span></div>';
+      }).join('');
+    }else{
+      html += '<p class="stat-note">所选范围没有到访记录。</p>';
+    }
+
+    if(d.unknownDate){
+      html += '<p class="stat-note warn">另有 '+d.unknownDate+' 条日期未知的旧记录：参与餐厅与偏好统计，但不进入按年月的图表。</p>';
+    }
+    if(!d.records){
+      html = '<div class="empty card flat"><h3>还没有记录</h3><p>记下第一餐后，统计会自动生成。</p>'+
+        '<div class="actions" style="justify-content:center;margin-top:12px"><button class="btn btn-primary" data-act="add">+ 记一餐</button></div></div>';
+    }
+
+    $('#statBox').innerHTML = html;
+    statsState.lastMs = nowMs() - t0;
+    return d;
+  }
+
+  function statsRecordsFor(kind, key){
+    var all = db.records;
+    if(kind === 'cat') return all.filter(function(r){ return statsCatOf(r) === key; });
+    if(kind === 'tag') return all.filter(function(r){ return (r.tags||[]).indexOf(key) >= 0; });
+    if(kind === 'shop') return all.filter(function(r){ return statsShopKey(r) === key; });
+    if(kind === 'month') return all.filter(function(r){ return statsMonthOf(r) === key; });
+    if(kind === 'scene') return statsPeriodRecords().filter(function(r){ return statsSceneOf(r) === key; });
+    if(kind === 'missing') return statsPeriodRecords().filter(function(r){ return statsAmount(r) == null; });
+    return [];
+  }
+  function statsOpenDetail(kind, key, title){
+    var recs = statsRecordsFor(kind, key);
+    var info = statsMoneyInfo(recs);
+    var heading = title || key || '统计明细';
+    statsState.detail = { kind:kind, key:key, title:heading };
+    $('#statDetailTitle').textContent = heading;
+    var html = '<p class="muted" style="margin-bottom:10px">'+recs.length+' 餐 · 有金额 '+info.n+' 笔'+
+      (info.n ? '（共 '+money(info.sum)+'）' : '')+' / 未记录 '+info.miss+' 笔</p>';
+    if(recs.length){
+      var byId = {};
+      recs.forEach(function(r){ byId[r.id] = 1; });
+      var list = diarySorted().filter(function(r){ return byId[r.id]; });
+      var LIMIT = 80;
+      html += list.slice(0, LIMIT).map(diaryRow).join('');
+      if(list.length > LIMIT) html += '<p class="stat-note">仅列出最近 '+LIMIT+' 条，共 '+list.length+' 条。</p>';
+    }else{
+      html += '<div class="empty card flat"><h3>没有匹配的到访</h3><p>换个条件看看。</p></div>';
+    }
+    $('#statDetailBody').innerHTML = html;
+    hydratePhotos($('#statDetailBody'));
+    $('#statDetailMask').classList.remove('hidden');
+    return { count: recs.length, amountN: info.n, miss: info.miss };
+  }
+  function closeStatDetail(){
+    $('#statDetailMask').classList.add('hidden');
+    statsState.detail = null;
   }
 
   function renderWishlist(){
@@ -11128,7 +11673,27 @@
     this.classList.toggle('on');
     renderFitness();
   });
-  $('#statMonth').addEventListener('change', renderStats);
+  $('#statYear').addEventListener('change', function(){ statsSet({ year:this.value }); });
+  $('#statMonth').addEventListener('change', function(){ statsSet({ month:this.value }); });
+  $('#statBox').addEventListener('click', function(e){
+    var trend = e.target.closest ? e.target.closest('[data-stat-trend]') : null;
+    if(trend){ statsSet({ trend:trend.getAttribute('data-stat-trend') }); return; }
+    var d = e.target.closest ? e.target.closest('[data-stat-detail]') : null;
+    if(!d) return;
+    var raw = d.getAttribute('data-stat-detail') || '';
+    var i = raw.indexOf(':');
+    if(i < 0) return;
+    statsOpenDetail(raw.slice(0,i), raw.slice(i+1), d.getAttribute('data-stat-title') || '');
+  });
+  $('#statDetailClose').addEventListener('click', closeStatDetail);
+  $('#statDetailMask').addEventListener('click', function(e){ if(e.target === this) closeStatDetail(); });
+  $('#statDetailBody').addEventListener('click', function(e){
+    var row = e.target.closest ? e.target.closest('[data-diary-id]') : null;
+    if(!row) return;
+    var id = row.getAttribute('data-diary-id');
+    closeStatDetail();
+    diaryOpenDetail(id);
+  });
   $('#btnAddWish').addEventListener('click', addWish);
   $('#btnAddTaste').addEventListener('click', addSettingTaste);
   $('#btnAddAvoid').addEventListener('click', addSettingAvoid);
@@ -11384,7 +11949,6 @@
   });
 
   /* ================= 启动 ================= */
-  $('#statMonth').value = monthOf(todayStr());
   var initGoal = db.settings.fitnessGoal || 'maintain';
   $('#goalSeg').setAttribute('data-goal', initGoal);
   $$('#goalSeg button').forEach(function(b){
@@ -11896,6 +12460,51 @@
         clear: function(){ geoClear(); }
       },
       setLayer: mapSetBaseLayer
+    },
+    stats: {
+      show: function(){
+        showView('more');
+        return { ms: statsState.lastMs, year: statsState.year, month: statsState.month, trend: statsState.trend };
+      },
+      state: function(){ return { year:statsState.year, month:statsState.month, trend:statsState.trend, detail:statsState.detail }; },
+      compute: function(){ return JSON.parse(JSON.stringify(statsCompute())); },
+      render: function(){ var t0 = nowMs(); renderStats(); return nowMs() - t0; },
+      set: function(o){ return statsSet(o || {}); },
+      switchYear: function(y){ return statsSet({ year:y }); },
+      years: function(){ return statsDataYears(); },
+      metrics: function(){
+        var box = $('#statBox');
+        return {
+          ms: statsState.lastMs, switchMs: statsState.lastSwitchMs, switchWhat: statsState.lastSwitchWhat,
+          records: db.records.length,
+          rows: box ? box.querySelectorAll('.stat-row').length : 0,
+          bars: box ? box.querySelectorAll('.stat-bar').length : 0,
+          charts: box ? box.querySelectorAll('.stat-chart').length : 0,
+          domNodes: box ? box.querySelectorAll('*').length : 0,
+          heapMb: (performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null)
+        };
+      },
+      detail: function(kind, key, title){ return statsOpenDetail(kind, key, title); },
+      detailState: function(){
+        var box = $('#statDetailBody');
+        return {
+          open: !$('#statDetailMask').classList.contains('hidden'),
+          title: $('#statDetailTitle').textContent,
+          rows: box ? box.querySelectorAll('.diary-row').length : 0,
+          text: box ? box.innerText : '',
+          info: statsState.detail
+        };
+      },
+      closeDetail: closeStatDetail,
+      rows: function(kind, key){
+        return statsRecordsFor(kind, key).map(function(r){
+          return { id:r.id, name:r.name, date:r.visitDate || '', amount:statsAmount(r), category:statsCatOf(r), scene:statsSceneOf(r) };
+        });
+      },
+      missing: function(){
+        return statsPeriodRecords().filter(function(r){ return statsAmount(r) == null; })
+          .map(function(r){ return { id:r.id, name:r.name, date:r.visitDate || '' }; });
+      }
     },
     v2: {
       active: function(){ return v2Active; },
