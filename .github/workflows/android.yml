@@ -78,42 +78,105 @@ jobs:
           APK=app/build/outputs/apk/debug/app-debug.apk
           AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
           # 已知行为：aapt / aapt2 的 badging 不会把 activity-alias 报成 launchable-activity，
-          # 因此启动入口以合并清单的结构为准，badging 仅作参考输出。
-          "$AAPT2" dump badging "$APK" | grep -E "^package:|^application-label:|^application-icon" | head -12 || true
-          "$AAPT2" dump xmltree "$APK" --file AndroidManifest.xml > /tmp/manifest.txt
+          # 因此启动入口以合并后的清单结构为准，badging 仅作参考输出。
+          "$AAPT2" dump badging "$APK" | grep -E "^package:|sdkVersion|targetSdkVersion|^application-label:|^application-icon" | head -15 || true
+          "$AAPT2" dump resources "$APK" > /tmp/resources.txt
           python3 - <<'PY'
-          import re, sys
-          text = open('/tmp/manifest.txt', encoding='utf-8').read()
-          blocks = {}
-          for part in re.split(r'\n\s*E: activity-alias ', text)[1:]:
-              if 'MainActivityA' in part:
-                  blocks['A'] = part
-              elif 'MainActivityB' in part:
-                  blocks['B'] = part
+          import glob, sys, xml.etree.ElementTree as ET
+
+          NS = 'http://schemas.android.com/apk/res/android'
+          def attr(el, name):
+              return el.get('{%s}%s' % (NS, name))
+          def short(name):
+              return (name or '').rsplit('.', 1)[-1]
+          def has_launcher(el):
+              for f in el.findall('intent-filter'):
+                  acts = [attr(a, 'name') for a in f.findall('action')]
+                  cats = [attr(c, 'name') for c in f.findall('category')]
+                  if 'android.intent.action.MAIN' in acts and 'android.intent.category.LAUNCHER' in cats:
+                      return True
+              return False
+
+          # 优先用 Gradle 合并后的清单（含 Capacitor 注入项），文件位置随 AGP 版本有差异，按路径找。
+          candidates = [p for p in glob.glob('app/build/intermediates/**/AndroidManifest.xml', recursive=True)
+                        if 'merged' in p.lower()]
+          candidates.sort(key=lambda p: ('merged_manifest' not in p, 'processDebugMainManifest' not in p))
+          manifest_path = candidates[0] if candidates else 'app/src/main/AndroidManifest.xml'
+          print('校验清单: ' + manifest_path)
+          root = ET.parse(manifest_path).getroot()
+          app = root.find('application')
           ok = True
-          for key, want_enabled, want_icon in (('A', True, 'ic_launcher'), ('B', False, 'ic_launcher_b')):
-              b = blocks.get(key)
-              if not b:
-                  print('缺少 alias ' + key, flush=True)
+
+          activities = {}
+          aliases = {}
+          for el in app:
+              tag = short(el.tag)
+              if tag == 'activity':
+                  activities[short(attr(el, 'name'))] = el
+              elif tag == 'activity-alias':
+                  aliases[short(attr(el, 'name'))] = el
+
+          main = activities.get('MainActivity')
+          if main is None:
+              print('缺少 MainActivity')
+              ok = False
+          elif has_launcher(main):
+              print('MainActivity 仍直接挂 MAIN/LAUNCHER，桌面会出现重复入口')
+              ok = False
+
+          for key, name, want_enabled, want_icon in (
+                  ('A', 'MainActivityA', True, '@mipmap/ic_launcher'),
+                  ('B', 'MainActivityB', False, '@mipmap/ic_launcher_b')):
+              el = aliases.get(name)
+              if el is None:
+                  print('缺少 activity-alias ' + name)
                   ok = False
                   continue
-              if 'android.intent.action.MAIN' not in b or 'android.intent.category.LAUNCHER' not in b:
-                  print(key + ' 缺少 MAIN/LAUNCHER', flush=True)
+              enabled = attr(el, 'enabled')
+              icon = attr(el, 'icon')
+              target = attr(el, 'targetActivity')
+              print('%s: enabled=%s icon=%s targetActivity=%s' % (key, enabled, icon, target))
+              if (enabled == 'true' if want_enabled else enabled == 'false'):
+                  pass
+              else:
+                  print('%s 的 enabled 与预期不符: %r' % (key, enabled))
                   ok = False
-              m = re.search(r'android:enabled\(0x0101000e\)=[^\n]*?0x(0|ffffffff)', b)
-              enabled = bool(m and m.group(1) == 'ffffffff')
-              if enabled != want_enabled:
-                  print(key + ' enabled 与预期不符', flush=True)
+              if icon != want_icon:
+                  print('%s 的 icon 与预期不符: %r' % (key, icon))
                   ok = False
-              if want_icon not in b:
-                  print(key + ' 未引用 ' + want_icon, flush=True)
+              if short(target) != 'MainActivity':
+                  print('%s 的 targetActivity 未指向 MainActivity: %r' % (key, target))
                   ok = False
-              if 'targetActivity' not in b:
-                  print(key + ' 缺少 targetActivity', flush=True)
+              if not has_launcher(el):
+                  print('%s 缺少 MAIN / LAUNCHER' % key)
                   ok = False
+
+          if attr(app, 'icon') != '@mipmap/ic_launcher':
+              print('application icon 不是 A 套: %r' % attr(app, 'icon'))
+              ok = False
+
+          # B 套各密度位图与 adaptive 配置必须齐全，否则 B alias 在部分设备上会没有图标。
+          res = 'app/src/main/res'
+          for density in ('mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'):
+              for suffix in ('', '_round', '_foreground', '_background'):
+                  f = '%s/mipmap-%s/ic_launcher_b%s.png' % (res, density, suffix)
+                  if not glob.glob(f):
+                      print('缺少资源: ' + f)
+                      ok = False
+          for f in ('%s/mipmap-anydpi-v26/ic_launcher_b.xml' % res,
+                    '%s/mipmap-anydpi-v26/ic_launcher_b_round.xml' % res):
+              if not glob.glob(f):
+                  print('缺少资源: ' + f)
+                  ok = False
+
+          resources = open('/tmp/resources.txt', encoding='utf-8').read()
+          if 'mipmap/ic_launcher_b' not in resources:
+              print('APK 资源表中没有 mipmap/ic_launcher_b')
+              ok = False
+
           if not ok:
               sys.exit('清单结构校验失败')
-          print('启动入口结构校验通过：A 默认启用、B 默认关闭、两者都带 MAIN/LAUNCHER')
+          print('启动入口结构校验通过：A 默认启用、B 默认关闭、两者都带 MAIN/LAUNCHER 且图标不同，B 套资源齐全')
           PY
 
       - name: 上传 APK
