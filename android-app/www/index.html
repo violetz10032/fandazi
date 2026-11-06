@@ -367,6 +367,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .field{margin-bottom:12px}
   .field>label{display:block;font-size:12px;color:var(--ink2);margin-bottom:6px;font-weight:600}
   .field .req{color:var(--accent-text)}
+  /* 语音入口：放在字段标题右侧，32px 视觉 / 44px 命中区 */
+  .field-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+  .field-head>label{font-size:12px;color:var(--ink2);font-weight:600;line-height:1.5}
+  .mic-btn{position:relative;border:1px solid var(--accent-line);background:var(--soft);color:var(--soft-ink);border-radius:999px;min-height:32px;padding:0 11px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:5px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .08s ease,background-color .15s ease}
+  .mic-btn::after{content:"";position:absolute;inset:-6px;border-radius:999px}
+  .mic-btn:active{transform:scale(.97)}
+  .mic-btn.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);animation:micPulse 1.6s ease-in-out infinite}
+  @keyframes micPulse{0%,100%{box-shadow:0 0 0 0 var(--soft)}50%{box-shadow:0 0 0 5px var(--soft)}}
+  #btnVoiceAgree:disabled{opacity:.5;cursor:not-allowed}
   .frow{display:flex;gap:10px}
   .frow>*{flex:1;min-width:0}
   .muted{color:var(--ink3);font-size:12px}
@@ -1804,7 +1813,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     </div>
 
     <div class="field">
-      <label>店名 <span class="req">*</span></label>
+      <div class="field-head">
+        <label for="f-name">店名 <span class="req">*</span></label>
+        <button type="button" class="mic-btn hidden" id="btnVoiceName" data-voice-target="f-name" aria-label="用语音输入店名" aria-pressed="false"><svg class="ico ico-16" data-ico="mic" aria-hidden="true"></svg><span class="mic-txt">语音</span></button>
+      </div>
       <input class="input" id="f-name" placeholder="例如：老灶火锅" maxlength="40">
     </div>
 
@@ -1994,7 +2006,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     </details>
 
     <div class="field">
-      <label>备注</label>
+      <div class="field-head">
+        <label for="f-note">备注</label>
+        <button type="button" class="mic-btn hidden" id="btnVoiceNote" data-voice-target="f-note" aria-label="用语音输入备注" aria-pressed="false"><svg class="ico ico-16" data-ico="mic" aria-hidden="true"></svg><span class="mic-txt">语音</span></button>
+      </div>
       <textarea class="input" id="f-note" placeholder="点了什么、谁组的局、下次还想去吗……" maxlength="300"></textarea>
     </div>
 
@@ -2112,6 +2127,20 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <button type="button" class="btn btn-primary" id="btnPlaceCoordSave">保存坐标</button>
       <button type="button" class="btn" id="btnPlaceCoordClear">清空坐标</button>
       <button type="button" class="btn btn-soft" id="btnPlaceCoordClose" style="margin-left:auto">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 语音输入：首次使用前的明确同意 -->
+<div class="modal-mask hidden" id="voiceMask">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="voiceTitle">
+    <h3 id="voiceTitle">语音输入需要联网识别</h3>
+    <p class="muted">语音只用来把你说的话转成文字。浏览器会把这段音频<b>上传到云端语音服务</b>做识别，识别结果只写进本次表单的输入框，不会自动保存，也不会随记录上传。</p>
+    <p class="muted" style="margin-top:8px">不想上传？点「不同意，改用手输」即可，键盘输入完全不受影响。</p>
+    <label class="check"><input type="checkbox" id="voiceConsentCheck"> 我同意将本次录音上传到云端识别</label>
+    <div class="actions" style="margin-top:12px">
+      <button type="button" class="btn" id="btnVoiceDeny">不同意，改用手输</button>
+      <button type="button" class="btn btn-primary" id="btnVoiceAgree" disabled>同意并开始</button>
     </div>
   </div>
 </div>
@@ -5686,6 +5715,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     pin: '<path d="M12 21s6.5-6.2 6.5-10.6a6.5 6.5 0 0 0-13 0C5.5 14.8 12 21 12 21z"/><circle cx="12" cy="10.3" r="2.4"/>',
     ext: '<path d="M13.4 4.4h6.2v6.2"/><path d="M19.6 4.4 11 13"/><path d="M17.4 13v5.2a1.7 1.7 0 0 1-1.7 1.7H5.7A1.7 1.7 0 0 1 4 18.2V8.3a1.7 1.7 0 0 1 1.7-1.7H11"/>',
     eyeOff: '<path d="M4 4l16 16"/><path d="M9.7 5.4A10 10 0 0 1 12.2 5c5 0 8.7 4.4 9.6 6.4a2 2 0 0 1 0 1.2 12.6 12.6 0 0 1-2.3 3"/><path d="M6.2 8.3A12.6 12.6 0 0 0 2.6 11.6a2 2 0 0 0 0 1.2C3.5 14.8 7.2 19 12.2 19a9.6 9.6 0 0 0 4-.9"/><path d="M9.8 9.9a3 3 0 0 0 4.2 4.2"/>',
+    mic: '<rect x="9" y="3.4" width="6" height="10.2" rx="3"/><path d="M5.9 11.4a6.1 6.1 0 0 0 12.2 0"/><path d="M12 17.5v3"/><path d="M9.2 20.5h5.6"/>',
     repeat: '<path d="M4.6 11A7.4 7.4 0 0 1 17.6 5.7"/><path d="M17.6 3.4v4.4h-4.4"/><path d="M19.4 13a7.4 7.4 0 0 1-13 5.3"/><path d="M6.4 20.6v-4.4h4.4"/>',
     /* 教程插画 */
     select: '<rect x="3.5" y="4" width="6" height="6" rx="1.4"/><path d="m5 6.8 1.3 1.3L8.3 5.7"/><rect x="3.5" y="14" width="6" height="6" rx="1.4"/><path d="M13 5h7M13 8h5M13 15h7M13 18h5"/>',
@@ -9157,6 +9187,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
   /* ================= 表单 ================= */
   function closeForm(){
+    try{ voiceAbort(); }catch(e){}
     $('#sheetMask').classList.add('hidden');
     editingId = null;
     formPhoto = null;
@@ -15756,6 +15787,257 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       errors: errorLog.slice()
     };
   };
+  /* ================= 语音输入（Web Speech · 方案 1：网页 / PWA 在线识别） =================
+     约束：只用 Web Speech，不装原生插件、不申请 RECORD_AUDIO；识别能力不存在或不是安全上下文时
+     不显示入口（不做死按钮）；首次使用必须由用户勾选同意「音频上传到云端识别」才启动。
+     识别结果只写进可编辑输入框，不直接落库。 */
+  var VOICE_KEY = 'fandazi.voiceConsent';
+  var VOICE_MAX_MS = 60000;
+  var VOICE_MAX_RESTARTS = 20;
+  var VOICE_RESTART_DELAY = 240;
+  var VoiceSR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var voiceState = { target:null, pending:null, rec:null, active:false, manual:false,
+    base:'', committed:'', interim:'', got:false, restarts:0, noSpeech:0,
+    startedAt:0, started:false, lastError:'', writing:false, timers:[] };
+
+  function voiceSecure(){
+    try{
+      if(typeof window.isSecureContext === 'boolean') return window.isSecureContext;
+      return /^https:$/.test(location.protocol) || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+    }catch(e){ return false; }
+  }
+  var voiceSupported = !!VoiceSR && voiceSecure();
+
+  function voiceConsent(){ try{ return localStorage.getItem(VOICE_KEY) === '1'; }catch(e){ return false; } }
+  function voiceSetConsent(){ try{ localStorage.setItem(VOICE_KEY, '1'); }catch(e){} }
+  function voiceBtnOf(target){ return target === 'f-note' ? $('#btnVoiceNote') : $('#btnVoiceName'); }
+  function voiceInputOf(target){ return $('#' + target); }
+  function voiceLimit(target){ return target === 'f-note' ? 300 : 40; }
+
+  function voiceClearTimers(){
+    for(var i = 0; i < voiceState.timers.length; i++){ clearTimeout(voiceState.timers[i]); }
+    voiceState.timers = [];
+  }
+  function voiceLater(fn, ms){
+    var t = setTimeout(function(){ fn(); }, ms);
+    voiceState.timers.push(t);
+    return t;
+  }
+  function voicePaintBtn(){
+    ['f-name','f-note'].forEach(function(t){
+      var b = voiceBtnOf(t);
+      if(!b) return;
+      var on = voiceState.active && voiceState.target === t;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      var txt = b.querySelector('.mic-txt');
+      if(txt) txt.textContent = on ? '聆听中…' : '语音';
+    });
+  }
+  function voiceReset(){
+    voiceClearTimers();
+    var rec = voiceState.rec;
+    voiceState.rec = null;
+    voiceState.active = false;
+    voiceState.started = false;
+    if(rec){
+      try{ rec.onend = null; rec.onerror = null; rec.onresult = null; rec.onstart = null; rec.abort(); }catch(e){}
+    }
+    voicePaintBtn();
+  }
+  function voiceAbort(){ if(voiceState && voiceState.active) voiceReset(); }
+  function voiceErrorText(code){
+    var MAP = {
+      'not-allowed':'麦克风未授权，已切换到手输；可在浏览器地址栏放开麦克风权限后重试',
+      'service-not-allowed':'语音服务不可用（浏览器或系统限制），请改用手输',
+      'audio-capture':'没有检测到麦克风设备，请改用键盘输入',
+      'no-speech':'没有听到语音，已保留当前内容，可继续手输',
+      'network':'网络异常，语音识别失败，请改用手输',
+      'language-not-supported':'当前浏览器不支持中文语音识别，请改用手输',
+      'manual-edit':'检测到键盘输入，已结束语音；内容保留在输入框',
+      'timeout':'语音输入超时（60 秒），已结束；可继续手输',
+      'start-timeout':'语音识别启动超时，请检查麦克风授权后重试',
+      'start':'语音识别无法启动，请改用手输'
+    };
+    return MAP[code] || '语音识别出错，请改用手输';
+  }
+  function voiceFail(code){
+    if(voiceState.active) voiceReset();
+    toast(voiceErrorText(code));
+  }
+  function voiceWrite(){
+    var input = voiceInputOf(voiceState.target);
+    if(!input) return;
+    var lim = voiceLimit(voiceState.target);
+    var text = (voiceState.base || '') + (voiceState.committed || '') + (voiceState.interim || '');
+    if(text.length > lim) text = text.slice(0, lim);
+    voiceState.writing = true;
+    input.value = text;
+    try{ input.dispatchEvent(new Event('input', { bubbles:true })); }catch(e){}
+    voiceState.writing = false;
+  }
+  function voiceOnResult(ev){
+    if(!voiceState.active) return;
+    var list = (ev && ev.results) || [];
+    var interim = '';
+    for(var i = Number(ev.resultIndex) || 0; i < list.length; i++){
+      var alt = list[i] && list[i][0];
+      if(!alt) continue;
+      var t = String(alt.transcript || '');
+      if(list[i].isFinal){
+        voiceState.committed += t;
+        voiceState.got = true;
+        voiceState.noSpeech = 0;
+      }else{
+        interim += t;
+      }
+    }
+    voiceState.interim = interim;
+    voiceWrite();
+  }
+  function voiceFinish(manual){
+    var had = voiceState.got || !!(voiceState.committed || '').trim() || !!(voiceState.interim || '').trim();
+    voiceReset();
+    if(manual) toast(had ? '语音输入结束，内容已填入输入框，可继续修改' : '已结束语音输入，内容没有变化');
+  }
+  function voiceBegin(target){
+    var input = voiceInputOf(target);
+    if(!input || !voiceSupported) return;
+    voiceReset();
+    voiceState.target = target;
+    voiceState.base = String(input.value || '');
+    voiceState.committed = '';
+    voiceState.interim = '';
+    voiceState.got = false;
+    voiceState.restarts = 0;
+    voiceState.noSpeech = 0;
+    voiceState.lastError = '';
+    voiceState.manual = false;
+    voiceState.started = false;
+    var rec;
+    try{ rec = new VoiceSR(); }catch(e){ toast(voiceErrorText('start')); return; }
+    rec.lang = 'zh-CN';
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    rec.onstart = function(){
+      if(!voiceState.active) return;
+      voiceState.started = true;
+      voicePaintBtn();
+      toast('开始聆听，说完了再点一下「聆听中」');
+    };
+    rec.onresult = voiceOnResult;
+    rec.onerror = function(ev){
+      if(!voiceState.active) return;
+      var code = String((ev && ev.error) || '');
+      voiceState.lastError = code;
+      if(code === 'no-speech'){
+        voiceState.noSpeech++;
+        if(!voiceState.got && voiceState.noSpeech >= 3) voiceFail('no-speech');
+        return;
+      }
+      voiceFail(code);
+    };
+    rec.onend = function(){
+      if(!voiceState.active) return;
+      if(voiceState.manual){ voiceFinish(true); return; }
+      var elapsed = Date.now() - voiceState.startedAt;
+      if(elapsed >= VOICE_MAX_MS){ voiceFail('timeout'); return; }
+      if(voiceState.restarts >= VOICE_MAX_RESTARTS){ voiceFail(voiceState.got ? 'timeout' : 'no-speech'); return; }
+      voiceState.restarts++;
+      voiceState.lastError = '';
+      voiceLater(function(){
+        if(!voiceState.active) return;
+        try{ rec.start(); }catch(e){ voiceFail('start'); }
+      }, VOICE_RESTART_DELAY);
+    };
+    voiceState.rec = rec;
+    voiceState.active = true;
+    voiceState.startedAt = Date.now();
+    try{ rec.start(); }catch(e){ voiceFail('start'); return; }
+    voiceLater(function(){ if(voiceState.active && !voiceState.started) voiceFail('start-timeout'); }, 10000);
+    voiceLater(function(){ if(voiceState.active) voiceFail('timeout'); }, VOICE_MAX_MS);
+    voicePaintBtn();
+  }
+  function voiceStop(){
+    if(!voiceState.active) return;
+    voiceState.manual = true;
+    var rec = voiceState.rec;
+    if(rec){ try{ rec.stop(); }catch(e){} }
+    /* stop() 后通常立即 onend；个别浏览器不回调时兜底收尾 */
+    voiceLater(function(){ if(voiceState.active) voiceFinish(true); }, 800);
+  }
+  function voiceOpenConsent(target){
+    voiceState.pending = target;
+    var m = $('#voiceMask');
+    if(!m) return;
+    $('#voiceConsentCheck').checked = false;
+    $('#btnVoiceAgree').disabled = true;
+    m.classList.remove('hidden');
+    setTimeout(function(){ try{ $('#voiceConsentCheck').focus(); }catch(e){} }, 60);
+  }
+  function voiceCloseConsent(){
+    var m = $('#voiceMask');
+    if(m) m.classList.add('hidden');
+  }
+  function voiceRequest(target){
+    if(!voiceSupported) return;
+    if(voiceConsent()){ voiceBegin(target); return; }
+    voiceOpenConsent(target);
+  }
+  function voiceInit(){
+    if(!voiceSupported) return; /* 探测不到识别能力：入口保持 hidden */
+    ['btnVoiceName','btnVoiceNote'].forEach(function(id){
+      var b = $('#' + id);
+      if(b) b.classList.remove('hidden');
+    });
+    document.addEventListener('click', function(e){
+      var b = e.target && e.target.closest ? e.target.closest('[data-voice-target]') : null;
+      if(!b || !voiceSupported) return;
+      var target = b.getAttribute('data-voice-target');
+      if(voiceState.active){
+        if(voiceState.target === target) voiceStop();
+        else toast('请先结束当前的语音输入');
+        return;
+      }
+      voiceRequest(target);
+    });
+    ['f-name','f-note'].forEach(function(id){
+      var input = $('#' + id);
+      if(!input) return;
+      input.addEventListener('input', function(){
+        if(!voiceState.active || voiceState.writing || voiceState.target !== id) return;
+        voiceFail('manual-edit');
+      });
+    });
+    var chk = $('#voiceConsentCheck');
+    if(chk) chk.addEventListener('change', function(){ $('#btnVoiceAgree').disabled = !chk.checked; });
+    var agree = $('#btnVoiceAgree');
+    if(agree) agree.addEventListener('click', function(){
+      if(!chk || !chk.checked) return;
+      voiceSetConsent();
+      var t = voiceState.pending;
+      voiceState.pending = null;
+      voiceCloseConsent();
+      if(t) voiceBegin(t);
+    });
+    var deny = $('#btnVoiceDeny');
+    if(deny) deny.addEventListener('click', function(){
+      var t = voiceState.pending;
+      voiceState.pending = null;
+      voiceCloseConsent();
+      toast('已改用手输，语音不会启动');
+      if(t) setTimeout(function(){ try{ $('#' + t).focus(); }catch(e){} }, 80);
+    });
+    var mask = $('#voiceMask');
+    if(mask) mask.addEventListener('click', function(e){
+      if(e.target !== this) return;
+      voiceState.pending = null;
+      voiceCloseConsent();
+    });
+  }
+  voiceInit();
+
   window.__fandaziTest = {
     skin: {
       get: function(){
@@ -16883,6 +17165,29 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         updateBar: updateReady,
         deferredInstall: !!deferredInstall
       };
+    },
+    voice: {
+      supported: function(){ return voiceSupported; },
+      visible: function(){
+        return ['btnVoiceName','btnVoiceNote'].map(function(id){
+          var b = $('#' + id);
+          return !!b && !b.classList.contains('hidden');
+        });
+      },
+      consent: voiceConsent,
+      resetConsent: function(){ try{ localStorage.removeItem(VOICE_KEY); }catch(e){} return true; },
+      state: function(){
+        var input = voiceState.target ? voiceInputOf(voiceState.target) : null;
+        return {
+          active: voiceState.active, target: voiceState.target, started: voiceState.started,
+          restarts: voiceState.restarts, got: voiceState.got, manual: voiceState.manual,
+          base: voiceState.base, committed: voiceState.committed, interim: voiceState.interim,
+          value: input ? String(input.value || '') : ''
+        };
+      },
+      maskOpen: function(){ return !$('#voiceMask').classList.contains('hidden'); },
+      fail: function(code){ voiceFail(code); return true; },
+      begin: voiceBegin, stop: voiceStop
     }
   };
   if(recoveredBackup) toast('上次数据损坏，已从备份恢复，原始内容保留在 '+RAW_KEY);
