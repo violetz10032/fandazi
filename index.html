@@ -437,7 +437,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .chip-toggle{cursor:pointer;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 12px;font-size:12px;color:var(--ink2)}
   .chip-toggle.on{background:var(--soft);border-color:var(--accent-line);color:var(--soft-ink);font-weight:600}
   .chip-x{display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:5px 8px 5px 10px;color:var(--ink2)}
-  .chip-x b{cursor:pointer;color:var(--ink3);font-weight:400;padding:0 2px}
+  .chip-x b{cursor:pointer;color:var(--ink3);font-weight:400;padding:4px 5px;margin:-2px -3px -2px 0;position:relative}
 
   .sheet-mask{position:fixed;inset:0;background:var(--mask);z-index:40;display:flex;align-items:flex-end;justify-content:center}
   .sheet{width:100%;max-width:640px;background:var(--card);border-radius:20px 20px 0 0;max-height:93vh;overflow:auto;padding:16px 16px calc(22px + env(safe-area-inset-bottom));animation:up .22s ease}
@@ -460,7 +460,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .ph-tile{position:relative;aspect-ratio:1/1;border-radius:10px;overflow:hidden;background:var(--bg-2);border:1px solid var(--line)}
   .ph-tile.sel{outline:2px solid var(--accent);outline-offset:-2px}
   .ph-tile img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
-  .ph-x{position:absolute;top:0;right:0;border:0;background:rgba(0,0,0,.55);color:#fff;width:22px;height:22px;font-size:12px;line-height:1;border-radius:0 0 0 8px;cursor:pointer;padding:0}
+  .ph-x{position:absolute;top:0;right:0;border:0;background:rgba(0,0,0,.55);color:#fff;width:28px;height:28px;font-size:14px;line-height:1;border-radius:0 0 0 10px;cursor:pointer;padding:0}
   .ph-cover{position:absolute;left:0;bottom:0;background:var(--accent);color:var(--accent-ink);font-size:10px;padding:1px 5px;border-radius:0 6px 0 0}
   .ph-chk{position:absolute;top:3px;left:3px;width:18px;height:18px;margin:0}
   .pgb-bar{display:flex;gap:8px;align-items:center;margin-top:8px}
@@ -895,6 +895,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     transition:background-color var(--dur-fast) var(--ease)}
   .icon-btn::after{content:"";position:absolute;inset:-5px;border-radius:calc(min(var(--r),10px) + 5px)}
   .icon-btn:active{background:var(--soft)}
+
+  /* ---------- 按压反馈 & 触控命中（手机端「点了没反应 / 看不出变化」的第一层修复） ---------- */
+  .btn,.icon-btn,.seg button,.chip-toggle,.pick-chip,.stat-seg button,.stat-tag,.diary-chip,.fb-chip,
+  .tabbar button,.cal-cell,.diary-row,.map-list-row,.map-visit,.stat-row,.stat-bar,.ph-x,.chip-x b,
+  select,input[type=checkbox],input[type=radio],summary{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+  .seg button:active,.stat-seg button:active,.chip-toggle:active,.pick-chip:active,.stat-tag:active,
+  .diary-chip:active,.fb-chip:active,.cal-cell:active,.map-list-row:active,.map-visit:active,
+  .stat-row:active,.stat-bar:active{transform:scale(.98);transition:transform 90ms ease}
+  .chip-toggle:active,.pick-chip:active,.stat-tag:active,.fb-chip:active,.diary-chip:active{filter:brightness(.96)}
+  /* 地图工具条：视觉 40px，命中 44px，间距 8px —— 相邻按钮的命中区不再互相叠压 */
+  .map-tools{gap:8px;padding:3px}
+  .map-tools .icon-btn{width:40px;height:40px;border-radius:9px}
+  .map-tools .icon-btn::after{inset:-2px;border-radius:11px}
 
   /* ---------- 空状态：轻量插画（内联 SVG，随主题取色） ---------- */
   .empty{position:relative;padding-top:24px}
@@ -3920,7 +3933,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return db.blacklist.some(function(b){ return b.key === store.key; });
   }
   function blackStore(store){
-    if(isBlack(store)) return;
+    if(isBlack(store)){ toast('「'+store.name+'」已在不再推荐里，可在「我的 → 反馈」撤销'); return; }
     db.blacklist.push({ key:store.key, name:store.name, city:store.city||'', at:new Date().toISOString() });
     save();
     feedbackPersist('never', store);
