@@ -97,7 +97,7 @@ python -m http.server 8765
 ### 拿现成的 APK
 
 1. 打开 <https://github.com/violetz10032/fandazi/actions/workflows/android.yml>；
-2. 选最近一次成功的运行，页面底部 **Artifacts → `fandazi-debug-<版本>-<提交短哈希>`**，下载解压得到 `app-debug.apk`（约 3.7 MB）；
+2. 选最近一次成功的运行，页面底部 **Artifacts → `fandazi-debug-<版本>-<提交短哈希>`**，下载解压得到 `app-debug.apk`（含两套图标资产，约 6 MB）；
 3. 手机上传该文件，安装时系统会要求「允许来自此来源安装应用」（未知来源），同意后即可安装。
 
 Artifact 只保留 **14 天**，过期后重新跑一次工作流即可。
