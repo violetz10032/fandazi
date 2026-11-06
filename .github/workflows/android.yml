@@ -71,6 +71,21 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
 
+      # activity-alias 方案必须保证合并后的清单里仍有一个可启动入口，否则装上去会没有桌面图标。
+      - name: 校验启动入口与双图标资源
+        working-directory: android-app/android
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          "$AAPT2" dump badging "$APK" | grep -E "^package:|^application-label:|^application-icon|^launchable-activity:" || true
+          BADGING=$("$AAPT2" dump badging "$APK")
+          echo "$BADGING" | grep -q "launchable-activity:" || { echo "::error::APK 缺少启动入口（activity-alias 配置可能有误）"; exit 1; }
+          "$AAPT2" dump xmltree "$APK" --file AndroidManifest.xml > /tmp/manifest.txt
+          grep -q "MainActivityA" /tmp/manifest.txt || { echo "::error::清单缺少 MainActivityA"; exit 1; }
+          grep -q "MainActivityB" /tmp/manifest.txt || { echo "::error::清单缺少 MainActivityB"; exit 1; }
+          grep -q "ic_launcher_b" /tmp/manifest.txt || { echo "::error::清单未引用 B 套图标资源"; exit 1; }
+          echo "启动入口与 A/B 图标引用校验通过"
+
       - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:

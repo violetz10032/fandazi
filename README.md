@@ -185,6 +185,17 @@ APK 内接了 `@capacitor/app`（6.0.3），Android 的物理/手势返回键不
 - **仍需真机确认的部分**：本机没有 Android SDK/模拟器，所以“导出→分享面板→保存到下载”这一条链路只做了静态检查与云端编译，**没有在真机点过按钮**。装机后请按下面的自测清单走一遍。
 - APK 与在线 PWA 是**两份独立的数据**：APK 里的记录不会同步到网页版，反之亦然。想迁移就用「我的 → 数据 → 导出 JSON」再在另一侧导入。
 
+### 桌面图标切换（Android，实验性，默认关闭）
+
+- **做法**：`MainActivity` 不再直接挂 `LAUNCHER`，改由两个 `activity-alias` 提供桌面入口——`.MainActivityA`（定位碗，`android:enabled="true"`）与 `.MainActivityB`（城市一碗，`android:enabled="false"`）。两者都指向 `MainActivity`，只改 alias 的启用状态，不动 Activity 本身。
+- **原生插件**：`android-app/android/app/src/main/java/com/fandazi/app/IconAliasPlugin.java`，通过 `PackageManager.setComponentEnabledSetting(..., DONT_KILL_APP)` 切换，并在 `MainActivity.onCreate` 里 `registerPlugin()` 注册。
+- **入口**：APK 内「我的 → 图标风格 → 桌面图标」，只有 `Capacitor.isNativePlatform()` 且 `Capacitor.Plugins.IconAlias` 存在时才显示；网页 / PWA / 旧 APK 自动隐藏，不留死按钮。**默认是 A，用户主动点击才切换。**
+- **顺序与回滚**：先启用目标 alias → 校验确实已启用 → 成功后才禁用旧 alias；任一步抛错立即把 A 启用、B 禁用，并提示「切换桌面图标失败，已回滚到 A（定位碗）」。
+- **风险（设置页同步展示原文）**：切换桌面图标后，部分桌面会移除原有快捷方式，需要重新添加；部分机型可能不生效。升级到本版时，系统记录的旧快捷方式也可能失效，需要重新添加。
+- **验证状态（如实）**：本机没有 JDK / Android SDK / 真机，无法做运行期验证。已在 GitHub Actions 完成编译，并在构建产物上校验合并清单：存在 `launchable-activity`、存在 `MainActivityA` / `MainActivityB`、清单引用 `ic_launcher_b` 资源（见工作流「校验启动入口与双图标资源」步骤）。**实际点击切换、各桌面/ROM 的表现仍未经真机验证**。
+- **PWA / 网页版无法切换启动图标**（系统限制），固定 A；只有 APK 提供桌面图标切换。
+- **万一桌面没有图标**：应用仍已安装，可从系统设置「应用 → i吃饭 → 打开」进入，或在电脑上执行 `adb shell pm enable com.fandazi.app/com.fandazi.app.MainActivityA`；卸载重装也会回到 A。
+
 ### APK 自测清单（装机后 1 分钟）
 
 1. 打开应用 →「我的」→「数据」→ **导出 JSON**：应弹出系统分享面板，里面能看到 `i吃饭-美食记录-<日期>.json`；

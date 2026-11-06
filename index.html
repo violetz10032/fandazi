@@ -1734,7 +1734,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           <button type="button" data-icon-set="a">A 定位碗</button>
           <button type="button" data-icon-set="b">B 城市一碗</button>
         </div>
-        <p class="muted" id="iconStyleDesc" style="margin-top:9px;line-height:1.65">只切换应用内图标（导航栏、按钮、空状态等），立即生效并记住选择；与明暗、风格皮肤互不影响。桌面 / PWA 图标固定为 A，系统不允许应用内切换启动图标。</p>
+        <p class="muted" id="iconStyleDesc" style="margin-top:9px;line-height:1.65">只切换应用内图标（导航栏、按钮、空状态等），立即生效并记住选择；与明暗、风格皮肤互不影响。PWA 启动图标固定为 A；Android 桌面图标请在下方单独切换。</p>
+
+        <div id="launcherIconBox" style="margin-top:16px;display:none">
+          <div class="section-head" style="margin:0 0 8px">
+            <h2>桌面图标</h2>
+            <span class="hint" id="launcherIconHint">仅 Android · 实验性</span>
+          </div>
+          <div class="stat-seg" id="launcherIconSeg" role="group" aria-label="桌面图标风格">
+            <button type="button" data-launcher-set="a">A 定位碗</button>
+            <button type="button" data-launcher-set="b">B 城市一碗</button>
+          </div>
+          <p class="muted" style="margin-top:9px;line-height:1.65">切换桌面图标后，部分桌面会移除原有快捷方式，需要重新添加；部分机型可能不生效。切换失败会自动回滚到 A，本机无原生支持时此区域不显示。</p>
+        </div>
       </div>
 
       <div class="card" id="aboutCard">
@@ -9565,7 +9577,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     var hint = $('#iconStyleHint'); if(hint) hint.textContent = ICON_STYLE_NAMES[iconStyle];
     var desc = $('#iconStyleDesc');
-    if(desc) desc.textContent = iconStyleDescText() + ' 桌面 / PWA 图标固定为 A，系统不允许应用内切换启动图标。';
+    if(desc) desc.textContent = iconStyleDescText() + ' PWA 启动图标固定为 A；Android 桌面图标请在下方单独切换。';
   }
   function setIconStyle(v, silent){
     iconStyle = v === 'b' ? 'b' : 'a';
@@ -9578,6 +9590,54 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     iconStyle = readIconStyle();
     applyIconStyle();
     hydrateIcons(document, true);
+  }
+
+  /* ---- Android 桌面图标切换（activity-alias）：仅原生且插件可用时显示，默认不切换 ---- */
+  var LAUNCHER_ICON_KEY = 'fandazi.launcherIcon';
+  function launcherPlugin(){ return capNative() ? capPlugin('IconAlias') : null; }
+  function readLauncherIcon(){
+    try{ return localStorage.getItem(LAUNCHER_ICON_KEY) === 'b' ? 'b' : 'a'; }catch(e){ return 'a'; }
+  }
+  function applyLauncherIconUi(style){
+    var btns = document.querySelectorAll('#launcherIconSeg button');
+    for(var i = 0; i < btns.length; i++){
+      var on = btns[i].getAttribute('data-launcher-set') === style;
+      btns[i].classList.toggle('on', on);
+      btns[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    var hint = $('#launcherIconHint');
+    if(hint) hint.textContent = style === 'b' ? 'B 城市一碗 · 已切换' : 'A 定位碗 · 默认';
+  }
+  function initLauncherIcon(){
+    var box = $('#launcherIconBox');
+    if(!box) return;
+    if(!launcherPlugin()){ box.style.display = 'none'; return; }
+    box.style.display = '';
+    applyLauncherIconUi(readLauncherIcon());
+    try{
+      Promise.resolve(launcherPlugin().getLauncherIcon()).then(function(r){
+        var s = r && r.style === 'b' ? 'b' : 'a';
+        try{ localStorage.setItem(LAUNCHER_ICON_KEY, s); }catch(e){}
+        applyLauncherIconUi(s);
+      }).catch(function(){ /* 读取失败保持上次本地值，不阻塞 */ });
+    }catch(e){}
+  }
+  function setLauncherIcon(style){
+    var p = launcherPlugin();
+    if(!p){ toast('当前环境不支持切换桌面图标'); return; }
+    style = style === 'b' ? 'b' : 'a';
+    applyLauncherIconUi(style);
+    Promise.resolve(p.setLauncherIcon({ style: style })).then(function(r){
+      var s = r && r.style === 'b' ? 'b' : 'a';
+      try{ localStorage.setItem(LAUNCHER_ICON_KEY, s); }catch(e){}
+      applyLauncherIconUi(s);
+      toast(s === 'b' ? '桌面图标已切换为「B 城市一碗」，部分桌面需重新添加快捷方式' : '桌面图标已切回「A 定位碗」');
+    }).catch(function(err){
+      try{ localStorage.setItem(LAUNCHER_ICON_KEY, 'a'); }catch(e){}
+      applyLauncherIconUi('a');
+      toast('切换桌面图标失败，已回滚到 A（定位碗）');
+      logError('切换桌面图标', err);
+    });
   }
 
   function readThemeSetting(){
@@ -15906,6 +15966,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var b = e.target.closest ? e.target.closest('[data-icon-set]') : null;
     if(b) setIconStyle(b.getAttribute('data-icon-set'));
   });
+  $('#launcherIconSeg').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-launcher-set]') : null;
+    if(b) setLauncherIcon(b.getAttribute('data-launcher-set'));
+  });
 
   /* B4 好友分享与导入 */
   $('#btnShareFanzi').addEventListener('click', function(){ openFanzi(); });
@@ -16357,6 +16421,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   if(legacyData || recoveredBackup) save(true);
   initSkin();
   initIconStyle();
+  initLauncherIcon();
   initTheme();
   renderAll();
   showView('record');
