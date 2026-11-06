@@ -480,6 +480,30 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .pv-stage img.orig{max-width:none;max-height:none;object-fit:initial}
   .pv-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 
+  /* 菜品（可选）：默认折叠，避免给快捷记录增加步骤 */
+  .dish-box{border:1px dashed var(--line);border-radius:12px;padding:10px 12px;margin:12px 0;background:var(--panel-2)}
+  .dish-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .dish-head h4{font-size:13px;margin:0;color:var(--ink2)}
+  .dish-count{font-size:11.5px;color:var(--ink3);margin-left:6px}
+  .dish-toggle{width:100%;margin-top:8px}
+  .dish-row{border-top:1px dashed var(--line);padding:10px 0;display:flex;flex-direction:column;gap:8px;min-width:0}
+  .dish-row:first-child{border-top:0;padding-top:2px}
+  .dish-row .frow{flex-wrap:wrap;gap:8px;min-width:0}
+  .dish-row .input{min-width:0;max-width:100%;flex:1 1 130px}
+  .dish-photos{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+  .dish-thumb{position:relative;width:56px;height:56px;border-radius:9px;overflow:hidden;background:var(--bg-2);border:1px solid var(--line)}
+  .dish-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .dish-thumb button{position:absolute;top:0;right:0;width:22px;height:22px;border:0;border-radius:0 0 0 8px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:1;padding:0}
+  .dish-line{font-size:12.5px;color:var(--ink2);margin:6px 0 0;line-height:1.6}
+  .dish-line b{color:var(--ink);font-weight:600;margin-right:4px}
+  .dish-sum{display:flex;flex-direction:column;gap:7px}
+  .dish-sum-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;border-top:1px dashed var(--line);padding-top:7px;min-width:0}
+  .dish-sum-row:first-child{border-top:0;padding-top:0}
+  .dish-sum-row .nm{font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dish-sum-row .mt{font-size:11.5px;color:var(--ink3);text-align:right;flex:none}
+  /* 旅行计划操作按钮保持 375 下 ≥44px 命中（回归） */
+  #tripSheetBody button[data-act], #tripBox button[data-act]{min-height:44px}
+
   details.more{border:1px dashed var(--line);border-radius:12px;padding:10px 12px;margin:12px 0;background:var(--panel-2)}
   details.more summary{font-size:13px;color:var(--ink2);cursor:pointer;font-weight:600}
   details.more[open] summary{margin-bottom:10px}
@@ -1745,6 +1769,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           <button type="button" data-map-layer="amap">高德图层</button>
         </div>
         <p class="muted" id="mapBaseDesc" style="margin-top:9px;line-height:1.65">当前使用画布底图（默认）：不发任何外部请求，离线可用；切换到高德会按需动态加载官方 JS API。</p>
+        <p class="muted" id="mapBaseEnv" style="margin-top:6px;line-height:1.65"></p>
         <p class="muted" style="margin-top:6px;line-height:1.65">高德 Key 与 securityJsCode 随前端代码公开（单文件应用无法隐藏），请在控制台把域名白名单设为 <b>violetz10032.github.io</b>，需要时可撤销并重建。个人认证的 JS 图面配额有限，超限或加载失败会自动回落画布并给出重试入口。按高德协议，不得缓存、抓取服务端数据与底图图片；离线时底图只会是空白网格，标记仍可见。</p>
         <p class="muted" style="margin-top:6px;line-height:1.65">坐标：记录里保留 WGS84（GPS），高德底图为 GCJ-02，仅显示时本地转换，不回写、不改记录值。</p>
       </div>
@@ -2137,6 +2162,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <p class="muted" style="margin-top:6px">店铺 / 到店 / 菜品分开；支持相机与相册、多选；仅本机保存，不会上传</p>
       <input type="file" id="filePhoto" accept="image/*" multiple class="hidden">
       <input type="file" id="filePhotoReplace" accept="image/*" class="hidden">
+    </div>
+
+    <div class="dish-box" id="dishBox">
+      <div class="dish-head">
+        <h4>菜品（可选）<span class="dish-count" id="dishCount"></span></h4>
+        <button type="button" class="btn btn-sm btn-soft" id="btnDishSkip" style="min-height:44px">跳过，不记菜品</button>
+      </div>
+      <p class="muted" style="font-size:12px;margin:6px 0 0">默认收起，不展开也能直接保存；菜品只作记录参考，不计入消费统计。</p>
+      <button type="button" class="btn btn-soft dish-toggle" id="btnDishToggle" aria-expanded="false" style="min-height:44px">展开填写菜品</button>
+      <div class="hidden" id="dishBody">
+        <div id="dishRows"></div>
+        <button type="button" class="btn btn-sm" id="btnDishAdd" style="min-height:44px;margin-top:8px">+ 添加菜品</button>
+        <p class="muted" style="font-size:12px;margin-top:6px">菜名留空的行会被忽略；单价 / 评分 / 备注都可以留空。菜品照片使用现有照片库的「菜品照片」分类。</p>
+        <input type="file" id="dishPhotoFile" accept="image/*" class="hidden">
+      </div>
     </div>
 
     <div class="actions" id="formActions" style="margin-top:16px">
@@ -2913,6 +2953,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return r.photoId ? [{ id:String(r.photoId), cat:'visit' }] : [];
   }
   function photoIdsOfRecord(r){ return photosOfRecord(r).map(function(p){ return p.id; }); }
+  function recordPhotoIds(r){
+    var ids = photoIdsOfRecord(r);
+    if(r && r.id){
+      /* 菜品照片复用同一 IndexedDB / dish 分类，删除记录时要一起判断引用 */
+      dishPhotoIdsOfVisit(r.id).forEach(function(pid){ if(ids.indexOf(pid) < 0) ids.push(pid); });
+    }
+    return ids;
+  }
 
   function cloneJson(v){ return v == null ? v : JSON.parse(JSON.stringify(v)); }
   function imul32(a, b){
@@ -3829,6 +3877,298 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }catch(_e){}
   }
 
+  /* ================= 菜品（独立增量键 fandazi.dishes） =================
+   * 只存「某一次到店吃了什么」，必须挂到真实存在的记录（visitId）。
+   * 不写进 v2.shops / v2.visits；金额 / 评分只作参考展示，不参与消费统计。
+   */
+  var DISHES_KEY = 'fandazi.dishes';
+  var DISHES_VERSION = 1;
+  var DISHES_MAX = 2000;
+  var DISHES_MAX_PHOTOS = 6;
+  var dishStore = null;
+
+  function dishNumOrNull(v, max){
+    if(v == null || v === '') return null;
+    var n = Number(v);
+    if(!isFinite(n) || n <= 0) return null;
+    if(max != null && n > max) return null;
+    return Math.round(n * 100) / 100;
+  }
+  function dishPhotoNorm(p){
+    if(p == null) return null;
+    var id = typeof p === 'string' ? String(p).trim() : String((p && p.id) || '').trim();
+    if(!id) return null;
+    return { id: id.slice(0, 60), cat: 'dish' };
+  }
+  /* 字段白名单：只保留已知字段；菜名 / 到店记录缺失的条目直接丢弃（返回 null） */
+  function dishNorm(d){
+    if(!d || typeof d !== 'object' || Array.isArray(d)) return null;
+    var id = String(d.id == null ? '' : d.id).trim().slice(0, 40);
+    var visitId = String(d.visitId == null ? '' : d.visitId).trim().slice(0, 40);
+    var shopId = String(d.shopId == null ? '' : d.shopId).trim().slice(0, 40);
+    var name = String(d.name == null ? '' : d.name).trim().slice(0, 60);
+    if(!id || !visitId || !shopId || !name) return null;
+    var photos = [], seen = {};
+    (Array.isArray(d.photoIds) ? d.photoIds : []).forEach(function(p){
+      var n = dishPhotoNorm(p);
+      if(!n || seen[n.id]) return;
+      seen[n.id] = 1;
+      if(photos.length < DISHES_MAX_PHOTOS) photos.push(n);
+    });
+    return {
+      id: id,
+      visitId: visitId,
+      shopId: shopId,
+      name: name,
+      price: dishNumOrNull(d.price),
+      rating: dishNumOrNull(d.rating, 5),
+      note: String(d.note == null ? '' : d.note).slice(0, 200),
+      photoIds: photos,
+      createdAt: String(d.createdAt || ''),
+      updatedAt: String(d.updatedAt || '')
+    };
+  }
+  function dishesLoad(){
+    if(dishStore) return dishStore;
+    var out = { version: DISHES_VERSION, items: [] };
+    try{
+      var raw = localStorage.getItem(DISHES_KEY);
+      if(raw){
+        var o = JSON.parse(raw);
+        if(o && typeof o === 'object' && Array.isArray(o.items)){
+          var seen = {};
+          o.items.forEach(function(d){
+            var n = dishNorm(d);
+            if(!n || seen[n.id]) return;
+            seen[n.id] = 1;
+            if(out.items.length < DISHES_MAX) out.items.push(n);
+          });
+        }
+      }
+    }catch(e){ /* 坏 JSON / 读取失败：静默降级为空结构，避免整页崩溃 */ }
+    dishStore = out;
+    return out;
+  }
+  function dishesPersist(next){
+    var prev = dishStore;
+    dishStore = next;
+    try{
+      localStorage.setItem(DISHES_KEY, JSON.stringify(next));
+      return true;
+    }catch(e){
+      dishStore = prev;
+      logError('菜品保存', e);
+      toast('空间不足，菜品未保存');
+      return false;
+    }
+  }
+  function dishesGet(id){
+    var list = dishesLoad().items;
+    for(var i = 0; i < list.length; i++){ if(list[i].id === id) return list[i]; }
+    return null;
+  }
+  function dishesOfVisit(visitId){
+    var vid = String(visitId == null ? '' : visitId);
+    if(!vid) return [];
+    return dishesLoad().items.filter(function(d){ return d.visitId === vid; });
+  }
+  function dishesOfShop(shopId){
+    var sid = String(shopId == null ? '' : shopId);
+    if(!sid) return [];
+    return dishesLoad().items.filter(function(d){ return d.shopId === sid; });
+  }
+  function dishRecordById(id){
+    var list = db.records || [];
+    for(var i = 0; i < list.length; i++){ if(list[i].id === id) return list[i]; }
+    return null;
+  }
+  function dishAdd(input){
+    input = input || {};
+    var vid = String(input.visitId == null ? '' : input.visitId).trim();
+    if(!vid) return { ok:false, error:'菜品必须关联一条已保存的到店记录' };
+    var rec = dishRecordById(vid);
+    if(!rec) return { ok:false, error:'菜品关联的到店记录不存在，请先保存这条记录' };
+    var now = new Date().toISOString();
+    var n = dishNorm({
+      id: String(input.id || '').trim() || newId('d'),
+      visitId: vid,
+      shopId: shopIdOf(rec.name, rec.city),
+      name: input.name, price: input.price, rating: input.rating,
+      note: input.note, photoIds: input.photoIds,
+      createdAt: now, updatedAt: now
+    });
+    if(!n) return { ok:false, error:'菜名不能为空' };
+    var next = JSON.parse(JSON.stringify(dishesLoad()));
+    next.items.unshift(n);
+    if(next.items.length > DISHES_MAX) next.items = next.items.slice(0, DISHES_MAX);
+    if(!dishesPersist(next)) return { ok:false, error:'菜品保存失败' };
+    return { ok:true, item: JSON.parse(JSON.stringify(n)) };
+  }
+  function dishUpdate(id, patch){
+    patch = patch || {};
+    var cur = dishesGet(id);
+    if(!cur) return { ok:false, error:'菜品不存在' };
+    var vid = String(patch.visitId == null ? cur.visitId : patch.visitId).trim();
+    var rec = dishRecordById(vid);
+    if(!vid) return { ok:false, error:'菜品必须关联一条已保存的到店记录' };
+    if(!rec) return { ok:false, error:'菜品关联的到店记录不存在，请先保存这条记录' };
+    var merged = {
+      id: cur.id, visitId: vid, shopId: shopIdOf(rec.name, rec.city),
+      name: patch.name === undefined ? cur.name : patch.name,
+      price: patch.price === undefined ? cur.price : patch.price,
+      rating: patch.rating === undefined ? cur.rating : patch.rating,
+      note: patch.note === undefined ? cur.note : patch.note,
+      photoIds: patch.photoIds === undefined ? cur.photoIds : patch.photoIds,
+      createdAt: cur.createdAt, updatedAt: new Date().toISOString()
+    };
+    var n = dishNorm(merged);
+    if(!n) return { ok:false, error:'菜名不能为空' };
+    var next = JSON.parse(JSON.stringify(dishesLoad()));
+    var at = -1;
+    next.items.forEach(function(d, i){ if(d.id === n.id) at = i; });
+    if(at < 0) return { ok:false, error:'菜品不存在' };
+    next.items[at] = n;
+    if(!dishesPersist(next)) return { ok:false, error:'菜品保存失败' };
+    return { ok:true, item: JSON.parse(JSON.stringify(n)) };
+  }
+  function dishDelete(id){
+    var cur = dishesGet(id);
+    if(!cur) return { ok:false, error:'菜品不存在', item:null };
+    var next = JSON.parse(JSON.stringify(dishesLoad()));
+    next.items = next.items.filter(function(d){ return d.id !== cur.id; });
+    if(!dishesPersist(next)) return { ok:false, error:'菜品保存失败', item:null };
+    return { ok:true, item: JSON.parse(JSON.stringify(cur)) };
+  }
+  function dishesDeleteByVisit(visitId){
+    var vid = String(visitId == null ? '' : visitId);
+    if(!vid) return [];
+    var cur = dishesLoad();
+    var removed = cur.items.filter(function(d){ return d.visitId === vid; });
+    if(!removed.length) return [];
+    var next = JSON.parse(JSON.stringify(cur));
+    next.items = next.items.filter(function(d){ return d.visitId !== vid; });
+    dishesPersist(next);
+    return JSON.parse(JSON.stringify(removed));
+  }
+  function dishPhotoIdsOfVisit(visitId){
+    var ids = [];
+    dishesOfVisit(visitId).forEach(function(d){ (d.photoIds || []).forEach(function(p){ if(ids.indexOf(p.id) < 0) ids.push(p.id); }); });
+    return ids;
+  }
+  /* 同店同名汇总：次数 / 最近价 / 最近时间（时间优先用当次到访日期） */
+  function dishesSummaryOfShop(shopId){
+    var list = dishesOfShop(shopId), map = {};
+    list.forEach(function(d){
+      var k = String(d.name || '').trim().toLowerCase();
+      if(!k) return;
+      var e = map[k];
+      if(!e){ e = map[k] = { name: d.name, count: 0, lastPrice: null, lastAt: '' }; }
+      e.count++;
+      var rec = dishRecordById(d.visitId);
+      var at = rec && rec.visitDate ? String(rec.visitDate).slice(0, 10) : String(d.createdAt || '').slice(0, 10);
+      if(!e.lastAt || at > e.lastAt){
+        e.lastAt = at;
+        e.lastPrice = d.price == null ? null : d.price;
+      }
+    });
+    return Object.keys(map).map(function(k){ return map[k]; }).sort(function(a, b){
+      return String(b.lastAt || '').localeCompare(String(a.lastAt || '')) || b.count - a.count;
+    });
+  }
+  /* 旧记录里可能已有 r.dishes（早期只透传、无 UI）：只做只读展示兜底，不写回新键 */
+  function dishesLegacyOfRecord(r){
+    if(!r || !Array.isArray(r.dishes)) return [];
+    var out = [];
+    r.dishes.forEach(function(x){
+      var name = typeof x === 'string' ? x : String((x && (x.name || x.dish)) || '').trim();
+      if(!name) return;
+      out.push({
+        id: '', name: name,
+        price: typeof x === 'object' ? dishNumOrNull(x.price) : null,
+        rating: typeof x === 'object' ? dishNumOrNull(x.rating, 5) : null,
+        note: typeof x === 'object' ? String(x.note || '') : '',
+        photoIds: [], legacy: true
+      });
+    });
+    return out;
+  }
+  function dishesDisplayOfRecord(r){
+    var list = r ? dishesOfVisit(r.id) : [];
+    return list.length ? list : dishesLegacyOfRecord(r);
+  }
+
+  /* ---------- 备份 v6：dishes 段 ---------- */
+  function dishBackupData(){
+    return JSON.parse(JSON.stringify(dishesLoad()));
+  }
+  function dishBackupValidate(section, where){
+    if(section == null) return null;
+    if(typeof section !== 'object' || Array.isArray(section) || !Array.isArray(section.items)){
+      throw new Error('备份里的菜品格式不正确（' + where + '）');
+    }
+    if(section.items.length > DISHES_MAX){
+      throw new Error('备份里的菜品超过 ' + DISHES_MAX + ' 道，已整包拒绝（' + where + '）');
+    }
+    var out = { version: DISHES_VERSION, items: [] }, seen = {};
+    section.items.forEach(function(d, i){
+      if(!d || typeof d !== 'object' || Array.isArray(d)){
+        throw new Error('备份里的菜品第 ' + (i + 1) + ' 项结构无效（' + where + '）');
+      }
+      var id = String(d.id == null ? '' : d.id).trim();
+      if(!id) throw new Error('备份里的菜品第 ' + (i + 1) + ' 项缺少标识（' + where + '）');
+      if(seen[id]) throw new Error('备份里的菜品标识重复：' + id + '（' + where + '）');
+      seen[id] = 1;
+      if(!String(d.visitId == null ? '' : d.visitId).trim()){
+        throw new Error('备份里的菜品「' + id + '」缺少 visitId（' + where + '）');
+      }
+      if(!String(d.shopId == null ? '' : d.shopId).trim()){
+        throw new Error('备份里的菜品「' + id + '」缺少 shopId（' + where + '）');
+      }
+      var n = dishNorm(d);
+      if(!n) throw new Error('备份里的菜品「' + id + '」结构无效（' + where + '）');
+      out.items.push(n);
+    });
+    return out;
+  }
+  function applyBackupDishes(section, mode, records){
+    var incoming = dishBackupValidate(section, '恢复');
+    if(!incoming) return { applied:false, legacy:true, dishes:dishesLoad().items.length, dropped:0 };
+    var prev = JSON.parse(JSON.stringify(dishesLoad()));
+    var next;
+    if(mode === 'replace'){
+      next = incoming;
+    }else{
+      next = { version: DISHES_VERSION, items: JSON.parse(JSON.stringify(prev.items)) };
+      var idx = {};
+      next.items.forEach(function(d, i){ idx[d.id] = i; });
+      incoming.items.forEach(function(d){
+        if(idx[d.id] !== undefined) next.items[idx[d.id]] = d;
+        else next.items.unshift(d);
+      });
+      if(next.items.length > DISHES_MAX) next.items = next.items.slice(0, DISHES_MAX);
+    }
+    /* 恢复后只保留 visitId 在结果记录里真实存在的菜品；孤儿计入报告 */
+    var valid = {}, kept = [], dropped = 0;
+    (records || []).forEach(function(r){ valid[r.id] = 1; });
+    next.items.forEach(function(d){
+      if(valid[d.visitId]) kept.push(d); else dropped++;
+    });
+    next.items = kept;
+    next.version = DISHES_VERSION;
+    if(!dishesPersist(next)){
+      dishStore = prev;
+      throw new Error('空间不足：菜品写入失败，本机数据未改动');
+    }
+    return { applied:true, legacy:false, dishes:kept.length, dropped:dropped };
+  }
+  function rollbackDishes(prevRaw, prevStore){
+    dishStore = prevStore;
+    try{
+      if(prevRaw == null) localStorage.removeItem(DISHES_KEY);
+      else localStorage.setItem(DISHES_KEY, prevRaw);
+    }catch(_e){}
+  }
+
   /* ---------- 旅行弹层事件（委托） ---------- */
   function tripAct(act, el){
     var tid = el.getAttribute('data-tid') || '';
@@ -4635,10 +4975,6 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function recordPhotoCount(){
     return db.records.filter(function(r){ return recordPhotoIds(r).length > 0 || !!r.photo; }).length;
   }
-  /* 一条记录的全部照片 id（新结构 photos[{id,cat}] → 旧 photoId / photoIds 兼容） */
-  function recordPhotoIds(r){
-    return photoIdsOfRecord(r);
-  }
   function photoReferencedBy(pid, exceptRecordId){
     if(!pid) return false;
     return db.records.some(function(r){
@@ -4714,6 +5050,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var PHOTO_CATS = [{ k:'store', label:'店铺照片' }, { k:'visit', label:'到店照片' }, { k:'dish', label:'菜品照片' }];
   var formPhotos = [];        /* [{id,cat}]，顺序即展示顺序，第一张是封面 */
   var formPendingDelete = []; /* 保存时才真正从 IndexedDB 删除，取消表单不丢图 */
+  var formDishes = [];        /* 菜品草稿：[{id?,name,price,rating,note,photoIds}]，字段留空即 null/未填 */
+  var formDishRemoved = [];   /* 编辑时被移除的旧菜品，保存记录后才真正删除 */
+  var formDishOpen = false;
+  var formDishPhotoIdx = -1;
   var photoBatch = { cat:null, ids:{} };
   var pvState = { id:null, ids:[] };
   var pvReplaceId = null;     /* 预览层「替换」的目标 */
@@ -4820,6 +5160,151 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }).join('');
     box.innerHTML = html;
     hydratePhotos(box);
+  }
+
+  /* ---------- 表单里的「菜品（可选）」草稿 ---------- */
+  function dishDraftRealCount(){
+    return formDishes.filter(function(d){ return String(d.name || '').trim(); }).length;
+  }
+  function paintDishes(){
+    var rows = $('#dishRows');
+    if(!rows) return;
+    var html = formDishes.map(function(d, i){
+      var photos = (d.photoIds || []).map(function(p){
+        return '<span class="dish-thumb"><img data-photo="'+esc(p.id)+'" data-thumb="1" alt="菜品照片" loading="lazy" decoding="async">'+
+          '<button type="button" data-dphoto-rm="'+esc(p.id)+'" aria-label="移除菜品照片">×</button></span>';
+      }).join('');
+      return '<div class="dish-row" data-di="'+i+'">'+
+        '<input class="input" data-dfield="name" value="'+esc(d.name == null ? '' : d.name)+'" maxlength="60" placeholder="菜名（留空则忽略）">'+
+        '<div class="frow">'+
+          '<input class="input" data-dfield="price" type="number" inputmode="decimal" min="0" step="0.01" value="'+esc(d.price == null ? '' : d.price)+'" placeholder="单价（可选）">'+
+          '<input class="input" data-dfield="rating" type="number" inputmode="decimal" min="0" max="5" step="0.1" value="'+esc(d.rating == null ? '' : d.rating)+'" placeholder="评分 0-5（可选）">'+
+        '</div>'+
+        '<input class="input" data-dfield="note" value="'+esc(d.note || '')+'" maxlength="200" placeholder="备注（可选）">'+
+        (photos ? '<div class="dish-photos">'+photos+'</div>' : '')+
+        '<div class="actions">'+
+          '<button type="button" class="btn btn-sm btn-soft" data-dphoto-add style="min-height:44px">+ 菜品照片</button>'+
+          '<button type="button" class="btn btn-sm" data-drow-del style="min-height:44px">删除这道</button>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+    rows.innerHTML = html || '<p class="muted" style="font-size:12.5px">还没有菜品；点下方「+ 添加菜品」，或直接保存跳过。</p>';
+    var body = $('#dishBody');
+    if(body) body.classList.toggle('hidden', !formDishOpen);
+    var toggle = $('#btnDishToggle');
+    if(toggle){
+      toggle.setAttribute('aria-expanded', formDishOpen ? 'true' : 'false');
+      toggle.textContent = formDishOpen
+        ? '收起菜品区（不填也可以直接保存）'
+        : ('展开填写菜品' + (formDishes.length ? '（已填 ' + dishDraftRealCount() + ' 道）' : ''));
+    }
+    var cnt = $('#dishCount');
+    if(cnt) cnt.textContent = formDishes.length ? '已填 ' + dishDraftRealCount() + ' 道' : '';
+    hydratePhotos(rows);
+  }
+  function dishDraftAddRow(){
+    formDishes.push({ id:'', name:'', price:'', rating:'', note:'', photoIds:[] });
+    formDishOpen = true;
+    paintDishes();
+    var rows = $('#dishRows');
+    var last = rows && rows.querySelector('.dish-row[data-di="' + (formDishes.length - 1) + '"] [data-dfield="name"]');
+    if(last) setTimeout(function(){ last.focus(); }, 40);
+  }
+  function dishDraftSkip(){
+    if(formDishes.length){
+      formDishes.forEach(function(d){
+        if(d.id && !formDishRemoved.some(function(x){ return x.id === d.id; })) formDishRemoved.push({ id:d.id, photoIds:d.photoIds || [] });
+      });
+      formDishes = [];
+      toast('本次不记菜品');
+    }
+    formDishOpen = false;
+    paintDishes();
+  }
+  function dishDraftDelRow(i){
+    var d = formDishes[i];
+    if(!d) return;
+    if(d.id) formDishRemoved.push({ id:d.id, photoIds:d.photoIds || [] });
+    formDishes.splice(i, 1);
+    paintDishes();
+  }
+  function dishDraftAddPhotos(files, idx){
+    var d = formDishes[idx];
+    if(!d) return;
+    var list = [].slice.call(files || []);
+    if(!list.length) return;
+    if(!idbSupported()){ toast('当前环境不支持 IndexedDB，菜品照片未保存'); return; }
+    if((d.photoIds || []).length >= DISHES_MAX_PHOTOS){ toast('每道菜最多 ' + DISHES_MAX_PHOTOS + ' 张照片'); return; }
+    var left = DISHES_MAX_PHOTOS - (d.photoIds || []).length;
+    if(list.length > left) list = list.slice(0, left);
+    var i = 0, added = 0;
+    function step(){
+      if(i >= list.length){
+        formDishes[idx].photoIds = (formDishes[idx].photoIds || []).slice();
+        paintDishes();
+        if(added) toast('已添加 ' + added + ' 张菜品照片');
+        return;
+      }
+      var f = list[i++];
+      compressFile(f, function(res){
+        if(photoStatsCache.bytes + res.full.length > PHOTO_MAX_BYTES){
+          toast('照片总量已超 ' + fmtBytes(PHOTO_MAX_BYTES) + '，建议先清理旧照片');
+          step();
+          return;
+        }
+        var pid = 'p' + newId('');
+        photoPut(pid, res.full, res.thumb, { w:res.w, h:res.h }).then(function(){
+          formDishes[idx].photoIds.push({ id:pid, cat:'dish' });
+          added++;
+          photoStats();
+          step();
+        }).catch(function(e){
+          logError('菜品照片写入', e);
+          toast('菜品照片未能写入 IndexedDB');
+          step();
+        });
+      }, function(msg){ toast(msg); step(); });
+    }
+    step();
+  }
+  function dishDraftRemovePhoto(pid){
+    formDishes.forEach(function(d){
+      d.photoIds = (d.photoIds || []).filter(function(p){ return p.id !== pid; });
+    });
+    paintDishes();
+  }
+  /* 记录保存成功后落菜品：新增 / 修改 / 删除，全部走独立键 */
+  function syncFormDishes(rec){
+    if(!rec) return;
+    var changed = false;
+    formDishRemoved.forEach(function(old){
+      var res = dishDelete(old.id);
+      if(res.ok){
+        changed = true;
+        (old.photoIds || []).forEach(function(p){ releasePhoto(p.id, null); });
+      }
+    });
+    formDishRemoved = [];
+    formDishes.forEach(function(d){
+      var name = String(d.name || '').trim();
+      if(!name) return; /* 菜名留空 = 跳过，不增加必填 */
+      var payload = {
+        visitId: rec.id,
+        name: name,
+        price: d.price,
+        rating: d.rating,
+        note: d.note,
+        photoIds: d.photoIds || []
+      };
+      var res = d.id ? dishUpdate(d.id, payload) : dishAdd(payload);
+      if(res.ok){
+        d.id = res.item.id;
+        changed = true;
+      }else if(res.error){
+        toast(res.error);
+      }
+    });
+    return changed;
   }
   function removeFormPhoto(pid){
     var had = formPhotos.some(function(p){ return p.id === pid; });
@@ -6963,6 +7448,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   try{ hydrateIcons(); }catch(e){}
 
+  function dishLineHtml(r){
+    var list = dishesDisplayOfRecord(r);
+    if(!list.length) return '';
+    var names = list.slice(0, 5).map(function(d){
+      return d.name + (d.price != null ? ' ¥' + num(d.price) : '');
+    });
+    if(list.length > 5) names.push('等 ' + list.length + ' 道');
+    return '<p class="dish-line"><b>菜品</b>' + esc(names.join(' · ')) + '</p>';
+  }
   function recordCard(r){
     var p = perPriceOf(r);
     var s = quickScore(r);
@@ -7000,6 +7494,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<div class="score-pill '+scoreClass(s)+'">'+s+'<small>适配</small></div>'+
       '</div>'+
       '<div class="tags">'+tags.join('')+'</div>'+
+      dishLineHtml(r)+
       dimTag(r)+
       (r.address ? '<p class="addr">'+esc(r.address)+'</p>' : '')+
       (r.note ? '<p class="desc">'+esc(r.note)+'</p>' : '')+
@@ -7344,6 +7839,23 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(v == null || v === '' || v === undefined) return '';
     return '<div class="diary-kv"><span>'+esc(k)+'</span><b>'+v+'</b></div>';
   }
+  function diaryDishHtml(r){
+    var list = dishesDisplayOfRecord(r);
+    var body = list.length ? '<div class="dish-sum">' + list.map(function(d){
+      var meta = [];
+      if(d.price != null) meta.push('¥' + num(d.price));
+      if(d.rating != null) meta.push('评分 ' + num(d.rating));
+      var photos = (d.photoIds || []).map(function(p){
+        return '<img class="dish-thumb" data-photo="'+esc(p.id)+'" data-thumb="1" loading="lazy" decoding="async" alt="菜品照片" style="object-fit:cover">';
+      }).join('');
+      return '<div class="dish-sum-row"><div style="min-width:0">'+
+        '<div class="nm">'+esc(d.name)+'</div>'+
+        (d.note ? '<div class="mt" style="text-align:left;margin-top:2px">'+esc(d.note)+'</div>' : '')+
+        (photos ? '<div class="dish-photos" style="margin-top:6px">'+photos+'</div>' : '')+
+      '</div><div class="mt">'+esc(meta.join(' · ') || '未填价 / 未评分')+'</div></div>';
+    }).join('') + '</div>' : '<p class="muted" style="margin:0">暂无数据</p>';
+    return '<div class="card flat" style="padding:12px;margin-bottom:12px"><p class="muted" style="margin-bottom:6px">本次菜品</p>'+body+'</div>';
+  }
   function diaryOpenDetail(id){
     var r = db.records.filter(function(x){ return x.id === id; })[0];
     if(!r) return null;
@@ -7381,6 +7893,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       diaryKv('更新时间', esc(r.updatedAt || '未记录'))+
     '</div>';
     if(r.note) html += '<div class="card flat" style="padding:12px;margin-bottom:12px"><p class="muted" style="margin-bottom:4px">一句话评价</p><p class="desc" style="margin-top:0">'+esc(r.note)+'</p></div>';
+    html += diaryDishHtml(r);
     $('#diaryDetail').innerHTML = html;
     $('#diaryMask').classList.remove('hidden');
     hydratePhotos($('#diaryDetail'));
@@ -10927,6 +11440,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     formPhotoId = null;
     formPhotos = [];
     formPendingDelete = [];
+    formDishes = [];
+    formDishRemoved = [];
+    formDishOpen = false;
+    formDishPhotoIdx = -1;
     photoBatch = { cat:null, ids:{} };
     closePhotoView();
     formTags = [];
@@ -10961,6 +11478,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     formPhotoId = null;
     formPhotos = [];
     formPendingDelete = [];
+    formDishes = [];
+    formDishRemoved = [];
+    formDishOpen = false;
+    formDishPhotoIdx = -1;
     photoBatch = { cat:null, ids:{} };
     pvState = { id:null, ids:[] };
     formTags = [];
@@ -11024,10 +11545,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var ph = photosOfRecord(r);
       formPhotos = ph.map(function(p){ return { id:p.id, cat:p.cat }; });
       if(!formPhotos.length && r.photo) formPhoto = r.photo;
+      formDishes = dishesOfVisit(r.id).map(function(d){
+        return {
+          id: d.id, name: d.name, price: d.price == null ? '' : d.price,
+          rating: d.rating == null ? '' : d.rating, note: d.note || '',
+          photoIds: (d.photoIds || []).map(function(p){ return { id:p.id, cat:'dish' }; })
+        };
+      });
     }
     if(r && Array.isArray(r.tags)) formTags = r.tags.slice();
     if(src && Array.isArray(src.tags)) formTags = src.tags.slice();
-    paintPhotoGroups(); paintTags();
+    paintPhotoGroups(); paintTags(); paintDishes();
     updateFormMapLinks();
     $('#btnDeleteInForm').classList.toggle('hidden', !r);
     /* 编辑时不显示选店面板，避免误把记录改挂到别的店 */
@@ -11447,6 +11975,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var old = db.records.filter(function(x){ return x.id === editingId; })[0];
       if(old){
         rec.createdAt = old.createdAt || now;
+        /* 旧记录的 r.dishes 只透传保留，不迁入新键、也不丢失 */
+        if(old.dishes !== undefined) rec.dishes = old.dishes;
         /* 移除的照片不在这里删：保存后统一按「是否还有记录引用」判断 */
       }
       db.records = db.records.map(function(x){ return x.id === editingId ? rec : x; });
@@ -11458,6 +11988,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       /* 唯一允许把旅行 stop 置为 checked 的路径 */
       tripOnRecordSaved(rec);
     }
+    /* 记录已进 db 之后再落菜品（菜品必须挂在真实存在的 visitId 上） */
+    syncFormDishes(rec);
     if(typeof FZSync !== 'undefined' && FZSync) FZSync.markChanged(rec.id);
     /* 本次移除、且没有任何记录再引用的照片才真正从 IndexedDB 删除 */
     formPendingDelete.forEach(function(pid){ releasePhoto(pid, null); });
@@ -11496,11 +12028,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function deleteRecord(id){
     var r = db.records.filter(function(x){ return x.id === id; })[0];
     if(!r) return;
-    if(!confirm('删除「'+r.name+'」这条记录？此操作不可撤销。')) return;
+    var linkedDishes = dishesOfVisit(id);
+    var deleteMsg = '删除「'+r.name+'」这条记录？'
+      + (linkedDishes.length ? '关联的 ' + linkedDishes.length + ' 道菜品会一起删除。' : '关联的菜品（如有）会一起删除。')
+      + '照片仅在无其它引用时清理，此操作不可撤销。';
+    if(!confirm(deleteMsg)) return;
     if(typeof FZSync !== 'undefined' && FZSync) FZSync.markDeleted(id);
+    var refPhotoIds = recordPhotoIds(r).slice();
+    /* 级联删除菜品（先删菜，再按剩余引用清理照片） */
+    dishesDeleteByVisit(id);
     db.records = db.records.filter(function(x){ return x.id !== id; });
-    /* 只删没有任何其它记录再引用的照片 */
-    recordPhotoIds(r).forEach(function(pid){ releasePhoto(pid, null); });
+    /* 只删没有任何其它记录 / 菜品再引用的照片 */
+    refPhotoIds.forEach(function(pid){ releasePhoto(pid, null); });
     closeForm();
     save();
     toast('已删除');
@@ -11770,10 +12309,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var AMAP_SECURITY = '78f8691c16bcd9c0ea947e808157ccd2';
   var AMAP_SCRIPT_SRC = 'https://webapi.amap.com/maps?v=2.0&key=' + AMAP_KEY;
   var AMAP_LOAD_TIMEOUT = 12000;
+  /* APK（源 https://localhost）无法加入高德 Web 端 Key 白名单，改由 Pages 上的内嵌页加载地图；
+     该页源是 violetz10032.github.io，能通过域名校验。测试可通过 __fzEmbedUrl 指向本地副本。 */
+  var MAP_EMBED_URL = (typeof window.__fzEmbedUrl === 'string' && window.__fzEmbedUrl) ||
+    'https://violetz10032.github.io/fandazi/map-embed.html';
+  var MAP_EMBED_TIMEOUT = 10000;
   var MAP_LAYER_PREF_KEY = 'fandazi.mapLayer';
   var amapState = {
     map:null, loading:false, ready:false, err:'', timer:null,
-    progUntil:0, lastZ:null, lastC:null, quiet:false, gen:0
+    progUntil:0, lastZ:null, lastC:null, quiet:false, gen:0, cap:null,
+    embed:null, embedReady:false, embedOrigin:'', embedCb:null,
+    embedMsgBound:false, embedSig:'', embedTimer:null
   };
 
   /* WGS84（GPS / 记录里的原始坐标）→ GCJ-02（高德底图）标准偏移算法；反向不回写记录。 */
@@ -12340,6 +12886,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function mapSheetOpen(){
     return !$('#mapStoreMask').classList.contains('hidden');
   }
+  function mapDishSummaryHtml(shopId){
+    var list = dishesSummaryOfShop(shopId);
+    var rows = list.length ? list.slice(0, 12).map(function(d){
+      var meta = '共 ' + d.count + ' 次';
+      meta += ' · 最近 ' + (d.lastPrice != null ? '¥' + num(d.lastPrice) : '未记价');
+      meta += d.lastAt ? ' · ' + d.lastAt : '';
+      return '<div class="dish-sum-row"><span class="nm">'+esc(d.name)+'</span><span class="mt">'+esc(meta)+'</span></div>';
+    }).join('') : '<p class="muted" style="margin:0">暂无数据</p>';
+    return '<div class="card flat" style="padding:10px 12px;margin-bottom:12px"><p class="muted" style="margin-bottom:6px">同店菜品（按菜名汇总，金额仅参考）</p><div class="dish-sum">'+rows+'</div></div>';
+  }
   function openMapStoreSheet(key){
     var s = mapStoreByKey(key);
     if(!s){ toast('这家店的数据已变化，请刷新地图'); return null; }
@@ -12380,6 +12936,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         diaryKv('补充信息', esc(shopMetaSummary(sid)))+
       '</div>'+
       (visits ? '<div class="card flat" style="padding:10px 12px;margin-bottom:12px"><p class="muted" style="margin-bottom:2px">最近到访（点开看该次详情）</p>'+visits+'</div>' : '')+
+      mapDishSummaryHtml(sid)+
       '<div class="actions" style="margin-top:0">'+
         '<a class="btn btn-soft" href="'+esc(mapLinkOf(info, 'amap', false, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">高德'+(c?'定点':'搜索')+'</a>'+
         '<a class="btn" href="'+esc(mapLinkOf(info, 'baidu', false, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">百度搜索</a>'+
@@ -15242,8 +15799,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var BACKUP_FORMAT = 'fandazi-backup';
   /* 备份格式版本：4 = 增加 fandazi.shopmeta（平台链接 + 用户补充字段及来源）。
      5 = 增加 fandazi.trips（旅行计划，独立增量键）。
-     旧备份（≤4）没有 trips 段时恢复保持本机现状，不清空。 */
-  var BACKUP_SCHEMA_VERSION = 5;
+     6 = 增加 fandazi.dishes（菜品，独立增量键）。
+     旧备份缺少 trips / dishes 段时恢复保持本机现状，不清空。 */
+  var BACKUP_SCHEMA_VERSION = 6;
   var BACKUP_LAST_KEY = 'fandazi.backup.last';
   var BACKUP_TMP_KEY = KEY + '.restore.tmp';
   var BACKUP_FILE_MAX = 200 * 1024 * 1024;
@@ -15531,6 +16089,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       profile: profileBackupData(),
       shopmeta: shopMetaBackupData(),
       trips: tripBackupData(),
+      dishes: dishBackupData(),
       records: db.records
     };
     /* v2 模式下：records 仍是投影后的 v1 兼容结构（老版本也能读），
@@ -15557,6 +16116,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return {
         records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length,
         trips: tripList.length, tripStops: tripStops,
+        dishes: dishesLoad().items.length,
         feedback: feedbackStore.items.length,
         profileBoost: profileManual.boost.length, profileBlock: profileManual.block.length,
         profileBudget: profileManual.budgetCap,
@@ -15564,7 +16124,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         sizeBytes: total, warn: total > BACKUP_WARN_BYTES
       };
     }).catch(function(){
-      return { records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length, trips: 0, tripStops: 0, feedback: feedbackStore.items.length, profileBoost: profileManual.boost.length, profileBlock: profileManual.block.length, profileBudget: profileManual.budgetCap, photos: 0, photoBytes: 0, textBytes: 0, sizeBytes: 0, warn: false };
+      return { records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length, trips: 0, tripStops: 0, dishes: 0, feedback: feedbackStore.items.length, profileBoost: profileManual.boost.length, profileBlock: profileManual.block.length, profileBudget: profileManual.budgetCap, photos: 0, photoBytes: 0, textBytes: 0, sizeBytes: 0, warn: false };
     });
   }
   function backupPhotos(){
@@ -15620,6 +16180,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             records: payload.records.length, stores: getStores().length,
             wishlist: payload.wishlist.length, blacklist: payload.blacklist.length,
             votes: payload.votes.length, places: payload.places.length,
+            dishes: payload.dishes.items.length,
             feedback: payload.feedback.items.length,
             profileBoost: payload.profile.boost.length,
             profileBlock: payload.profile.block.length,
@@ -15687,6 +16248,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     shopMetaBackupValidate(obj.payload.shopmeta, '恢复');
     /* 旅行计划段：缺失（v4 及更早）保持本机现状；存在则严格校验，非法整包拒绝 */
     tripBackupValidate(obj.payload.trips, '恢复');
+    /* 菜品段：缺失（v5 及更早）保持本机现状；存在则严格校验，非法整包拒绝 */
+    dishBackupValidate(obj.payload.dishes, '恢复');
     if(!obj.checksum || !obj.checksum.value) throw new Error('备份文件缺少校验值，无法确认完整性');
     if(!Array.isArray(obj.photos)) obj.photos = [];
     for(var i = 0; i < obj.photos.length; i++){
@@ -15715,7 +16278,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function makeSnapshot(reason){
     if(!idbSupported()) return Promise.resolve(null);
     var photoIds = [];
-    db.records.forEach(function(r){ if(r.photoId) photoIds.push(r.photoId); });
+    db.records.forEach(function(r){ recordPhotoIds(r).forEach(function(pid){ if(photoIds.indexOf(pid) < 0) photoIds.push(pid); }); });
     var snap = {
       id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       at: Date.now(),
@@ -15737,7 +16300,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         feedback: feedbackBackupData(),
         profile: profileBackupData(),
         shopmeta: shopMetaBackupData(),
-        trips: tripBackupData()
+        trips: tripBackupData(),
+        dishes: dishBackupData()
       }))
     };
     return snapshotStore('readwrite').then(function(store){
@@ -15948,6 +16512,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var tpPrevRaw = null, tpPrevStore = JSON.parse(JSON.stringify(tripsLoad()));
       try{ tpPrevRaw = localStorage.getItem(TRIPS_KEY); }catch(e){ tpPrevRaw = null; }
       var tpResult = { applied:false, legacy:true, trips:0, stops:0 };
+      var dsPrevRaw = null, dsPrevStore = JSON.parse(JSON.stringify(dishesLoad()));
+      try{ dsPrevRaw = localStorage.getItem(DISHES_KEY); }catch(e){ dsPrevRaw = null; }
+      var dsResult = { applied:false, legacy:true, dishes:dishesLoad().items.length, dropped:0 };
       var committed;
       try{
         pmResult = applyBackupProfile(obj.payload.profile);
@@ -15955,6 +16522,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         rpResult = applyBackupReports(obj.payload.reports, mode);
         smResult = applyBackupShopMeta(obj.payload.shopmeta, mode);
         tpResult = applyBackupTrips(obj.payload.trips, mode);
+        dsResult = applyBackupDishes(obj.payload.dishes, mode, next.records);
         /* v2 模式下写 v2（读回校验），v1 模式下沿用 commitDbString */
         committed = commitDbNext(next);
       }catch(e){
@@ -15963,6 +16531,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         rollbackReports();
         rollbackShopMeta();
         rollbackTrips(tpPrevRaw, tpPrevStore);
+        rollbackDishes(dsPrevRaw, dsPrevStore);
         throw e;
       }
       db = next;
@@ -15981,6 +16550,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         reports:rpResult.count, reportsApplied:!!rpResult.applied, reportsAdded:rpResult.added,
         shopMetaApplied:!!smResult.applied, shopMetaShops:smResult.shops, shopMetaLinks:smResult.links,
         tripApplied:!!tpResult.applied, trips:tpResult.trips, tripStops:tpResult.stops,
+        dishApplied:!!dsResult.applied, dishes:dsResult.dishes, dishesDropped:dsResult.dropped,
         missingPhotos:countMissingPhotos(norm, photoMap), ms:Math.round(nowMs() - t0),
         snapshotId:snapRef ? snapRef.id : null
       };
@@ -16041,6 +16611,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var tpPrevRaw = null, tpPrevStore = JSON.parse(JSON.stringify(tripsLoad()));
       try{ tpPrevRaw = localStorage.getItem(TRIPS_KEY); }catch(e){ tpPrevRaw = null; }
       var tpResult = { applied:false, legacy:true, trips:0, stops:0 };
+      var dsPrevRaw = null, dsPrevStore = JSON.parse(JSON.stringify(dishesLoad()));
+      try{ dsPrevRaw = localStorage.getItem(DISHES_KEY); }catch(e){ dsPrevRaw = null; }
+      var dsResult = { applied:false, legacy:true, dishes:dishesLoad().items.length, dropped:0 };
       var committed;
       try{
         pmResult = applyBackupProfile(snap.data.profile);
@@ -16048,6 +16621,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         rpResult = applyBackupReports(snap.data.reports, 'replace');
         smResult = applyBackupShopMeta(snap.data.shopmeta, 'replace');
         tpResult = applyBackupTrips(snap.data.trips, 'replace');
+        dsResult = applyBackupDishes(snap.data.dishes, 'replace', norm.records);
         committed = commitDbNext(norm);
       }catch(e){
         rollbackFeedback();
@@ -16055,6 +16629,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         rollbackReports();
         rollbackShopMeta();
         rollbackTrips(tpPrevRaw, tpPrevStore);
+        rollbackDishes(dsPrevRaw, dsPrevStore);
         throw e;
       }
       db = norm;
@@ -16066,7 +16641,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return { ok:true, records:db.records.length, photos:snap.photoIds ? snap.photoIds.length : 0, at:snap.at, feedback:fbResult.count, feedbackApplied:!!fbResult.applied,
         profileApplied:!!pmResult.applied, profileBoost:pmResult.boost, profileBlock:pmResult.block, profileBudget:pmResult.budgetCap,
         reports:rpResult.count, reportsApplied:!!rpResult.applied,
-        tripApplied:!!tpResult.applied, trips:tpResult.trips, tripStops:tpResult.stops };
+        tripApplied:!!tpResult.applied, trips:tpResult.trips, tripStops:tpResult.stops,
+        dishApplied:!!dsResult.applied, dishes:dsResult.dishes, dishesDropped:dsResult.dropped };
     });
   }
 
@@ -16102,6 +16678,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<p class="dist-note">另含推荐反馈 ' + est.feedback + ' 条（想吃 / 吃腻了 / 不喜欢 / 永不推荐），随备份一起还原；反馈不按记录去重。</p>' +
         '<p class="dist-note">另含「我的口味」手动设置：提升 ' + est.profileBoost + ' 项 / 拉黑 ' + est.profileBlock + ' 项 / 人均上限 ' + (est.profileBudget ? '¥' + est.profileBudget : '未设置') + '（自动画像不落盘，恢复后按记录重算）。</p>' +
         '<p class="dist-note">另含旅行计划 ' + est.trips + ' 个行程 / ' + est.tripStops + ' 个地点（独立键 fandazi.trips，不写店铺档案与到店记录）。</p>' +
+        '<p class="dist-note">另含菜品 ' + est.dishes + ' 道（独立键 fandazi.dishes，金额仅参考、不计入消费统计）。</p>' +
         (est.warn ? '<p class="notice" style="margin-top:8px">体积超过 50 MB：生成与下载会占用较多内存和时间，仍可继续。低内存设备建议先清理旧照片。</p>' : '') +
         '<p class="muted" style="margin-top:8px">' + (last ? '上次备份：' + backupAgoText(last) : '还没有生成过完整备份。') + '</p>' +
         '<div class="actions" style="margin-top:14px">' +
@@ -16149,6 +16726,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           '<div class="stat"><b>' + fmtBytes(totalPhotoBytes) + '</b><span>照片体积</span></div>' +
         '</div>' +
         '<p class="dist-note">旅行计划：' + (obj.payload.trips ? (tripCount + ' 个行程 / ' + tripStopCount + ' 个地点') : '无（旧备份，本机旅行计划保持现状）') + '。</p>' +
+        '<p class="dist-note">菜品：' + (obj.payload.dishes && Array.isArray(obj.payload.dishes.items) ? (obj.payload.dishes.items.length + ' 道') : '无（旧备份，本机菜品保持现状）') + '。</p>' +
         '<p class="dist-note">配置：偏好 ' + Object.keys(norm.settings || {}).length + ' 项 · 黑名单 ' + norm.blacklist.length + ' · 常用地点 ' + norm.places.length + ' · 想去 ' + norm.wishlist.length + ' · 投票 ' + (obj.payload.votes ? obj.payload.votes.length : 0) +
           ' · 反馈 ' + (obj.payload.feedback && Array.isArray(obj.payload.feedback.items) ? obj.payload.feedback.items.length : 0) +
           ' · 口味设置 ' + (obj.payload.profile ? ((obj.payload.profile.boost || []).length + ' 提升 / ' + (obj.payload.profile.block || []).length + ' 拉黑' + (num(obj.payload.profile.budgetCap) > 0 ? ' / 上限 ¥' + Math.round(num(obj.payload.profile.budgetCap)) : '')) : '无（旧备份）') +
@@ -16188,6 +16766,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<p class="dist-note">' + (res.profileApplied ? '「我的口味」手动设置已还原（提升 ' + res.profileBoost + ' 项 / 拉黑 ' + res.profileBlock + ' 项 / 上限 ' + (res.profileBudget ? '¥' + res.profileBudget : '未设置') + '）。' : '该备份不含口味设置段（旧版本备份），本机口味设置保持不变。') + '</p>' +
         '<p class="dist-note">' + (res.reportsApplied ? '年度报告存档已还原（' + res.reports + ' 份）。' : '该备份不含年度存档段（旧版本备份），本机存档保持不变。') + '</p>' +
         '<p class="dist-note">' + (res.tripApplied ? '旅行计划已按备份还原（' + res.trips + ' 个行程 / ' + res.tripStops + ' 个地点）。' : '该备份不含旅行计划段（旧版本备份），本机旅行计划保持不变。') + '</p>' +
+        '<p class="dist-note">' + (res.dishApplied ? '菜品已按备份还原（' + res.dishes + ' 道' + (res.dishesDropped ? '，丢弃孤儿菜品 ' + res.dishesDropped + ' 道' : '') + '）。' : '该备份不含菜品段（旧版本备份），本机菜品保持不变。') + '</p>' +
         (res.missingPhotos ? '<p class="dist-note">有 ' + res.missingPhotos + ' 条记录引用的照片缺失，已保留无图状态。</p>' : '') +
         '<p class="dist-note">恢复前的本机数据已存为恢复点；若结果不对，可点下方按钮回到恢复前。</p>' +
         '<div class="actions" style="margin-top:12px">' +
@@ -17744,6 +18323,45 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   $('#btnCloseSheet').addEventListener('click', closeForm);
   $('#btnCancelForm').addEventListener('click', closeForm);
   $('#btnDeleteInForm').addEventListener('click', function(){ if(editingId) deleteRecord(editingId); });
+  /* 菜品（可选）：默认折叠；展开 / 跳过 / 动态行都不影响一键保存 */
+  $('#btnDishToggle').addEventListener('click', function(){
+    formDishOpen = !formDishOpen;
+    paintDishes();
+  });
+  $('#btnDishSkip').addEventListener('click', dishDraftSkip);
+  $('#btnDishAdd').addEventListener('click', dishDraftAddRow);
+  $('#dishRows').addEventListener('click', function(e){
+    if(!e.target.closest) return;
+    var row = e.target.closest('.dish-row');
+    if(row){
+      var idx = num(row.getAttribute('data-di'));
+      if(e.target.closest('[data-drow-del]')){ dishDraftDelRow(idx); return; }
+      if(e.target.closest('[data-dphoto-add]')){ formDishPhotoIdx = idx; $('#dishPhotoFile').click(); return; }
+      var rm = e.target.closest('[data-dphoto-rm]');
+      if(rm){ dishDraftRemovePhoto(rm.getAttribute('data-dphoto-rm')); return; }
+    }
+  });
+  $('#dishRows').addEventListener('input', function(e){
+    var inp = e.target;
+    if(!inp || !inp.getAttribute || !inp.getAttribute('data-dfield')) return;
+    var row = inp.closest ? inp.closest('.dish-row') : null;
+    if(!row) return;
+    var idx = num(row.getAttribute('data-di'));
+    var d = formDishes[idx];
+    if(!d) return;
+    d[inp.getAttribute('data-dfield')] = inp.value;
+    var cnt = $('#dishCount');
+    if(cnt) cnt.textContent = formDishes.length ? '已填 ' + dishDraftRealCount() + ' 道' : '';
+  });
+  $('#dishRows').addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && e.target && e.target.tagName === 'INPUT') e.preventDefault();
+  });
+  $('#dishPhotoFile').addEventListener('change', function(e){
+    var files = e.target.files;
+    if(files && formDishPhotoIdx >= 0) dishDraftAddPhotos(files, formDishPhotoIdx);
+    formDishPhotoIdx = -1;
+    e.target.value = '';
+  });
   $('#btnAddTag').addEventListener('click', addFormTag);
   $('#f-tag').addEventListener('keydown', function(e){
     if(e.key === 'Enter'){ e.preventDefault(); addFormTag(); }
@@ -19734,6 +20352,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       restore: function(text, mode){ return applyBackupRestore(parseBackupText(text), mode) },
       last: backupLast,
       estimate: backupEstimate,
+      panel: function(){ openBackupPanel(); return true; },
+      preview: function(text){ uiOpenRestorePreview(parseBackupText(text)); return true; },
       snapshots: snapshotAll,
       snapshot: function(reason){ return makeSnapshot(reason || 'test'); },
       restoreSnapshot: restoreSnapshotById,
@@ -19812,6 +20432,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           if(opts.reports !== undefined){ obj.payload.reports = JSON.parse(JSON.stringify(opts.reports)); }
           if(opts.dropTrips){ try{ delete obj.payload.trips; }catch(e){} }
           if(opts.trips !== undefined){ obj.payload.trips = JSON.parse(JSON.stringify(opts.trips)); }
+          if(opts.dropDishes){ try{ delete obj.payload.dishes; }catch(e){} }
+          if(opts.dishes !== undefined){ obj.payload.dishes = JSON.parse(JSON.stringify(opts.dishes)); }
           return backupChecksum(obj.payload, obj.photos).then(function(sum){
             obj.checksum.value = sum;
             return JSON.stringify(obj);
@@ -20100,6 +20722,80 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       apply: function(section, mode){ return applyBackupTrips(section, mode); },
       reset: function(){ return tripsPersist({ version:TRIPS_VERSION, items:[] }); },
       candidates: function(tid, q){ var t = tripsGet(tid); return t ? tripCandidates(t, q || '').map(function(c){ return { sid:c.sid, name:c.s.name, kind:c.kind }; }) : []; }
+    },
+    dishes: {
+      key: DISHES_KEY,
+      version: DISHES_VERSION,
+      shopId: function(name, city){ return shopIdOf(name, city); },
+      all: function(){ return dishBackupData(); },
+      raw: function(){ return JSON.parse(JSON.stringify(dishesLoad())); },
+      stored: function(){
+        try{ var raw = localStorage.getItem(DISHES_KEY); return raw ? JSON.parse(raw) : null; }catch(e){ return { error:String(e && e.message || e) }; }
+      },
+      norm: function(d){ return dishNorm(d); },
+      get: function(id){ var d = dishesGet(id); return d ? JSON.parse(JSON.stringify(d)) : null; },
+      byVisit: function(visitId){ return JSON.parse(JSON.stringify(dishesOfVisit(visitId))); },
+      byShop: function(shopId){ return JSON.parse(JSON.stringify(dishesOfShop(shopId))); },
+      summary: function(shopId){ return JSON.parse(JSON.stringify(dishesSummaryOfShop(shopId))); },
+      byRecord: function(r){ return JSON.parse(JSON.stringify(dishesDisplayOfRecord(r || {}))); },
+      add: function(d){ return dishAdd(d || {}); },
+      update: function(id, patch){ return dishUpdate(id, patch || {}); },
+      del: function(id){ return dishDelete(id); },
+      deleteByVisit: function(visitId){ return dishesDeleteByVisit(visitId); },
+      photoIdsOfVisit: function(visitId){ return dishPhotoIdsOfVisit(visitId); },
+      backupData: dishBackupData,
+      validate: function(section){ return dishBackupValidate(section, '测试'); },
+      apply: function(section, mode, records){ return applyBackupDishes(section, mode, records || db.records); },
+      reset: function(){ var ok = dishesPersist({ version:DISHES_VERSION, items:[] }); renderAll(); return ok; },
+      resetCache: function(){ dishStore = null; return true; },
+      form: function(id){ openForm(id || null, null, 'quick'); return true; },
+      newForm: function(prefill){ openForm(null, prefill || {}, 'quick'); return true; },
+      close: function(){ closeForm(); return true; },
+      ui: function(){
+        var body = $('#dishBody');
+        return {
+          box: !!$('#dishBox'),
+          expanded: formDishOpen,
+          bodyHidden: body ? body.classList.contains('hidden') : true,
+          rows: formDishes.length,
+          drafts: formDishes.map(function(d){ return { id:d.id || '', name:d.name, price:d.price, rating:d.rating, note:d.note, photos:(d.photoIds || []).length }; }),
+          skippedLabel: $('#btnDishSkip') ? $('#btnDishSkip').textContent : '',
+          toggleLabel: $('#btnDishToggle') ? $('#btnDishToggle').textContent : '',
+          countText: $('#dishCount') ? $('#dishCount').textContent : '',
+          rowDom: $('#dishRows') ? $('#dishRows').querySelectorAll('.dish-row').length : 0,
+          overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth
+        };
+      },
+      expand: function(){ formDishOpen = true; paintDishes(); return true; },
+      collapse: function(){ formDishOpen = false; paintDishes(); return true; },
+      skip: dishDraftSkip,
+      addRow: function(o){
+        dishDraftAddRow();
+        o = o || {};
+        var i = formDishes.length - 1;
+        if(i < 0) return false;
+        ['name','price','rating','note'].forEach(function(k){ if(o[k] !== undefined) formDishes[i][k] = String(o[k]); });
+        if(Array.isArray(o.photoIds)) formDishes[i].photoIds = o.photoIds.map(function(p){ return { id:String(p.id || p), cat:'dish' }; });
+        paintDishes();
+        return i;
+      },
+      setField: function(i, k, v){
+        if(!formDishes[i] || ['name','price','rating','note'].indexOf(k) < 0) return false;
+        formDishes[i][k] = String(v == null ? '' : v);
+        paintDishes();
+        return true;
+      },
+      delRow: function(i){ dishDraftDelRow(i); return true; },
+      addPhotoIds: function(i, ids){
+        if(!formDishes[i]) return false;
+        (ids || []).forEach(function(id){
+          if(formDishes[i].photoIds.some(function(p){ return p.id === String(id); })) return;
+          formDishes[i].photoIds.push({ id:String(id), cat:'dish' });
+        });
+        paintDishes();
+        return true;
+      },
+      draftPhotoIds: function(){ return JSON.parse(JSON.stringify(formDishes.map(function(d){ return d.photoIds || []; }))); }
     },
     quick: {
       store: function(key, meal){ var s = findStore(key); if(!s) return false; quickEat(s, meal || ''); return true; },

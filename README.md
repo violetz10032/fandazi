@@ -578,7 +578,23 @@ APK 内接了 `@capacitor/app`（6.0.3），Android 的物理/手势返回键不
 - **备份**：完整备份 `schemaVersion` 升为 **5**，`payload.trips` 保存完整行程；恢复预览会报告「旅行计划：N 个行程 / M 个地点」。旧备份（v4 及更早）没有该段时保持本机行程不动、不报错；`trips` 段结构非法（如 `items` 非数组、stop 缺 `shopId`）整包拒绝，本机数据不变。恢复点同样包含行程，可回滚。
 - **界面上限**：最多 100 个行程、每个行程 200 个店铺；375×812 无横向滚动，操作按钮 / 输入命中 ≥44px。
 
-实测（375×812 headless Chrome，真实点击）：旅行计划 **24/24** 通过——空态、创建 / 编辑 / 删除、同店多行程与去重、四种状态不产生记录、区域 / 日期 / 状态筛选、一键带入字段为空、保存后 `checked` 且记录 +1、刷新持久化、连续保存不污染 `v2.shops`、备份 v5 往返与旧备份兼容、非法 trips 段整包拒绝、恢复预览、地图过滤与店铺详情加入、375 无横向溢出、console / exception 0。
+实测（375×812 headless Chrome，真实点击）：旅行计划 **24/24** 通过——空态、创建 / 编辑 / 删除、同店多行程与去重、四种状态不产生记录、区域 / 日期 / 状态筛选、一键带入字段为空、保存后 `checked` 且记录 +1、刷新持久化、连续保存不污染 `v2.shops`、备份 v6 往返与旧备份兼容、非法 trips 段整包拒绝、恢复预览、地图过滤与店铺详情加入、375 无横向溢出、console / exception 0。
+
+## 菜品
+
+把「这次吃了什么」挂在一次真实的到店记录上，用折叠区按需填写，不打断快捷记录。
+
+- **存储**：独立增量键 `fandazi.dishes`（`{ version: 1, items: [...] }`），**不写进 `fandazi.v2.shops` / `fandazi.v2.visits`**，也不改 v2 投影协议。每条菜品：`{ id, visitId, shopId, name, price, rating, note, photoIds, createdAt, updatedAt }`；`price` / `rating` 没填就是 `null`，绝不补默认值。
+- **必须挂在一次到店**：`visitId` 必须指向一条真实存在的记录；没有记录时调用会被拒绝（返回明确错误）。删除记录时会级联删除该次记录的全部菜品，删除确认文案会写明「关联的 N 道菜品会一起删除」。
+- **折叠录入，不增加快捷步骤**：记录表单里的「菜品（可选）」默认收起，直接保存即跳过；顶部常驻「跳过，不记菜品」按钮，一键清空草稿并收起。展开后可动态增删多行（菜名 / 单价 / 评分 / 备注），菜名留空的行自动忽略，不新增任何必填校验。
+- **字段白名单**：读取坏 JSON 不崩、非法条目丢弃；只保留已知字段，金额 / 评分严格按「没填 = null」处理，不做 0 或平均分兜底。旧记录里遗留的 `r.dishes` 只读透传 / 展示，不迁入新键。
+- **同店汇总**：店铺详情（地图店铺 sheet）显示「同店菜品」：按 `shopId` + 同名（忽略大小写与首尾空格）汇总次数、最近价格、最近时间（优先用当次到访日期）；没有数据时显示「暂无数据」。
+- **照片**：菜品照片复用现有 IndexedDB 照片库与 `cat: 'dish'`，**不新建照片存储**；菜品照片只在菜品行 / 记录详情中展示，不与店铺照片、到店照片混用。
+- **统计边界**：菜品金额**不计入**消费总额、人均、月度 / 年度统计，仅作参考展示；统计口径仍以记录的 `totalPrice` / `perPrice` 为唯一事实。
+- **备份**：完整备份 `schemaVersion` 升为 **6**，`payload.dishes` 保存完整菜品段；恢复预览会显示菜品数量。旧备份（v5 及更早）没有该段时本机菜品保持现状、不报错；`dishes` 段非法（如 `items` 非数组、缺 `visitId` / `shopId` / 菜名、id 重复）整包拒绝。恢复后只保留 `visitId` 在结果记录里真实存在的菜品，孤儿菜品丢弃并计入恢复报告。
+- **界面上限**：375×812 无横向滚动，展开 / 跳过 / 添加 / 删除按钮命中 ≥44px；沿用现有样式 token，不改变底部主导航。分享包与旅行计划**暂不包含**菜品（本轮范围外）。
+
+实测（375×812 headless Chrome，真实点击）：菜品实体 **28/28** 通过——默认折叠 / 一键跳过、快捷记录 3 次点击 0 下滑、无记录拒绝入库、加 / 改 / 删、编辑记录增删菜品、记录详情与同店汇总、菜品照片 `cat=dish`、删除记录级联、刷新持久化、金额不进统计、备份 v6 往返、旧 v5 无 dishes 段保持现状、非法段整包拒绝、孤儿菜品丢弃、375 无横向溢出、console / exception 0。
 
 ## 备份与恢复
 
@@ -597,16 +613,16 @@ APK 内接了 `@capacitor/app`（6.0.3），Android 的物理/手势返回键不
 3. 生成后记下 `fandazi.backup.last`（时间、记录条数、文件大小），「我的 → 数据」会显示「上次备份：X 天前（N 条 / M.B）」；
 4. 距上次备份超过 7 天，或自上次备份后新增/修改 ≥10 条记录，「我的」页顶部会出现一条备份提醒（复用应用内提醒条），点「去备份」直达面板。
 
-文件结构（`schemaVersion` 是「备份格式版本」，本版为 5；`payload.version` 是数据结构版本，仍为 3）：
+文件结构（`schemaVersion` 是「备份格式版本」，本版为 6；`payload.version` 是数据结构版本，仍为 3）：
 
 ```json
 {
   "format": "fandazi-backup",
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "exportedAt": "2026-11-05T...",
   "checksum": { "algo": "SHA-256", "scope": "canonical(payload+photos)", "value": "…64 位十六进制…" },
   "stats": { "records": 30, "photos": 5, "photoBytes": 29167, … },
-  "payload": { "version": 3, "settings": {…}, "blacklist": [...], "wishlist": [...], "votes": [...], "places": [...], "localConfig": {…}, "feedback": { "version": 1, "items": [...] }, "profile": { "version": 1, "boost": ["粤菜"], "block": ["川菜"], "budgetCap": 120 }, "shopmeta": { "version": 1, "items": { "店铺id": { "updatedAt": "...", "links": [...], "fields": {...} } } }, "trips": { "version": 1, "items": [ { "id": "...", "name": "上海周末", "stops": [ { "shopId": "店铺id", "name": "北店", "city": "上海", "area": "徐汇", "status": "planned", "day": "2026-11-07", "note": "" } ] } ] }, "records": [...] },
+  "payload": { "version": 3, "settings": {…}, "blacklist": [...], "wishlist": [...], "votes": [...], "places": [...], "localConfig": {…}, "feedback": { "version": 1, "items": [...] }, "profile": { "version": 1, "boost": ["粤菜"], "block": ["川菜"], "budgetCap": 120 }, "shopmeta": { "version": 1, "items": { "店铺id": { "updatedAt": "...", "links": [...], "fields": {...} } } }, "trips": { "version": 1, "items": [ { "id": "...", "name": "上海周末", "stops": [ { "shopId": "店铺id", "name": "北店", "city": "上海", "area": "徐汇", "status": "planned", "day": "2026-11-07", "note": "" } ] } ] }, "dishes": { "version": 1, "items": [ { "id": "d...", "visitId": "记录id", "shopId": "店铺id", "name": "小笼包", "price": 28, "rating": null, "note": "", "photoIds": [ { "id": "p...", "cat": "dish" } ], "createdAt": "2026-11-05T...", "updatedAt": "2026-11-05T..." } ] }, "records": [...] },
   "photos": [ { "id": "p1", "dataUrl": "data:image/jpeg;base64,…" } ]
 }
 ```
@@ -620,6 +636,7 @@ APK 内接了 `@capacitor/app`（6.0.3），Android 的物理/手势返回键不
 - **口味设置**：`payload.profile` 保存「我的口味」里的手动设置（提升菜系 `boost`、拉黑菜系 `block`、人均上限 `budgetCap`），自动识别的画像是派生数据、不落盘。恢复时按备份原样还原；该段结构非法（如 `boost` 不是数组、`budgetCap` 非数字）会在校验阶段整包拒绝，本机记录与设置均不变。旧恢复点没有该字段时同样保持现状。
 - **平台链接 / 补充信息**：`payload.shopmeta` 保存 `fandazi.shopmeta`（第三方平台链接、链接状态与更新时间、用户手填字段及来源）。合并模式按店铺覆盖同 id 条目、其余保留；完整替换按备份原样还原。**旧备份（v3 及更早）没有该段**时保持本机现状、不清空；该段结构非法会整包拒绝。恢复结果会报告还原了多少家店 / 多少条链接。
 - **旅行计划**：`payload.trips` 保存 `fandazi.trips`（行程、stop 及其状态 / 日期 / 备注）。合并模式按行程 `id` 去重、其余保留；完整替换按备份原样还原。**旧备份（v4 及更早）没有该段**时保持本机行程现状、不报错；`items` 非数组、stop 缺 `shopId` 等结构非法会整包拒绝。恢复预览会报告「旅行计划：N 个行程 / M 个地点」，恢复结果会报告 `tripApplied / trips / tripStops`。
+- **菜品**：`payload.dishes` 保存 `fandazi.dishes`（菜名 / 参考单价 / 评分 / 备注 / 菜品照片 id）。合并模式按菜品 `id` 合并、其余保留；完整替换按备份原样还原。**旧备份（v5 及更早）没有该段**时保持本机菜品现状、不报错；`items` 非数组、条目缺 `id` / `visitId` / `shopId` / 菜名、id 重复等结构非法会整包拒绝。恢复预览会报告「菜品：N 道」；恢复后会按结果记录剔除孤儿菜品并报告丢弃数量（`dishApplied / dishes / dishesDropped`）。
 
 ### 恢复与恢复点
 
