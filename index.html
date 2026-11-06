@@ -1639,6 +1639,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <p class="muted" style="margin-top:10px" id="verInfo"></p>
       </div>
 
+      <div class="card" id="syncCard">
+        <div class="section-head" style="margin:0 0 10px">
+          <h2>跨设备同步</h2>
+          <span class="hint" id="syncState">未开启</span>
+        </div>
+        <p class="muted">通过你自己的私有 GitHub Gist 同步到店记录：数据加密后上传，口令不保存。GitHub 为境外服务。</p>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn btn-primary" id="btnSyncEnable">开启同步</button>
+          <button class="btn" id="btnSyncJoin">加入已有空间</button>
+          <button class="btn" id="btnSyncNow" disabled>立即同步</button>
+          <button class="btn btn-danger" id="btnSyncOff" disabled>断开</button>
+        </div>
+        <p class="dist-note" id="syncInfo">本版只同步到店记录（含删除墓碑）：照片、想去清单、地点、设置与投票暂不同步。</p>
+      </div>
+
       <div class="card" id="v2Card">
         <div class="section-head" style="margin:0 0 10px">
           <h2>新版数据</h2>
@@ -2141,6 +2156,37 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     <div class="actions" style="margin-top:12px">
       <button type="button" class="btn" id="btnVoiceDeny">不同意，改用手输</button>
       <button type="button" class="btn btn-primary" id="btnVoiceAgree" disabled>同意并开始</button>
+    </div>
+  </div>
+</div>
+
+<!-- 跨设备同步：Token + 口令 + 跨境同意 -->
+<div class="modal-mask hidden" id="syncMask">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="syncTitle">
+    <h3 id="syncTitle">开启跨设备同步</h3>
+    <p class="dist-note" id="syncNoteTop">数据会加密后上传到你自己的 GitHub 私有 Gist（境外服务）。</p>
+    <div class="field" id="syncTokenField">
+      <label for="syncToken">GitHub Token（权限至少勾 <b>gist</b>）</label>
+      <input class="input" type="password" id="syncToken" autocomplete="off" placeholder="ghp_… / gho_…">
+      <p class="dist-note" id="syncTokenHint">权限至少需要 <b>gist</b>。可用 <code>gh auth token</code> 获取本机 gh 的 token（<code>gho_</code> 类型，不会自行过期，可作 Bearer 直接调用 Gist API）；撤销路径：GitHub → Settings → Applications → Authorized OAuth Apps → GitHub CLI。</p>
+    </div>
+    <div class="field hidden" id="syncGistField">
+      <label for="syncGist">Gist ID（另一台设备开启同步后显示的那串）</label>
+      <input class="input" id="syncGist" autocomplete="off" placeholder="例如 a1b2c3d4e5f6…">
+    </div>
+    <div class="field">
+      <label for="syncPass">同步口令（至少 10 位，不保存，忘记无法恢复）</label>
+      <input class="input" type="password" id="syncPass" autocomplete="new-password" placeholder="不要和 GitHub 密码相同">
+    </div>
+    <div class="field" id="syncPass2Field">
+      <label for="syncPass2">再输一次口令</label>
+      <input class="input" type="password" id="syncPass2" autocomplete="new-password">
+    </div>
+    <label class="check" id="syncConsentRow"><input type="checkbox" id="syncConsent"> 我了解数据将加密上传至 GitHub（境外），并同意跨境传输；口令丢失无法找回</label>
+    <p class="dist-note" id="syncNoteBottom"></p>
+    <div class="actions" style="margin-top:12px">
+      <button type="button" class="btn" id="btnSyncCancel">取消</button>
+      <button type="button" class="btn btn-primary" id="btnSyncSubmit" disabled>继续</button>
     </div>
   </div>
 </div>
@@ -8805,6 +8851,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#myAvoidChips').innerHTML = (db.settings.restrictions||[]).map(function(t){
       return '<span class="chip-x">'+esc(t)+'<b data-act="delAvoid" data-tag="'+esc(t)+'">'+icon('close','ico-16')+'</b></span>';
     }).join('') || '<span class="muted">未设置</span>';
+    if(typeof FZSync !== 'undefined' && FZSync) FZSync.renderCard();
   }
 
   function renderPlaces(){
@@ -9716,6 +9763,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       toast('已记录「'+name+'」');
       savedNew = true;
     }
+    if(typeof FZSync !== 'undefined' && FZSync) FZSync.markChanged(rec.id);
     /* 本次移除、且没有任何记录再引用的照片才真正从 IndexedDB 删除 */
     formPendingDelete.forEach(function(pid){ releasePhoto(pid, null); });
     formPendingDelete = [];
@@ -9754,6 +9802,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var r = db.records.filter(function(x){ return x.id === id; })[0];
     if(!r) return;
     if(!confirm('删除「'+r.name+'」这条记录？此操作不可撤销。')) return;
+    if(typeof FZSync !== 'undefined' && FZSync) FZSync.markDeleted(id);
     db.records = db.records.filter(function(x){ return x.id !== id; });
     /* 只删没有任何其它记录再引用的照片 */
     recordPhotoIds(r).forEach(function(pid){ releasePhoto(pid, null); });
@@ -11076,6 +11125,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function clearAll(){
     if(!db.records.length){ toast('本来就没有数据'); return; }
     if(!confirm('确定清空全部 '+db.records.length+' 条记录、想去清单、黑名单与投票？建议先导出备份。')) return;
+    if(typeof FZSync !== 'undefined' && FZSync) FZSync.markAllDeleted();
     db = migrate(null);
     save();
     toast('已清空本机数据');
@@ -13562,6 +13612,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(reason === 'before-restore') return '恢复完整备份前';
     if(reason === 'before-migrate') return '升级到新版数据前';
     if(reason === 'before-clean-sample') return '清理教程示例前';
+    if(reason === 'before-sync') return '跨设备同步合并前';
     return '导入前';
   }
   function commitDbString(str){
@@ -16038,6 +16089,675 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   voiceInit();
 
+  /* ================= 跨设备同步 MVP（GitHub 私有 Gist · 端到端加密） =================
+     本版范围：到店记录 + 删除墓碑的加密上传/下载/合并/回读校验；冲突保留为副本。
+     明确后置：照片分片、墓碑 180 天清理、私有仓库 Contents API 回退、outbox 精细重试、
+     多设备并发压测；想去清单/地点/设置/投票不同步。任何情况下不写明文、不静默丢记录。 */
+  var FZSync = (function(){
+    var TOKEN_KEY = 'fandazi.sync.token';
+    var META_KEY = 'fandazi.sync.meta';
+    var LOCK_KEY = 'fandazi.sync.lock';
+    var ITER = 600000;
+    var PART_PLAIN = 512 * 1024;
+    var MAX_PARTS = 12;
+    var MANIFEST_FILE = 'manifest.fz.json';
+    var key = null;
+    var busy = false;
+    var mode = '';
+    var enc = new TextEncoder();
+    var dec = new TextDecoder();
+    var subtle = (window.crypto && crypto.subtle) ? crypto.subtle : null;
+
+    function code(c){ var e = new Error(c); e.code = c; return e; }
+    function b64(u8){
+      var s = '', n = u8.length;
+      for(var i = 0; i < n; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+      return btoa(s);
+    }
+    function unb64(str){
+      var s = atob(String(str || '')), u8 = new Uint8Array(s.length);
+      for(var i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
+      return u8;
+    }
+    function rand(n){ return crypto.getRandomValues(new Uint8Array(n)); }
+    function newId(prefix){ return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+    async function shaHex(u8){
+      var buf = await subtle.digest('SHA-256', u8);
+      var a = new Uint8Array(buf), out = '';
+      for(var i = 0; i < a.length; i++) out += (a[i] < 16 ? '0' : '') + a[i].toString(16);
+      return out;
+    }
+    function stable(v){
+      if(Array.isArray(v)) return '[' + v.map(stable).join(',') + ']';
+      if(v && typeof v === 'object'){
+        return '{' + Object.keys(v).sort().map(function(k){ return JSON.stringify(k) + ':' + stable(v[k]); }).join(',') + '}';
+      }
+      return JSON.stringify(v === undefined ? null : v);
+    }
+    function syncRecordOf(r){
+      var o = {};
+      Object.keys(r || {}).forEach(function(k){
+        if(k === 'photo' || k === 'photoId' || k === 'photoIds' || k === 'photos' || k === 'photoRef') return;
+        if(k === 'contentHash' || k === 'rev' || k === 'syncRev') return;
+        o[k] = r[k];
+      });
+      return o;
+    }
+    async function hashRecord(r){ return shaHex(enc.encode(stable(syncRecordOf(r)))); }
+
+    function defaultMeta(){
+      return { enabled:false, deviceId:'', gistId:'', salt:'', lastRev:0, lastSyncAt:'', consentAt:'',
+        userName:'', baseHashes:{}, dirty:{}, tombstones:[] };
+    }
+    function loadMeta(){
+      try{
+        var raw = localStorage.getItem(META_KEY);
+        if(!raw) return defaultMeta();
+        var m = JSON.parse(raw);
+        return Object.assign(defaultMeta(), m || {});
+      }catch(e){ return defaultMeta(); }
+    }
+    function saveMeta(m){ try{ localStorage.setItem(META_KEY, JSON.stringify(m)); }catch(e){} }
+    var meta = loadMeta();
+    function ensureDevice(){
+      if(!meta.deviceId){
+        meta.deviceId = 'd_' + Math.random().toString(36).slice(2, 10);
+        saveMeta(meta);
+      }
+      return meta.deviceId;
+    }
+    function ghToken(){ try{ return localStorage.getItem(TOKEN_KEY) || ''; }catch(e){ return ''; } }
+    function setToken(t){
+      try{ if(t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); }catch(e){}
+    }
+    function tokenMask(t){ return t ? (t.slice(0, 4) + '…' + t.slice(-4)) : ''; }
+
+    function errText(e){
+      var c = (e && e.code) || '';
+      var MAP = {
+        E_NO_SUBTLE:'当前浏览器缺少加密能力（WebCrypto），无法安全同步',
+        E_TOKEN:'GitHub Token 无效或已撤销，请重新粘贴（权限至少需要 gist）',
+        E_SCOPE:'Token 权限不足：至少需要 gist 权限',
+        E_RATE:'GitHub 接口限流，请稍后再试',
+        E_NOT_FOUND:'找不到这个 Gist：ID 不对、已被删除，或 Token 无权访问',
+        E_CRYPTO:'口令错误或同步文件已损坏；本机记录未改动',
+        E_FORMAT:'同步文件格式校验失败；本机记录未改动',
+        E_TOO_BIG:'数据量超过本版分片上限；本机记录未改动',
+        E_CONFLICT:'其他设备刚写入新版本，请稍后再同步一次；本机记录未改动',
+        E_BUSY:'另一个同步任务正在进行，请稍后',
+        E_GIST_PUBLIC:'Gist 被创建为公开，已中止并删除；请检查 Token 权限',
+        E_CONSENT:'需要先勾选同意加密上传至 GitHub（境外）',
+        E_NET:'网络异常，无法连接 GitHub；本机记录未改动',
+        E_OFF:'同步尚未开启',
+        E_PASS:'同步口令至少 10 位',
+        E_NO_GIST:'请填写另一台设备显示的 Gist ID'
+      };
+      if(MAP[c]) return MAP[c];
+      return '同步失败：' + ((e && e.message) || '未知错误') + '（本机记录未改动）';
+    }
+
+    function ghRequest(path, opts){
+      opts = opts || {};
+      var token = opts.token || ghToken();
+      if(!token) return Promise.reject(code('E_TOKEN'));
+      var ctrl = new AbortController();
+      var timer = setTimeout(function(){ try{ ctrl.abort(); }catch(e){} }, 20000);
+      return fetch('https://api.github.com' + path, {
+        method: opts.method || 'GET',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json'
+        },
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+        cache:'no-store',
+        signal: ctrl.signal
+      }).then(function(res){
+        return res.text().then(function(text){
+          var data = null;
+          try{ data = text ? JSON.parse(text) : null; }catch(e){ data = { message:text }; }
+          if(!res.ok){
+            var c = res.status === 401 ? 'E_TOKEN' : res.status === 404 ? 'E_NOT_FOUND'
+              : res.status === 403 ? (data && /rate limit/i.test(String(data.message||'')) ? 'E_RATE' : 'E_SCOPE')
+              : res.status === 422 ? 'E_FORMAT' : 'E_NET';
+            var e = code(c); e.status = res.status; e.message = (data && data.message) || ''; throw e;
+          }
+          return data;
+        });
+      }).catch(function(e){
+        if(e && e.code) throw e;
+        throw code('E_NET');
+      }).finally(function(){ clearTimeout(timer); });
+    }
+
+    async function gzipBytes(bytes){
+      if(typeof CompressionStream === 'undefined') return { data:bytes, compression:'none' };
+      try{
+        var stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
+        var ab = await new Response(stream).arrayBuffer();
+        return { data:new Uint8Array(ab), compression:'gzip' };
+      }catch(e){ return { data:bytes, compression:'none' }; }
+    }
+    async function gunzipBytes(bytes, compression){
+      if(compression !== 'gzip') return bytes;
+      if(typeof DecompressionStream === 'undefined') throw code('E_FORMAT');
+      var stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+      var ab = await new Response(stream).arrayBuffer();
+      return new Uint8Array(ab);
+    }
+
+    async function deriveKey(pass, saltB64){
+      if(!subtle) throw code('E_NO_SUBTLE');
+      var base = await subtle.importKey('raw', enc.encode(String(pass).normalize('NFKC')), { name:'PBKDF2' }, false, ['deriveKey']);
+      return subtle.deriveKey(
+        { name:'PBKDF2', salt:unb64(saltB64), iterations:ITER, hash:'SHA-256' },
+        base, { name:'AES-GCM', length:256 }, false, ['encrypt', 'decrypt']
+      );
+    }
+
+    function partName(i){ return 'data-' + ('000' + (i + 1)).slice(-4) + '.fz.json'; }
+
+    async function encryptPayload(payload, aesKey, saltB64){
+      if(!subtle) throw code('E_NO_SUBTLE');
+      var plainBytes = enc.encode(JSON.stringify(payload));
+      var plainSha = await shaHex(plainBytes);
+      var gz = await gzipBytes(plainBytes);
+      var total = Math.max(1, Math.ceil(gz.data.length / PART_PLAIN));
+      if(total > MAX_PARTS) throw code('E_TOO_BIG');
+      var files = {};
+      var parts = [];
+      for(var i = 0; i < total; i++){
+        var chunk = gz.data.subarray(i * PART_PLAIN, Math.min(gz.data.length, (i + 1) * PART_PLAIN));
+        var iv = rand(12);
+        var aad = enc.encode('fandazi-sync-enc|1|' + (i + 1) + '|' + total + '|' + plainSha);
+        var ctBuf = await subtle.encrypt({ name:'AES-GCM', iv:iv, additionalData:aad, tagLength:128 }, aesKey, chunk);
+        var ct = new Uint8Array(ctBuf);
+        var name = partName(i);
+        files[name] = { content: JSON.stringify({ i:i + 1, n:total, iv:b64(iv), ct:b64(ct) }) };
+        parts.push({ file:name, i:i + 1, iv:b64(iv), sha256:await shaHex(ct), bytes:ct.length });
+      }
+      var manifest = {
+        format:'fandazi-sync-enc', version:1,
+        kdf:{ alg:'PBKDF2-SHA256', iter:ITER, salt:saltB64 },
+        cipher:{ alg:'AES-256-GCM', tagBits:128, aad:'part-i-n-total-plainSha' },
+        compression:gz.compression, createdAt:new Date().toISOString(),
+        writerId:ensureDevice(), payloadRev:payload.rev, parentRev:payload.parentRev,
+        plainSha256:plainSha, plainBytes:plainBytes.length,
+        parts:parts
+      };
+      files[MANIFEST_FILE] = { content: JSON.stringify(manifest) };
+      return { files:files, manifest:manifest, filesCount:total + 1 };
+    }
+
+    async function decryptPayload(manifest, files, aesKey){
+      if(!manifest || manifest.format !== 'fandazi-sync-enc' || Number(manifest.version) !== 1) throw code('E_FORMAT');
+      if(!manifest.parts || !manifest.parts.length) throw code('E_FORMAT');
+      if(manifest.parts.length > MAX_PARTS) throw code('E_FORMAT');
+      var chunks = [];
+      var sorted = manifest.parts.slice().sort(function(a, b){ return num2(a.i) - num2(b.i); });
+      for(var j = 0; j < sorted.length; j++){
+        var p = sorted[j];
+        var f = files[p.file];
+        if(!f || typeof f.content !== 'string' || f.truncated) throw code('E_FORMAT');
+        var part = JSON.parse(f.content);
+        var aad = enc.encode('fandazi-sync-enc|1|' + p.i + '|' + sorted.length + '|' + manifest.plainSha256);
+        try{
+          var pt = await subtle.decrypt({ name:'AES-GCM', iv:unb64(part.iv || p.iv), additionalData:aad, tagLength:128 }, aesKey, unb64(part.ct));
+          chunks.push(new Uint8Array(pt));
+        }catch(e){ throw code('E_CRYPTO'); }
+      }
+      var totalLen = chunks.reduce(function(s, c){ return s + c.length; }, 0);
+      var all = new Uint8Array(totalLen), off = 0;
+      chunks.forEach(function(c){ all.set(c, off); off += c.length; });
+      var plain = await gunzipBytes(all, manifest.compression);
+      if(await shaHex(plain) !== manifest.plainSha256) throw code('E_FORMAT');
+      var payload;
+      try{ payload = JSON.parse(dec.decode(plain)); }catch(e){ throw code('E_FORMAT'); }
+      if(!payload || payload.format !== 'fandazi-sync' || Number(payload.version) > 2) throw code('E_FORMAT');
+      if(!Array.isArray(payload.records)) throw code('E_FORMAT');
+      return payload;
+    }
+    function num2(v){ return Number(v) || 0; }
+
+    async function gistFiles(id, token){
+      var g = await ghRequest('/gists/' + encodeURIComponent(id), { token:token });
+      if(!g || !g.files) throw code('E_NOT_FOUND');
+      if(g.public === true) throw code('E_FORMAT');
+      return g;
+    }
+    async function createGist(files, token){
+      var g = await ghRequest('/gists', { method:'POST', token:token, body:{ description:'fandazi sync (encrypted)', public:false, files:files } });
+      if(g && g.public === true){
+        try{ await ghRequest('/gists/' + encodeURIComponent(g.id), { method:'DELETE', token:token }); }catch(e){}
+        throw code('E_GIST_PUBLIC');
+      }
+      return g;
+    }
+    async function patchGist(id, files, newTotal, oldTotal, token){
+      var body = { files:Object.assign({}, files) };
+      for(var i = newTotal; i < oldTotal; i++){ body.files[partName(i)] = { content:null }; }
+      return ghRequest('/gists/' + encodeURIComponent(id), { method:'PATCH', token:token, body:body });
+    }
+
+    async function buildPayload(records, rev, parentRev){
+      var outRecords = [];
+      for(var i = 0; i < records.length; i++){
+        var r = syncRecordOf(records[i]);
+        r.contentHash = await hashRecord(records[i]);
+        r.rev = 1;
+        outRecords.push(r);
+      }
+      return {
+        format:'fandazi-sync', version:2, schemaVersion:3,
+        exportedAt:new Date().toISOString(), source:'device:' + ensureDevice(), deviceId:ensureDevice(),
+        rev:rev, parentRev:parentRev,
+        records:outRecords,
+        tombstones:(meta.tombstones || []).slice(),
+        wishlist:[], places:[], settings:{}, polls:[]
+      };
+    }
+
+    function newer(a, b){
+      var ta = String(a.updatedAt || a.createdAt || ''), tb = String(b.updatedAt || b.createdAt || '');
+      if(ta === tb) return a;
+      return ta > tb ? a : b;
+    }
+    function mergeTombs(local, remote){
+      var map = {};
+      (local || []).concat(remote || []).forEach(function(t){
+        if(!t || !t.entity || !t.id) return;
+        var k = t.entity + ':' + t.id;
+        if(!map[k] || String(t.deletedAt || '') > String(map[k].deletedAt || '')) map[k] = t;
+      });
+      return Object.keys(map).map(function(k){ return map[k]; });
+    }
+    async function conflictCopy(loser, origId, from){
+      var h = await hashRecord(loser);
+      var o = syncRecordOf(loser);
+      o.id = 'cf_' + origId + '_' + h.slice(0, 8);
+      o.conflictOf = origId;
+      o.conflictFrom = String(from || 'other');
+      o.source = 'conflict';
+      o.note = '[冲突副本] ' + String(loser.note || '');
+      o.updatedAt = new Date().toISOString();
+      o.createdAt = loser.createdAt || o.updatedAt;
+      return o;
+    }
+    async function mergeRecords(localRecords, remotePayload){
+      var localMap = {}, remoteMap = {};
+      localRecords.forEach(function(r){ localMap[r.id] = r; });
+      (remotePayload.records || []).forEach(function(r){ if(r && r.id) remoteMap[r.id] = r; });
+      var tombs = mergeTombs(meta.tombstones, remotePayload.tombstones || []);
+      var tombKeys = {};
+      tombs.forEach(function(t){ tombKeys[t.entity + ':' + t.id] = 1; });
+      var ids = [], seen = {};
+      localRecords.forEach(function(r){ if(!seen[r.id]){ seen[r.id] = 1; ids.push(r.id); } });
+      (remotePayload.records || []).forEach(function(r){ if(r && r.id && !seen[r.id]){ seen[r.id] = 1; ids.push(r.id); } });
+      var out = [], conflicts = 0;
+      for(var i = 0; i < ids.length; i++){
+        var id = ids[i];
+        if(tombKeys['record:' + id]) continue;
+        var l = localMap[id], r = remoteMap[id], base = (meta.baseHashes || {})[id] || '';
+        if(l && !r){ out.push(l); continue; }
+        if(r && !l){ out.push(syncRecordOf(r)); continue; }
+        if(!l && !r) continue;
+        var lh = await hashRecord(l), rh = await hashRecord(r);
+        if(lh === rh){ out.push(newer(l, r)); continue; }
+        var localChanged = base ? base !== lh : true;
+        var remoteChanged = base ? base !== rh : true;
+        if(localChanged && remoteChanged){
+          var winner = newer(l, r), loser = (winner === l) ? r : l;
+          out.push(syncRecordOf(winner));
+          var cf = await conflictCopy(loser, id, (loser === l) ? ensureDevice() : (remotePayload.deviceId || remotePayload.source || 'other'));
+          if(!localMap[cf.id]){ out.push(cf); conflicts++; }
+        }else if(remoteChanged){
+          out.push(syncRecordOf(r));
+        }else{
+          out.push(l);
+        }
+      }
+      return { records:out, tombstones:tombs, conflicts:conflicts };
+    }
+
+    async function hashAll(records){
+      var map = {};
+      for(var i = 0; i < records.length; i++) map[records[i].id] = await hashRecord(records[i]);
+      return map;
+    }
+
+    async function applySuccess(merged, rev, gistId, saltB64, tombstones, recCount){
+      db.records = merged.records;
+      try{ db.records.forEach(function(r){ if(!r.updatedAt) r.updatedAt = new Date().toISOString(); }); }catch(e){}
+      meta.enabled = true;
+      meta.gistId = gistId;
+      meta.salt = saltB64;
+      meta.lastRev = rev;
+      meta.lastSyncAt = new Date().toISOString();
+      meta.consentAt = meta.consentAt || new Date().toISOString();
+      meta.tombstones = tombstones || meta.tombstones || [];
+      meta.tombstones.forEach(function(t){ t.syncedAt = meta.lastSyncAt; });
+      meta.baseHashes = await hashAll(db.records);
+      meta.dirty = {};
+      saveMeta(meta);
+      save();
+      renderAll();
+      renderCard();
+      return { records:recCount, conflicts:merged.conflicts };
+    }
+
+    function lock(){
+      try{
+        var cur = localStorage.getItem(LOCK_KEY);
+        if(cur){
+          var o = JSON.parse(cur);
+          if(o && num2(o.at) && Date.now() - num2(o.at) < 60000) return null;
+        }
+        var tok = newId('lk');
+        localStorage.setItem(LOCK_KEY, JSON.stringify({ at:Date.now(), token:tok }));
+        return tok;
+      }catch(e){ return null; }
+    }
+    function unlock(tok){
+      if(!tok) return;
+      try{
+        var o = JSON.parse(localStorage.getItem(LOCK_KEY) || '{}');
+        if(o && o.token === tok) localStorage.removeItem(LOCK_KEY);
+      }catch(e){}
+    }
+
+    async function enableFlow(o){
+      if(!subtle) throw code('E_NO_SUBTLE');
+      if(!o || !o.token) throw code('E_TOKEN');
+      if(!o.pass || String(o.pass).length < 10) throw code('E_PASS');
+      if(!o.consent) throw code('E_CONSENT');
+      var lk = lock(); if(!lk) throw code('E_BUSY');
+      try{
+        await ghRequest('/user', { token:o.token }).catch(function(e){ throw (e.code === 'E_TOKEN' ? e : e); });
+        ensureDevice();
+        var salt = b64(rand(16));
+        var aes = await deriveKey(o.pass, salt);
+        var payload = await buildPayload(db.records, 1, 0);
+        var encrypted = await encryptPayload(payload, aes, salt);
+        var gist = await createGist(encrypted.files, o.token);
+        var rb = await gistFiles(gist.id, o.token);
+        var mf = JSON.parse(rb.files[MANIFEST_FILE].content);
+        if(mf.writerId !== meta.deviceId || num2(mf.payloadRev) !== 1) throw code('E_CONFLICT');
+        setToken(o.token);
+        key = aes;
+        meta.enabled = true;
+        meta.gistId = gist.id;
+        meta.salt = salt;
+        meta.lastRev = 1;
+        meta.lastSyncAt = new Date().toISOString();
+        meta.consentAt = meta.lastSyncAt;
+        meta.tombstones.forEach(function(t){ t.syncedAt = meta.lastSyncAt; });
+        meta.baseHashes = await hashAll(db.records);
+        meta.dirty = {};
+        saveMeta(meta);
+        renderCard();
+        return { gistId:gist.id, records:db.records.length, conflicts:0 };
+      }finally{ unlock(lk); }
+    }
+
+    async function fetchPayload(gistId, token, pass, saltB64){
+      var g = await gistFiles(gistId, token);
+      var mfFile = g.files[MANIFEST_FILE];
+      if(!mfFile || !mfFile.content || mfFile.truncated) throw code('E_FORMAT');
+      var manifest = JSON.parse(mfFile.content);
+      var salt = saltB64 || (manifest.kdf && manifest.kdf.salt) || '';
+      if(!salt) throw code('E_FORMAT');
+      var aes = key || await deriveKey(pass, salt);
+      var payload = await decryptPayload(manifest, g.files, aes);
+      return { gist:g, manifest:manifest, payload:payload, key:aes, salt:salt };
+    }
+
+    async function joinFlow(o){
+      if(!subtle) throw code('E_NO_SUBTLE');
+      if(!o || !o.token) throw code('E_TOKEN');
+      if(!o.gistId) throw code('E_NO_GIST');
+      if(!o.pass || String(o.pass).length < 10) throw code('E_PASS');
+      if(!o.consent) throw code('E_CONSENT');
+      var lk = lock(); if(!lk) throw code('E_BUSY');
+      try{
+        await ghRequest('/user', { token:o.token });
+        ensureDevice();
+        var got = await fetchPayload(o.gistId, o.token, o.pass, '');
+        await makeSnapshot('before-sync');
+        var merged = await mergeRecords(db.records, got.payload);
+        var parent = num2(got.manifest.payloadRev);
+        var rev = Math.max(num2(meta.lastRev), parent) + 1;
+        var payload = await buildPayload(merged.records, rev, parent);
+        var encrypted = await encryptPayload(payload, got.key, got.salt);
+        await patchGist(o.gistId, encrypted.files, encrypted.manifest.parts.length, got.manifest.parts.length, o.token);
+        var rb = await gistFiles(o.gistId, o.token);
+        var mf = JSON.parse(rb.files[MANIFEST_FILE].content);
+        if(mf.writerId !== meta.deviceId || num2(mf.payloadRev) !== rev) throw code('E_CONFLICT');
+        setToken(o.token);
+        key = got.key;
+        var res = await applySuccess(merged, rev, o.gistId, got.salt, merged.tombstones, db.records.length);
+        return Object.assign({ gistId:o.gistId }, res);
+      }finally{ unlock(lk); }
+    }
+
+    async function syncNow(pass){
+      if(!meta.enabled || !meta.gistId) throw code('E_OFF');
+      if(!ghToken()) throw code('E_TOKEN');
+      if(!key && (!pass || String(pass).length < 10)) throw code('E_PASS');
+      var lk = lock(); if(!lk) throw code('E_BUSY');
+      try{
+        var got = await fetchPayload(meta.gistId, ghToken(), pass, meta.salt || '');
+        await makeSnapshot('before-sync');
+        var merged = await mergeRecords(db.records, got.payload);
+        var parent = num2(got.manifest.payloadRev);
+        var rev = Math.max(num2(meta.lastRev), parent) + 1;
+        var payload = await buildPayload(merged.records, rev, parent);
+        var encrypted = await encryptPayload(payload, got.key, got.salt);
+        await patchGist(meta.gistId, encrypted.files, encrypted.manifest.parts.length, got.manifest.parts.length, ghToken());
+        var rb = await gistFiles(meta.gistId, ghToken());
+        var mf = JSON.parse(rb.files[MANIFEST_FILE].content);
+        if(mf.writerId !== ensureDevice() || num2(mf.payloadRev) !== rev) throw code('E_CONFLICT');
+        key = got.key;
+        var res = await applySuccess(merged, rev, meta.gistId, got.salt, merged.tombstones, db.records.length);
+        return Object.assign({ gistId:meta.gistId }, res);
+      }finally{ unlock(lk); }
+    }
+
+    function markChanged(id){
+      if(!id) return;
+      var m = loadMeta();
+      m.dirty = m.dirty || {};
+      m.dirty[id] = 1;
+      /* 保留 baseHash：用于判断「仅本机改动 / 双方都改动」 */
+      saveMeta(m);
+      meta = m;
+    }
+    function markDeleted(id){
+      if(!id) return;
+      var m = loadMeta();
+      m.tombstones = (m.tombstones || []).filter(function(t){ return !(t.entity === 'record' && t.id === id); });
+      m.tombstones.push({ entity:'record', id:id, deletedAt:new Date().toISOString(), rev:1, deviceId:m.deviceId || '' });
+      if(m.baseHashes) delete m.baseHashes[id];
+      if(m.dirty) delete m.dirty[id];
+      saveMeta(m);
+      meta = m;
+      renderCard();
+    }
+    function markAllDeleted(){
+      if(!meta.enabled || !db.records.length) return;
+      db.records.forEach(function(r){ markDeleted(r.id); });
+    }
+
+    function pendingCount(){
+      var ids = {}, n = 0;
+      Object.keys(meta.dirty || {}).forEach(function(id){ if(!ids[id]){ ids[id] = 1; n++; } });
+      (db.records || []).forEach(function(r){ if(!(meta.baseHashes || {})[r.id] && !ids[r.id]){ ids[r.id] = 1; n++; } });
+      n += (meta.tombstones || []).filter(function(t){ return !t.syncedAt; }).length;
+      return n;
+    }
+
+    function renderCard(){
+      var st = $('#syncState');
+      if(!st) return;
+      var on = !!(meta.enabled && meta.gistId);
+      var pend = on ? pendingCount() : 0;
+      st.textContent = on ? ('已开启' + (pend ? ' · 待同步 ' + pend + ' 条' : ' · 已同步')) : '未开启';
+      $('#btnSyncEnable').disabled = on;
+      $('#btnSyncJoin').disabled = on;
+      $('#btnSyncNow').disabled = !on;
+      $('#btnSyncOff').disabled = !on;
+      var info = $('#syncInfo');
+      if(!info) return;
+      if(on){
+        info.innerHTML = 'Gist ID：<b>' + esc(meta.gistId) + '</b> ' +
+          '<button class="btn btn-sm" id="btnSyncCopy" style="flex:none">复制</button>' +
+          '<br><span class="muted">口令不保存，刷新后同步需重新输入；照片、想去清单、地点、设置与投票暂不同步。</span>';
+      }else{
+        info.innerHTML = '本版只同步到店记录（含删除墓碑）：照片、想去清单、地点、设置与投票暂不同步。数据加密后上传至 GitHub（境外）。';
+      }
+    }
+
+    function modalField(id, show){ var el = $('#' + id); if(el) el.classList.toggle('hidden', !show); }
+    function openModal(m){
+      mode = m;
+      var title = $('#syncTitle');
+      var top = $('#syncNoteTop');
+      var bottom = $('#syncNoteBottom');
+      $('#syncToken').value = '';
+      $('#syncPass').value = '';
+      $('#syncPass2').value = '';
+      $('#syncGist').value = '';
+      $('#syncConsent').checked = false;
+      var tok = ghToken();
+      $('#syncToken').placeholder = tok ? ('已保存 ' + tokenMask(tok) + '（留空沿用）') : 'ghp_… / gho_…';
+      modalField('syncTokenField', m !== 'now');
+      modalField('syncGistField', m === 'join');
+      modalField('syncPass2Field', m !== 'now');
+      modalField('syncConsentRow', m !== 'now');
+      if(m === 'enable'){
+        title.textContent = '开启跨设备同步';
+        top.textContent = '第一步：创建你自己的私有 Gist。数据会端到端加密后上传（GitHub 为境外服务）。';
+        bottom.textContent = 'Token 只保存在本机；同步口令不保存，忘记后只能换新口令重新建立（旧密文无法解密）。';
+      }else if(m === 'join'){
+        title.textContent = '加入已有同步空间';
+        top.textContent = '填另一台设备显示的 Gist ID、同一个 Token 与同一个口令；只下载并合并，不会覆盖本机较新的记录。';
+        bottom.textContent = '合并前会自动建一份本机恢复点；失败不会改动本机记录。';
+      }else{
+        title.textContent = '输入同步口令';
+        top.textContent = '同步口令不落盘，刷新页面后需要重新输入才能解密远端数据。';
+        bottom.textContent = '照片等未同步；本版只同步到店记录与删除墓碑。';
+      }
+      $('#syncMask').classList.remove('hidden');
+      updateSubmit();
+      setTimeout(function(){
+        try{ (m === 'now' ? $('#syncPass') : $('#syncToken')).focus(); }catch(e){}
+      }, 60);
+    }
+    function closeModal(){ $('#syncMask').classList.add('hidden'); mode = ''; }
+    function updateSubmit(){
+      var pass = $('#syncPass').value || '';
+      var pass2 = $('#syncPass2').value || '';
+      var token = $('#syncToken').value.trim() || ghToken();
+      var gist = $('#syncGist').value.trim();
+      var ok = pass.length >= 10;
+      if(mode !== 'now'){ ok = ok && !!token && pass2 === pass && $('#syncConsent').checked; }
+      if(mode === 'join') ok = ok && !!gist;
+      $('#btnSyncSubmit').disabled = !ok;
+      $('#btnSyncSubmit').textContent = mode === 'now' ? '同步' : mode === 'join' ? '加入并合并' : '创建并上传';
+    }
+
+    async function submitModal(){
+      if(busy) return;
+      var pass = $('#syncPass').value || '';
+      var token = $('#syncToken').value.trim() || ghToken();
+      var gist = $('#syncGist').value.trim();
+      var consent = $('#syncConsent').checked;
+      busy = true;
+      $('#btnSyncSubmit').disabled = true;
+      $('#btnSyncSubmit').textContent = '处理中…';
+      try{
+        var res;
+        if(mode === 'enable') res = await enableFlow({ token:token, pass:pass, consent:consent });
+        else if(mode === 'join') res = await joinFlow({ token:token, gistId:gist, pass:pass, consent:consent });
+        else res = await syncNow(pass);
+        closeModal();
+        toast('同步完成：本机 ' + res.records + ' 条记录' + (res.conflicts ? '，保留 ' + res.conflicts + ' 条冲突副本' : ''));
+        if(res.gistId) setTimeout(function(){ toast('Gist ID：' + res.gistId + '（另一台设备用它加入）'); }, 1600);
+        renderCard();
+      }catch(e){
+        toast(errText(e));
+      }finally{
+        busy = false;
+        $('#btnSyncSubmit').disabled = false;
+        try{ updateSubmit(); }catch(e){}
+      }
+    }
+
+    function initUI(){
+      var en = $('#btnSyncEnable'); if(en) en.addEventListener('click', function(){ openModal('enable'); });
+      var jo = $('#btnSyncJoin'); if(jo) jo.addEventListener('click', function(){ openModal('join'); });
+      var no = $('#btnSyncNow'); if(no) no.addEventListener('click', async function(){
+        if(key){ try{ busy = true; var r = await syncNow(''); toast('同步完成：本机 ' + r.records + ' 条记录' + (r.conflicts ? '，保留 ' + r.conflicts + ' 条冲突副本' : '')); renderCard(); }
+          catch(e){ toast(errText(e)); } finally{ busy = false; } return; }
+        openModal('now');
+      });
+      var off = $('#btnSyncOff'); if(off) off.addEventListener('click', function(){
+        if(!confirm('断开同步？本机记录保留；本机保存的 Token 与 Gist ID 会清除，远端密文不会被删除。')) return;
+        try{ localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(META_KEY); localStorage.removeItem(LOCK_KEY); }catch(e){}
+        meta = loadMeta(); key = null; saveMeta(meta); renderCard(); toast('已断开同步，本机记录保留');
+      });
+      var cancel = $('#btnSyncCancel'); if(cancel) cancel.addEventListener('click', closeModal);
+      var submit = $('#btnSyncSubmit'); if(submit) submit.addEventListener('click', submitModal);
+      var mask = $('#syncMask'); if(mask) mask.addEventListener('click', function(e){ if(e.target === mask) closeModal(); });
+      ['syncToken','syncPass','syncPass2','syncGist'].forEach(function(id){
+        var el = $('#' + id); if(el) el.addEventListener('input', updateSubmit);
+      });
+      var chk = $('#syncConsent'); if(chk) chk.addEventListener('change', updateSubmit);
+      var info = $('#syncInfo'); if(info) info.addEventListener('click', function(e){
+        var b = e.target && e.target.closest ? e.target.closest('#btnSyncCopy') : null;
+        if(!b) return;
+        var txt = meta.gistId || '';
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(txt).then(function(){ toast('已复制 Gist ID'); }, function(){ toast('复制失败，请长按复制'); });
+        }else toast('请长按复制 Gist ID：' + txt);
+      });
+    }
+
+    function resetAll(){
+      try{ localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(META_KEY); localStorage.removeItem(LOCK_KEY); }catch(e){}
+      meta = loadMeta(); key = null; renderCard();
+      return true;
+    }
+
+    initUI();
+    renderCard();
+
+    return {
+      renderCard: renderCard,
+      markChanged: markChanged,
+      markDeleted: markDeleted,
+      markAllDeleted: markAllDeleted,
+      test: {
+        status: function(){
+          var m = loadMeta();
+          return {
+            enabled:!!m.enabled, gistId:m.gistId || '', lastRev:num2(m.lastRev), lastSyncAt:m.lastSyncAt || '',
+            token:ghToken(), dirty:Object.keys(m.dirty || {}).length,
+            tombstones:(m.tombstones || []).length, baseHashes:Object.keys(m.baseHashes || {}).length,
+            salt:m.salt || '', keyInMemory:!!key, pending:pendingCount(), modal:!$('#syncMask').classList.contains('hidden')
+          };
+        },
+        meta: function(){ return loadMeta(); },
+        enable: function(token, pass){ return enableFlow({ token:token, pass:pass, consent:true }); },
+        join: function(token, gistId, pass){ return joinFlow({ token:token, gistId:gistId, pass:pass, consent:true }); },
+        now: function(pass){ return syncNow(pass || ''); },
+        markDeleted: markDeleted,
+        markAllDeleted: markAllDeleted,
+        reset: resetAll,
+        errText: errText
+      }
+    };
+  })();
+
   window.__fandaziTest = {
     skin: {
       get: function(){
@@ -17188,7 +17908,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       maskOpen: function(){ return !$('#voiceMask').classList.contains('hidden'); },
       fail: function(code){ voiceFail(code); return true; },
       begin: voiceBegin, stop: voiceStop
-    }
+    },
+    sync: FZSync.test
   };
   if(recoveredBackup) toast('上次数据损坏，已从备份恢复，原始内容保留在 '+RAW_KEY);
   else if(legacyData) toast('已自动升级旧版数据，共 '+db.records.length+' 条记录');
