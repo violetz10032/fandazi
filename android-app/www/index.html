@@ -7623,10 +7623,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var rank = (g.candidates || []).length ? gatherRanking(g) : null;
     var winBlock = '';
     if(isDone){
+      var arrived = !!g.recordId;
       winBlock = '<div class="notice" style="margin-top:12px">已结算：<b>' + esc(g.winner ? g.winner.name : '') + '</b>' +
         (g.winner ? ' · ' + g.winner.votes + ' 票' : '') +
-        (g.winner && g.winner.estimated ? ' · 金额按人均估算' : (g.winner ? ' · 未记录人均，金额留空' : '') ) +
-        '<br>已写入日记 1 条记录（' + g.people + ' 人 · 场景「朋友聚会」）' + (g.winner && g.winner.rule ? ' · ' + esc(g.winner.rule) : '') + '</div>';
+        (g.winner && g.winner.estimated ? ' · 参考人均 ' + money(g.winner.perPrice) + '（金额未填）' : (g.winner ? ' · 未记录人均，金额留空' : '') ) +
+        '<br>' + (arrived
+          ? '已确认到店，日记里有 1 条记录（' + g.people + ' 人 · 场景「朋友聚会」）'
+          : '<b>尚未写入日记</b>：确认到店后才生成记录，投票结果本身不算一次到访。') +
+        (g.winner && g.winner.rule ? ' · ' + esc(g.winner.rule) : '') +
+        (!arrived ? '<div style="margin-top:10px"><button class="btn btn-sm btn-primary" data-gact="gArrive">确认已到店，写入日记</button></div>' : '') +
+        '</div>';
     }
     var candList = (g.candidates || []).length
       ? rank.items.map(function(it){ return gatherCandHtml(it.c, it.idx + 1, g, g.status === 'done' ? (g.winner && g.winner.key === it.c.key) : (it.c.votes > 0 && it.c === rank.winner)); }).join('')
@@ -7784,17 +7790,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(res.candidates.length) toast('已生成 ' + res.candidates.length + ' 家候选');
     else toast('没有符合条件的店，看看下面的放宽建议');
   }
-  function gatherSettle(id){
+  function gatherWinnerCandidate(g){
+    if(!g || !g.winner) return null;
+    var list = g.candidates || [];
+    for(var i=0;i<list.length;i++){ if(list[i] && list[i].key === g.winner.key) return list[i]; }
+    return null;
+  }
+  function gatherArrive(id){
     var g = gatherById(id);
     if(!g) return { ok:false, error:'活动不存在' };
-    if(g.status === 'done') return { ok:false, error:'活动已结算' };
-    if(!g.candidates.length) return { ok:false, error:'还没有候选' };
-    var rank = gatherRanking(g);
-    if(!rank.total) return { ok:false, error:'还没有回填票数' };
-    var c = rank.winner;
+    if(g.status !== 'done') return { ok:false, error:'活动还没结算' };
+    if(g.recordId) return { ok:false, error:'这条聚餐已经写入日记' };
+    var c = gatherWinnerCandidate(g);
+    if(!c) return { ok:false, error:'找不到结算的门店信息' };
     var store = gatherStoreOf(c);
     var est = num(c.perPrice) > 0;
-    var total = est ? Math.round(num(c.perPrice) * g.people) : null;
     var now = new Date().toISOString();
     var rec = {
       id: newId('r'), name: c.name,
@@ -7812,9 +7822,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       travelMin: store && num(store.travelMin) > 0 ? num(store.travelMin) : null,
       fromPlace: store ? String(store.fromPlace || '') : '',
       visitDate: g.date || todayStr(), dateEstimated: false,
-      people: g.people, totalPrice: total, perPrice: Math.round(num(c.perPrice)),
+      people: g.people, totalPrice: null, perPrice: null,
       category: c.category || '', rating: null,
-      note: '聚餐：' + g.title + (est ? '（金额按人均估算，可改）' : '（未记录人均，金额留空）'),
+      note: '聚餐：' + g.title + (est ? '（参考人均 ' + Math.round(num(c.perPrice)) + ' 元，实际金额未填，可到记录里补）' : '（金额未填，可到记录里补）'),
       photo: null, photoId: null,
       createdAt: now, updatedAt: now,
       mealType: gatherMealOf(g.time), scene: 'friends', tags: [],
@@ -7823,18 +7833,36 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       source: 'gather', importedFrom: '', importedAt: ''
     };
     db.records.unshift(rec);
-    g.status = 'done';
-    g.winner = {
-      key: c.key, name: c.name, perPrice: Math.round(num(c.perPrice)), votes: c.votes,
-      estimated: est, rule: rank.ruleNote
-    };
     g.recordId = rec.id;
+    g.arrivedAt = now;
     gatherUpsert(g);
     invalidateStores();
     save();
     renderGather();
     if(gatherDraft === g || gatherDraftSource === g.id) renderGatherModal();
-    return { ok:true, recordId: rec.id, total: total, perPrice: c.perPrice, people: g.people, scene: 'friends', name: c.name, estimated: est };
+    return { ok:true, recordId: rec.id, total: null, perPrice: c.perPrice, people: g.people, name: c.name, estimated: est };
+  }
+  function gatherSettle(id){
+    var g = gatherById(id);
+    if(!g) return { ok:false, error:'活动不存在' };
+    if(g.status === 'done') return { ok:false, error:'活动已结算' };
+    if(!g.candidates.length) return { ok:false, error:'还没有候选' };
+    var rank = gatherRanking(g);
+    if(!rank.total) return { ok:false, error:'还没有回填票数' };
+    var c = rank.winner;
+    var est = num(c.perPrice) > 0;
+    /* 结算只锁定结果，不写入日记；确认到店后由 gatherArrive 生成记录 */
+    g.status = 'done';
+    g.winner = {
+      key: c.key, name: c.name, perPrice: Math.round(num(c.perPrice)), votes: c.votes,
+      estimated: est, rule: rank.ruleNote
+    };
+    g.recordId = '';
+    g.arrivedAt = '';
+    gatherUpsert(g);
+    renderGather();
+    if(gatherDraft === g || gatherDraftSource === g.id) renderGatherModal();
+    return { ok:true, pending:true, recordId: '', total: null, perPrice: c.perPrice, people: g.people, scene: 'friends', name: c.name, estimated: est };
   }
   function gatherDelete(id){
     var g = gatherById(id);
@@ -7926,10 +7954,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       }
       if(act === 'gSettle'){
         if(!gatherDraft || !gatherDraft.id) return;
-        if(!confirm('把「' + (gatherRanking(gatherDraft).winner ? gatherRanking(gatherDraft).winner.name : '第一名') + '」记为一次聚餐？会写入 1 条到访记录。')) return;
+        if(!confirm('把「' + (gatherRanking(gatherDraft).winner ? gatherRanking(gatherDraft).winner.name : '第一名') + '」结算为本次聚餐结果？先只锁定结果，不写入日记。')) return;
         var res = gatherSettle(gatherDraft.id);
         if(!res.ok){ toast(res.error); return; }
-        toast('已记为聚餐 · 人数 ' + res.people + (res.total == null ? ' · 金额未填' : ' · 总价 ' + money(res.total)));
+        toast('已结算 · ' + res.name + '（尚未写入日记，确认到店后再记）');
+        return;
+      }
+      if(act === 'gArrive'){
+        if(!gatherDraft || !gatherDraft.id) return;
+        var ar = gatherArrive(gatherDraft.id);
+        if(!ar.ok){ toast(ar.error); return; }
+        toast('已写入日记 · 人数 ' + ar.people + (ar.total == null ? ' · 金额未填' : ' · 总价 ' + money(ar.total)));
         return;
       }
       if(act === 'gPollLink'){ voteOpenLink(gatherDraft); return; }
@@ -19369,6 +19404,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       },
       rank: function(id){ var g = gatherById(id); return g ? JSON.parse(JSON.stringify(gatherRanking(g)) ) : null; },
       settle: function(id){ return gatherSettle(id); },
+      arrive: function(id){ return gatherArrive(id); },
       relax: function(id, kind, tag, cap){
         var g = gatherById(id);
         if(!g) return null;
