@@ -518,6 +518,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .plan-main{font-size:19px;font-weight:800}
   .plan-addon{border-top:1px dashed var(--line);margin-top:10px;padding-top:10px}
 
+  /* 抽选设置：375 下按钮命中 ≥44px；标签区限高滚动，不横向溢出 */
+  #view-pick .btn, #view-pick .chip-toggle, #view-pick .seg button{min-height:44px}
+  .draw-pool-line{font-size:12px;color:var(--ink2);line-height:1.7;margin-top:10px;word-break:break-word}
+  .draw-tag-box{max-height:190px;overflow:auto;-webkit-overflow-scrolling:touch;padding:2px}
+  .draw-tag-box .chip-toggle{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .draw-ex-row{display:flex;align-items:center;gap:8px;border-top:1px dashed var(--line);padding:8px 0;min-width:0}
+  .draw-ex-row .nm{min-width:0;flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .draw-ex-row .meta{font-size:11px;color:var(--ink3);flex:none}
+  .draw-ex-row .btn{flex:none;min-height:44px}
+
   .modal-mask{position:fixed;inset:0;background:var(--mask);z-index:50;display:flex;align-items:center;justify-content:center;padding:18px}
   .modal{width:100%;max-width:440px;background:var(--card);border-radius:18px;padding:18px;box-shadow:0 20px 50px rgba(0,0,0,.2);max-height:88vh;overflow:auto}
   .modal h3{font-size:16px;margin-bottom:4px}
@@ -1480,7 +1490,56 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <p class="dist-note">距离优先按店铺坐标 + 当前位置计算，没坐标时用你手填的估算值；定位是可选功能，不点「用当前位置」就不申请权限。</p>
         <button class="btn btn-primary btn-block btn-lg" id="btnDraw" style="margin-top:12px">抽一家</button>
         <p class="muted" style="margin-top:8px"><span id="drawMs"></span></p>
+        <div id="drawPoolLine" class="draw-pool-line"></div>
         <div id="drawBox"></div>
+      </div>
+
+      <div class="card" id="drawSetCard">
+        <div class="section-head" style="margin:0 0 10px">
+          <h2>抽选设置</h2>
+          <span class="hint" id="drawSetHint">只影响抽选候选池</span>
+        </div>
+        <div class="field">
+          <label>最低评分</label>
+          <div class="seg" id="drawRatingSeg">
+            <button type="button" class="on" data-act="drawRating" data-rating="0">不限</button>
+            <button type="button" data-act="drawRating" data-rating="3">3.0+</button>
+            <button type="button" data-act="drawRating" data-rating="4">4.0+</button>
+            <button type="button" data-act="drawRating" data-rating="4.5">4.5+</button>
+          </div>
+          <p class="dist-note">只纳入有真实评分的店；无评分店仅在「不限」时参与。</p>
+        </div>
+        <div class="field">
+          <label>品类 / 标签（可多选）</label>
+          <div class="chips draw-tag-box" id="drawTagChips"></div>
+        </div>
+        <div class="field">
+          <label>未去时长</label>
+          <div class="seg" id="drawDaysSeg">
+            <button type="button" class="on" data-act="drawDays" data-days="0">不限</button>
+            <button type="button" data-act="drawDays" data-days="7">7 天内没去</button>
+            <button type="button" data-act="drawDays" data-days="30">30 天内没去</button>
+            <button type="button" data-act="drawDays" data-days="90">90 天内没去</button>
+          </div>
+          <p class="dist-note">没有到店记录的店视为「从未去过」，符合条件。</p>
+        </div>
+        <div class="field">
+          <label>来源池</label>
+          <select class="input" id="drawSource">
+            <option value="all">全部有档案的店</option>
+            <option value="wish">仅想去清单</option>
+            <option value="fav">仅收藏（应用内「收藏」页签即想去清单）</option>
+          </select>
+        </div>
+        <div class="chips">
+          <button type="button" class="chip-toggle" data-act="drawOpenNow" id="drawOpenNow">现在营业</button>
+          <button type="button" class="chip-toggle" data-act="drawTripOnly" id="drawTripOnly">仅本次行程</button>
+        </div>
+        <p class="dist-note" id="drawTripHint"></p>
+        <div class="actions">
+          <button type="button" class="btn" data-act="drawResetFilters">重置筛选</button>
+        </div>
+        <div id="drawExcludeBox"></div>
       </div>
     </section>
 
@@ -2470,6 +2529,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       </div>
       <div id="importConflictBox"></div>
       <div class="import-diff" id="importDiff"></div>
+      <div class="field" id="importStatsBox" style="margin-top:4px">
+        <label class="check"><input type="checkbox" id="importIncludeStats"> 计入我的统计</label>
+        <p class="dist-note" style="margin-top:6px">默认不勾：好友导入的记录只作参考，不计入你的花费、排行榜与年度报告；之后可在「统计」页统一开启。旧分享包没有该字段时同样按不计入处理。</p>
+      </div>
       <div class="import-warn">对方评分与推荐理由仅代表对方个人观点，未经你核实；导入后可在「我的 → 本机数据」导出备份。</div>
       <p class="dist-note" id="importPlan" style="margin-top:10px"></p>
       <div class="actions" style="margin-top:10px">
@@ -2821,7 +2884,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         for(i=0;i<raw.records.length;i++){
           r = raw.records[i];
           if(!r || !s(r.name).trim()) continue;
-          out.records.push({
+          var rec = {
             id: s(r.id) || ('m'+Date.now().toString(36)+i+Math.random().toString(36).slice(2,5)),
             name: s(r.name).trim(),
             city: s(r.city),
@@ -2870,7 +2933,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             source: s(r.source) || 'manual',
             importedFrom: s(r.importedFrom),
             importedAt: s(r.importedAt)
-          });
+          };
+          /* 只保留显式计入/排除标记，旧记录不凭空多出字段 */
+          if(r.statsExcluded === true) rec.statsExcluded = true;
+          else if(r.statsExcluded === false) rec.statsExcluded = false;
+          out.records.push(rec);
         }
       }
       if(Array.isArray(raw.blacklist)){
@@ -4172,6 +4239,253 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       if(prevRaw == null) localStorage.removeItem(DISHES_KEY);
       else localStorage.setItem(DISHES_KEY, prevRaw);
     }catch(_e){}
+  }
+
+  /* ================= 抽选偏好（独立增量键 fandazi.draw） =================
+   * 只存「这次不抽」的 shopId 与筛选条件；不写 v2.shops / v2.visits，
+   * 不删除、不修改任何店铺、想去、记录或旅行数据。完整备份不含该段（本机偏好）。
+   */
+  var DRAW_KEY = 'fandazi.draw';
+  var DRAW_VERSION = 1;
+  var DRAW_MAX_EXCLUDE = 500;
+  var DRAW_RATING_VALUES = [0, 3, 4, 4.5];
+  var DRAW_DAYS_VALUES = [0, 7, 30, 90];
+  var DRAW_SOURCE_VALUES = ['all', 'wish', 'fav'];
+  var drawPrefStore = null;
+
+  function drawFilterDefaults(){
+    return { minRating:0, tags:[], openNow:false, notVisitedDays:0, source:'all', tripOnly:false };
+  }
+  function drawFilterNorm(f){
+    var out = drawFilterDefaults();
+    if(!f || typeof f !== 'object' || Array.isArray(f)) return out;
+    var r = Number(f.minRating);
+    out.minRating = DRAW_RATING_VALUES.indexOf(r) >= 0 ? r : 0;
+    var d = Number(f.notVisitedDays);
+    out.notVisitedDays = DRAW_DAYS_VALUES.indexOf(d) >= 0 ? d : 0;
+    out.source = DRAW_SOURCE_VALUES.indexOf(String(f.source)) >= 0 ? String(f.source) : 'all';
+    out.openNow = f.openNow === true;
+    out.tripOnly = f.tripOnly === true;
+    var seen = {};
+    (Array.isArray(f.tags) ? f.tags : []).forEach(function(t){
+      var s = String(t == null ? '' : t).trim().slice(0, 20);
+      if(!s || seen[s]) return;
+      seen[s] = 1;
+      if(out.tags.length < 20) out.tags.push(s);
+    });
+    return out;
+  }
+  function drawPrefNorm(o){
+    var out = { version:DRAW_VERSION, excluded:[], filters:drawFilterDefaults(), updatedAt:'' };
+    if(!o || typeof o !== 'object' || Array.isArray(o)) return out;
+    var seen = {};
+    (Array.isArray(o.excluded) ? o.excluded : []).forEach(function(x){
+      var s = String(x == null ? '' : x).trim().slice(0, 40);
+      if(!s || seen[s]) return;
+      seen[s] = 1;
+      if(out.excluded.length < DRAW_MAX_EXCLUDE) out.excluded.push(s);
+    });
+    out.filters = drawFilterNorm(o.filters);
+    out.updatedAt = String(o.updatedAt || '');
+    return out;
+  }
+  function drawLoad(){
+    if(drawPrefStore) return drawPrefStore;
+    var out = drawPrefNorm(null);
+    try{
+      var raw = localStorage.getItem(DRAW_KEY);
+      if(raw) out = drawPrefNorm(JSON.parse(raw));
+    }catch(e){ /* 坏 JSON / 读取失败：回退空偏好，不崩 */ }
+    drawPrefStore = out;
+    return out;
+  }
+  function drawPersist(next){
+    var prev = drawPrefStore;
+    drawPrefStore = next;
+    try{
+      localStorage.setItem(DRAW_KEY, JSON.stringify(next));
+      return true;
+    }catch(e){
+      drawPrefStore = prev;
+      logError('抽选偏好保存', e);
+      toast('空间不足，抽选偏好未保存');
+      return false;
+    }
+  }
+  function drawShopId(store){
+    return store ? shopIdOf(store.name, store.city) : '';
+  }
+  function drawFilters(){
+    return JSON.parse(JSON.stringify(drawLoad().filters));
+  }
+  function drawSetFilters(patch){
+    var cur = drawLoad();
+    var next = drawPrefNorm(cur);
+    var merged = {};
+    Object.keys(cur.filters).forEach(function(k){ merged[k] = cur.filters[k]; });
+    Object.keys(patch || {}).forEach(function(k){ merged[k] = patch[k]; });
+    next.filters = drawFilterNorm(merged);
+    next.updatedAt = new Date().toISOString();
+    return drawPersist(next) ? next.filters : null;
+  }
+  function drawExcludedList(){
+    return drawLoad().excluded.slice();
+  }
+  function drawIsExcluded(store){
+    var id = drawShopId(store);
+    return !!id && drawLoad().excluded.indexOf(id) >= 0;
+  }
+  function drawExcludeStore(store){
+    var id = drawShopId(store);
+    if(!id) return false;
+    var cur = drawLoad();
+    if(cur.excluded.indexOf(id) >= 0) return true;
+    var next = drawPrefNorm(cur);
+    next.excluded.unshift(id);
+    if(next.excluded.length > DRAW_MAX_EXCLUDE) next.excluded = next.excluded.slice(0, DRAW_MAX_EXCLUDE);
+    next.updatedAt = new Date().toISOString();
+    return drawPersist(next);
+  }
+  function drawUnexcludeId(id){
+    var cur = drawLoad();
+    var next = drawPrefNorm(cur);
+    next.excluded = next.excluded.filter(function(x){ return x !== String(id); });
+    next.updatedAt = new Date().toISOString();
+    return drawPersist(next);
+  }
+  function drawRestoreAll(){
+    var cur = drawLoad();
+    var next = drawPrefNorm(cur);
+    next.excluded = [];
+    next.updatedAt = new Date().toISOString();
+    return drawPersist(next);
+  }
+  function drawResetFilters(){
+    var cur = drawLoad();
+    var next = drawPrefNorm(cur);
+    next.filters = drawFilterDefaults();
+    next.updatedAt = new Date().toISOString();
+    return drawPersist(next);
+  }
+  function drawStoreByShopId(id){
+    var all = getStores().concat(wishStores()), hit = null;
+    all.forEach(function(s){ if(!hit && drawShopId(s) === String(id)) hit = s; });
+    return hit;
+  }
+  /* 来源池：想去 / 收藏在本应用里是同源集合（应用内「收藏」页签即想去清单），按 shopId 去重 */
+  function drawSourcePool(source){
+    var list = (source === 'wish' || source === 'fav') ? wishStores() : getStores().concat(wishStores());
+    var out = [], seen = {};
+    list.forEach(function(s){
+      var id = drawShopId(s);
+      if(!id || seen[id]) return;
+      seen[id] = 1;
+      out.push(s);
+    });
+    return out;
+  }
+  function drawTagOptions(){
+    var seen = {}, out = [];
+    drawSourcePool('all').forEach(function(s){
+      var c = String(s.category || '').trim();
+      if(c && !seen[c.toLowerCase()]){ seen[c.toLowerCase()] = 1; out.push(c); }
+      (s.tags || []).forEach(function(t){
+        var x = String(t || '').trim();
+        if(x && !seen[x.toLowerCase()]){ seen[x.toLowerCase()] = 1; out.push(x); }
+      });
+    });
+    out.sort(function(a, b){ return a.localeCompare(b, 'zh-Hans-CN'); });
+    return out;
+  }
+  function drawTripShopIds(){
+    var set = {};
+    try{
+      tripsLoad().items.forEach(function(t){
+        (t.stops || []).forEach(function(s){ if(s.status !== 'skip') set[s.shopId] = 1; });
+      });
+    }catch(e){}
+    return set;
+  }
+  /* 纯函数：按条件筛出候选池，只读不写。
+     返回 items[{store,w}] / total（来源池档案数）/ filteredOut（因条件排除）/
+     excludedOut（这次不抽）/ unknown（无评分·无营业时间·未填人均·无坐标）/
+     reasons（排除原因计数）/ reason */
+  function buildDrawPool(filters){
+    var f = drawFilterNorm(filters || {});
+    var priceMin = Math.max(0, num(filters && filters.min));
+    var priceMax = Math.max(priceMin, num(filters && filters.max));
+    var nearOnly = !!(filters && filters.nearOnly);
+    var maxTravel = Math.max(0, num(filters && filters.maxTravel));
+    var nowMin = filters && filters.nowMin != null ? num(filters.nowMin) : timeCtx().minutes;
+    var all = drawSourcePool(f.source);
+    var total = all.length;
+    var excluded = {}, excludedList = drawLoad().excluded;
+    excludedList.forEach(function(id){ excluded[id] = 1; });
+    var tripSet = f.tripOnly ? drawTripShopIds() : null;
+    var tagNeed = f.tags.map(function(t){ return String(t).trim().toLowerCase(); }).filter(Boolean);
+    var items = [], unknown = { rating:0, open:0, price:0, coords:0 }, excludedOut = 0;
+    var reasons = {
+      '这次不抽':0, '不再推荐':0, '忌口命中':0, '菜系被拉黑':0, '超人均上限':0,
+      '未填人均':0, '价格区间外':0, '距离未知或超 3 km':0, '耗时未知或超限':0,
+      '无评分':0, '评分不足':0, '标签不匹配':0, '无营业时间':0, '已打烊':0,
+      '未到未去时长':0, '不在行程':0
+    };
+    if(priceMax <= 0){
+      return { items:[], total:total, filteredOut:0, excludedOut:0, unknown:unknown, reasons:reasons, reason:'bad-range' };
+    }
+    all.forEach(function(s){
+      var sid = drawShopId(s);
+      if(!sid) return;
+      if(s.rating == null || num(s.rating) <= 0) unknown.rating++;
+      if(isOpenAt(s, nowMin) === null) unknown.open++;
+      if(num(s.perPrice) <= 0) unknown.price++;
+      if(!mapHasCoords(s)) unknown.coords++;
+
+      if(excluded[sid]){ excludedOut++; reasons['这次不抽']++; return; }
+      if(isBlack(s)){ reasons['不再推荐']++; return; }
+      if(conflictOf(s, db.settings.restrictions)){ reasons['忌口命中']++; return; }
+      if(profileBlockedCategory(s)){ reasons['菜系被拉黑']++; return; }
+      if(profileOverBudget(s)){ reasons['超人均上限']++; return; }
+      var p = num(s.perPrice);
+      if(p <= 0){ reasons['未填人均']++; return; }
+      if(p < priceMin || p > priceMax){ reasons['价格区间外']++; return; }
+      if(nearOnly){
+        var d = storeKm(s);
+        if(d == null || d > 3){ reasons['距离未知或超 3 km']++; return; }
+      }
+      if(maxTravel){
+        var tm = travelMinutesOf(s);
+        if(!(tm > 0 && tm <= maxTravel)){ reasons['耗时未知或超限']++; return; }
+      }
+      if(f.minRating > 0){
+        if(s.rating == null || num(s.rating) <= 0){ reasons['无评分']++; return; }
+        if(num(s.rating) < f.minRating){ reasons['评分不足']++; return; }
+      }
+      if(tagNeed.length){
+        var text = [String(s.category || '')].concat(s.tags || []).join(' ').toLowerCase();
+        var hit = false;
+        for(var i = 0; i < tagNeed.length; i++){
+          if(text.indexOf(tagNeed[i]) >= 0){ hit = true; break; }
+        }
+        if(!hit){ reasons['标签不匹配']++; return; }
+      }
+      if(f.openNow){
+        var op = isOpenAt(s, nowMin);
+        if(op === null){ reasons['无营业时间']++; return; }
+        if(!op){ reasons['已打烊']++; return; }
+      }
+      if(f.notVisitedDays > 0 && !s.isWish && s.lastVisit){
+        var day = daysSince(s.lastVisit);
+        if(!(day >= f.notVisitedDays)){ reasons['未到未去时长']++; return; }
+      }
+      if(f.tripOnly && (!tripSet || !tripSet[sid])){ reasons['不在行程']++; return; }
+      var w = storeWeight(s);
+      if(w <= 0 || !isFinite(w)) return;
+      items.push({ store:s, w:w, norm:0 });
+    });
+    var filteredOut = Math.max(0, total - excludedOut - items.length);
+    var reason = !total ? 'no-source' : (items.length ? 'ok' : 'no-candidate');
+    return { items:items, total:total, filteredOut:filteredOut, excludedOut:excludedOut, unknown:unknown, reasons:reasons, reason:reason };
   }
 
   /* ---------- 旅行弹层事件（委托） ---------- */
@@ -6410,62 +6724,71 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return { list:list, skipped:skipped, nearest:nearest, nearestOpen:nearestOpen, nearestKm:nearestKm, now:tc, diversity:div.meta };
   }
 
-  /* 抽签：累积权重随机。边界：空集合 / 价格为 0 / 权重非正 都直接返回，不进入循环 */
+  /* 抽签：在 buildDrawPool 产出的候选池内加权随机，并尽量避开上一次结果 */
   function storeWeight(store){
     var rn = store.rating ? clamp(num(store.rating)/5, 0, 1) : 0.55;
     var rec = store.isWish ? 1 : Math.exp(-Math.max(0, num(store.days))/180);
     var w = (1 + 1.5*rn + 1.0*rec) * feedbackMultiplier(feedbackKeyOf(store)) * profileMultiplier(store.key);
     return isFinite(w) ? w : 0;
   }
+  function drawReasonNotes(res){
+    var arr = [];
+    if(!res || !res.reasons) return arr;
+    Object.keys(res.reasons).forEach(function(k){
+      if(k === '这次不抽') return;
+      if(res.reasons[k] > 0) arr.push(k+' '+res.reasons[k]+' 家');
+    });
+    return arr.slice(0, 6);
+  }
   function runDraw(min, max, nearOnly, maxTravel){
     var t0 = nowMs();
     min = Math.max(0, num(min)); max = Math.max(min, num(max));
     maxTravel = Math.max(0, num(maxTravel));
+    var f = drawFilters();
+    var filters = {
+      min:min, max:max, nearOnly:!!nearOnly, maxTravel:maxTravel,
+      minRating:f.minRating, tags:f.tags, openNow:f.openNow,
+      notVisitedDays:f.notVisitedDays, source:f.source, tripOnly:f.tripOnly
+    };
+    var res = buildDrawPool(filters);
+    var notes = drawReasonNotes(res);
+    var pool = res.items.slice();
     if(max <= 0){
-      return { pool:[], picked:null, totalW:0, notes:[], reason:'bad-range', ms:nowMs()-t0 };
+      return { pool:[], picked:null, totalW:0, notes:notes, reason:'bad-range', ms:nowMs()-t0,
+        total:res.total, filteredOut:res.filteredOut, excludedOut:res.excludedOut, unknown:res.unknown, reasons:res.reasons, candidateCount:0, participate:0, filters:f };
     }
-    var all = getStores().concat(wishStores());
-    var pool = [], notes = [], nearestMin = null, nearestName = '';
-    all.forEach(function(s){
-      if(isBlack(s)) return;
-      if(conflictOf(s, db.settings.restrictions)) return;
-      if(profileBlockedCategory(s)){ notes.push(s.name+' 的菜系「'+String(s.category||'').trim()+'」被你手动拉黑，已跳过'); return; }
-      if(profileOverBudget(s)){ notes.push(s.name+' 人均 ¥'+num(s.perPrice)+' 超过你设置的上限 ¥'+num(profileManual.budgetCap)+'，已跳过'); return; }
-      var p = num(s.perPrice);
-      if(p <= 0){ notes.push(s.name+' 未填人均，已跳过'); return; }
-      if(p < min || p > max) return;
-      if(nearOnly){
-        var d = storeKm(s);
-        if(d == null || d > 3){ notes.push(s.name+' 未填距离或超出 3 km，已跳过'); return; }
-      }
-      if(maxTravel){
+    if(!pool.length && maxTravel){
+      var source = drawSourcePool(f.source), nearestMin = null, nearestName = '';
+      source.forEach(function(s){
         var tm = travelMinutesOf(s);
         if(tm > 0 && (nearestMin === null || tm < nearestMin)){ nearestMin = tm; nearestName = s.name; }
-        if(!(tm > 0 && tm <= maxTravel)){
-          notes.push(s.name+(tm > 0 ? ' 约 '+tm+' 分钟，超出 '+maxTravel+' 分钟' : ' 未填距离/时长，无法判断'));
-          return;
-        }
+      });
+      if(nearestMin !== null){
+        notes.unshift('最近的可达选择是「'+nearestName+'」约 '+nearestMin+' 分钟，可把上限放宽到 '+nearestMin+' 分钟');
       }
-      var w = storeWeight(s);
-      if(w <= 0 || !isFinite(w)) return;
-      pool.push({ store:s, w:w, norm:0 });
-    });
-    if(!pool.length && maxTravel && nearestMin !== null){
-      notes.unshift('最近的可达选择是「'+nearestName+'」约 '+nearestMin+' 分钟，可把上限放宽到 '+nearestMin+' 分钟');
+    }
+    /* 同池内尽量不连续抽到同一家：内存记忆上一家，池内多于 1 家时先剔除 */
+    var candidates = pool;
+    if(pool.length > 1 && lastDrawShopId){
+      var rest = pool.filter(function(x){ return drawShopId(x.store) !== lastDrawShopId; });
+      if(rest.length) candidates = rest;
     }
     var totalW = 0;
-    for(var i=0;i<pool.length;i++) totalW += pool[i].w;
-    if(!pool.length || totalW <= 0){
-      return { pool:pool, picked:null, totalW:totalW, notes:notes, reason:'no-candidate', ms:nowMs()-t0 };
+    for(var i=0;i<candidates.length;i++) totalW += candidates[i].w;
+    if(!candidates.length || totalW <= 0){
+      return { pool:candidates, picked:null, totalW:totalW, notes:notes, reason:'no-candidate', ms:nowMs()-t0,
+        total:res.total, filteredOut:res.filteredOut, excludedOut:res.excludedOut, unknown:res.unknown, reasons:res.reasons, candidateCount:pool.length, participate:0, filters:f };
     }
     var r = Math.random()*totalW, acc = 0, picked = null;
-    for(var j=0;j<pool.length;j++){
-      acc += pool[j].w;
-      pool[j].norm = pool[j].w/totalW;
-      if(r < acc){ picked = pool[j]; break; }
+    for(var j=0;j<candidates.length;j++){
+      acc += candidates[j].w;
+      candidates[j].norm = candidates[j].w/totalW;
+      if(r < acc){ picked = candidates[j]; break; }
     }
-    if(!picked) picked = pool[pool.length-1];
-    return { pool:pool, picked:picked, totalW:totalW, r:r, notes:notes, reason:'', ms:nowMs()-t0 };
+    if(!picked) picked = candidates[candidates.length-1];
+    lastDrawShopId = drawShopId(picked.store);
+    return { pool:candidates, picked:picked, totalW:totalW, r:r, notes:notes, reason:'', ms:nowMs()-t0,
+      total:res.total, filteredOut:res.filteredOut, excludedOut:res.excludedOut, unknown:res.unknown, reasons:res.reasons, candidateCount:pool.length, participate:candidates.length, filters:f };
   }
 
   function planPriceFit(total, budget){
@@ -8062,28 +8385,146 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
   /* ================= 手气抽签 ================= */
   var drawState = null;
+  var lastDrawShopId = '';
+
+  function drawCurrentContext(){
+    var min = num($('#pk-min').value), max = num($('#pk-max').value);
+    if(max < min) max = min;
+    var f = drawFilters();
+    return {
+      min:min, max:max, nearOnly:pkNear, maxTravel:num($('#pkMaxMin').value),
+      minRating:f.minRating, tags:f.tags, openNow:f.openNow,
+      notVisitedDays:f.notVisitedDays, source:f.source, tripOnly:f.tripOnly
+    };
+  }
+  function drawPoolText(res, f){
+    var lines = [];
+    var s = '候选 '+res.items.length+' 家 / 因条件排除 '+res.filteredOut+' 家（来源档案 '+res.total+' 家';
+    if(res.excludedOut) s += '，这次不抽 '+res.excludedOut+' 家';
+    s += '）';
+    lines.push(s);
+    var unk = [];
+    if(res.unknown.rating) unk.push('无评分 '+res.unknown.rating+' 家'+(f.minRating > 0 ? '（已排除）' : '（按未知参与）'));
+    if(res.unknown.open) unk.push('无营业时间 '+res.unknown.open+' 家'+(f.openNow ? '（已排除）' : '（按未知参与）'));
+    if(res.unknown.price) unk.push('未填人均 '+res.unknown.price+' 家（沿用价格条件，已排除）');
+    if(unk.length) lines.push(unk.join(' · '));
+    var act = [];
+    [['无评分',f.minRating > 0],['无营业时间',f.openNow],['标签不匹配',f.tags.length > 0],['未到未去时长',f.notVisitedDays > 0],['不在行程',f.tripOnly]].forEach(function(pair){
+      if(pair[1] && res.reasons[pair[0]] > 0) act.push(pair[0]+' '+res.reasons[pair[0]]);
+    });
+    if(act.length) lines.push('本次已排除：'+act.join(' / ')+' 家');
+    return lines;
+  }
+  function renderDrawPoolLine(){
+    var el = $('#drawPoolLine');
+    if(!el) return;
+    var f = drawFilters();
+    var res = buildDrawPool(drawCurrentContext());
+    el.innerHTML = drawPoolText(res, f).map(esc).join('<br>');
+  }
+  function drawFilterSummary(f){
+    var arr = [];
+    arr.push(f.minRating > 0 ? '评分 '+f.minRating.toFixed(1)+'+' : '评分不限（无评分按未知参与）');
+    if(f.tags.length) arr.push('品类/标签 '+f.tags.join('、'));
+    if(f.openNow) arr.push('现在营业');
+    if(f.notVisitedDays > 0) arr.push(f.notVisitedDays+' 天内没去过');
+    arr.push(f.source === 'wish' ? '仅想去清单' : (f.source === 'fav' ? '仅收藏（=想去清单）' : '全部有档案的店'));
+    if(f.tripOnly) arr.push('仅行程内（未跳过）');
+    return arr.join(' / ');
+  }
+  function renderDrawSettings(){
+    var f = drawFilters();
+    $$('#drawRatingSeg button').forEach(function(b){
+      var on = num(b.getAttribute('data-rating')) === f.minRating;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    $$('#drawDaysSeg button').forEach(function(b){
+      var on = num(b.getAttribute('data-days')) === f.notVisitedDays;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    var srcSel = $('#drawSource');
+    if(srcSel && srcSel.value !== f.source) srcSel.value = f.source;
+    $('#drawOpenNow').classList.toggle('on', f.openNow);
+    $('#drawOpenNow').setAttribute('aria-pressed', f.openNow ? 'true' : 'false');
+    var tripIds = drawTripShopIds(), tripN = Object.keys(tripIds).length;
+    var tripBtn = $('#drawTripOnly');
+    tripBtn.classList.toggle('on', f.tripOnly);
+    tripBtn.setAttribute('aria-pressed', f.tripOnly ? 'true' : 'false');
+    $('#drawTripHint').textContent = tripN
+      ? '行程内（未跳过）共 '+tripN+' 家店可入池。'
+      : (f.tripOnly ? '当前没有带店的旅行计划；开启时会没有候选，可关闭或重置。' : '还没有带店的旅行计划；暂无行程池。');
+
+    var opts = drawTagOptions();
+    var list = opts.slice();
+    f.tags.forEach(function(t){ if(list.indexOf(t) < 0) list.push(t); });
+    if(!list.length){
+      $('#drawTagChips').innerHTML = '<span class="hint">暂无标签</span>';
+    }else{
+      $('#drawTagChips').innerHTML = list.map(function(t){
+        var on = f.tags.indexOf(t) >= 0;
+        return '<button type="button" class="chip-toggle'+(on ? ' on' : '')+'" data-act="drawTag" data-dtag="'+esc(t)+'" aria-pressed="'+(on ? 'true' : 'false')+'">'+esc(t)+'</button>';
+      }).join('');
+    }
+
+    var ex = drawExcludedList();
+    if(!ex.length){
+      $('#drawExcludeBox').innerHTML = '<p class="dist-note" style="margin-top:10px">「这次不抽」名单为空；在结果卡点一下即可排除，不会删除任何店铺或记录。</p>';
+    }else{
+      var rows = ex.map(function(id){
+        var s = drawStoreByShopId(id);
+        var nm = s ? s.name : '未匹配店铺';
+        var meta = s ? [s.city, s.area].filter(Boolean).join(' · ') : id;
+        return '<div class="draw-ex-row">'+
+          '<span class="nm">'+esc(nm)+'</span>'+
+          '<span class="meta">'+esc(meta)+'</span>'+
+          '<button type="button" class="btn btn-soft" data-act="drawUnexclude" data-sid="'+esc(id)+'">解除</button>'+
+        '</div>';
+      }).join('');
+      $('#drawExcludeBox').innerHTML =
+        '<div class="section-head" style="margin:14px 0 0"><h2 style="font-size:15px">这次不抽（'+ex.length+'）</h2>'+
+          '<button type="button" class="btn btn-soft" data-act="drawRestoreAll">全部恢复</button>'+
+        '</div>'+rows;
+    }
+  }
+  function onDrawFilterChange(){
+    renderDrawSettings();
+    if(drawState) runDrawNow();
+    else renderDrawPoolLine();
+  }
+
   function renderDraw(){
     var box = $('#drawBox');
     var msEl = $('#drawMs');
     if(msEl) msEl.textContent = drawState ? fmtMs(drawState.ms) : '';
+    renderDrawPoolLine();
     if(!drawState){
-      box.innerHTML = '<div class="empty card flat" style="padding:20px 12px"><h3>还没抽</h3><p>点「抽一家」，在上面的价格区间里随机选一家。</p></div>';
+      box.innerHTML = '<div class="empty card flat" style="padding:20px 12px"><h3>还没抽</h3><p>点「抽一家」，在价格区间和抽选筛选里随机选一家。</p></div>';
       return;
     }
     var st = drawState;
     if(!st.picked){
       var why = st.reason === 'bad-range' ? '人均上限为 0，先填预算区间。'
-        : (st.notes.length ? st.notes.slice(0,3).join('；') : '这个区间里没有符合条件的店，放宽价格或先记几家。');
-      box.innerHTML = '<div class="empty card flat" style="padding:20px 12px"><h3>没有可抽的店</h3><p>'+esc(why)+'</p></div>';
+        : (st.notes.length ? st.notes.join('；') : '没有符合条件的店，放宽条件或恢复排除试试。');
+      var extra = st.excludedOut ? '<p class="muted" style="margin-top:8px">其中 '+st.excludedOut+' 家被「这次不抽」排除，可恢复。</p>' : '';
+      var emptyBtns = '<div class="actions" style="margin-top:12px">'+
+        '<button class="btn btn-primary" data-act="drawRelax">放宽条件（清空筛选）</button>'+
+        (st.excludedOut ? '<button class="btn" data-act="drawRestoreAll">恢复全部排除</button>' : '')+
+      '</div>';
+      box.innerHTML = '<div class="empty card flat" style="padding:20px 12px"><h3>没有可抽的店</h3><p>'+esc(why)+'</p>'+extra+emptyBtns+'</div>';
       return;
     }
     var top = st.pool.slice().sort(function(a,b){ return b.w - a.w; }).slice(0,5);
+    var avoidText = st.candidateCount > st.participate ? '；已避开上一次结果，实际参与 '+st.participate+' 家' : '';
     var log = [
-      '① 候选 '+st.pool.length+' 家（已排除黑名单、忌口命中、未填人均）',
-      '② 权重表：'+top.map(function(x){ return x.store.name+' '+x.w.toFixed(2)+'（'+Math.round(x.norm*100)+'%）'; }).join('；'),
-      '③ 总权重 '+st.totalW.toFixed(2)+'，随机数 r='+st.r.toFixed(4)+' → 命中「'+st.picked.store.name+'」',
-      '④ 复核：人均 '+money(st.picked.store.perPrice)+' ∈ ['+num($('#pk-min').value)+', '+num($('#pk-max').value)+']'+(pkNear ? '，距离 ≤ 3 km（定位/手填）' : '')+(num($('#pkMaxMin').value) > 0 ? '，耗时 ≤ '+num($('#pkMaxMin').value)+' 分钟（手填估算）' : '')
+      '① 候选 '+st.candidateCount+' 家（来源档案 '+st.total+' 家，因条件排除 '+st.filteredOut+' 家，这次不抽 '+st.excludedOut+' 家）',
+      '② 筛选：'+drawFilterSummary(st.filters),
+      '③ 权重表：'+top.map(function(x){ return x.store.name+' '+x.w.toFixed(2)+'（'+Math.round(x.norm*100)+'%）'; }).join('；')+avoidText,
+      '④ 总权重 '+st.totalW.toFixed(2)+'，随机数 r='+st.r.toFixed(4)+' → 命中「'+st.picked.store.name+'」',
+      '⑤ 复核：人均 '+money(st.picked.store.perPrice)+' ∈ ['+num($('#pk-min').value)+', '+num($('#pk-max').value)+']'+(pkNear ? '，距离 ≤ 3 km（定位/手填）' : '')+(num($('#pkMaxMin').value) > 0 ? '，耗时 ≤ '+num($('#pkMaxMin').value)+' 分钟（手填估算）' : '')
     ].join('\n');
+    var k = esc(st.picked.store.key);
     box.innerHTML =
       '<article class="card draw-card" style="margin-top:12px">'+
         '<p class="muted">手气结果</p>'+
@@ -8093,12 +8534,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         (hasKm(st.picked.store) || travelMinutesOf(st.picked.store)
           ? '<p class="meta">'+esc([hasKm(st.picked.store) ? kmLine(st.picked.store) : '', travelLabel(st.picked.store)].filter(Boolean).join(' · '))+'</p>'
           : '')+
+        '<p class="dist-note" style="margin-top:8px">抽中不会自动写记录；点「记一餐」才打开记录表单，金额 / 评分 / 热量按这次实际填写，不确定就留空。</p>'+
         '<div class="actions" style="margin-top:12px">'+
           '<button class="btn" data-act="drawAgain">再抽一次</button>'+
-          '<button class="btn btn-soft" data-act="jumpStore" data-key="'+esc(st.picked.store.key)+'">打开平台</button>'+
+          '<button class="btn btn-soft" data-act="drawExclude" data-key="'+k+'">这次不抽</button>'+
+          '<button class="btn" data-act="jumpStore" data-key="'+k+'">打开平台</button>'+
           '<button class="btn" data-act="shareDraw">分享图</button>'+
         '</div>'+
-        '<button class="btn btn-primary btn-block btn-lg" data-act="drawEat" data-key="'+esc(st.picked.store.key)+'" style="margin-top:9px">就吃这个</button>'+
+        '<div class="actions" style="margin-top:9px">'+
+          '<button class="btn btn-soft" data-act="drawWish" data-key="'+k+'">加想去</button>'+
+          '<button class="btn btn-soft" data-act="drawMap" data-key="'+k+'">看地图</button>'+
+        '</div>'+
+        '<button class="btn btn-primary btn-block btn-lg" data-act="drawRecord" data-key="'+k+'" style="margin-top:9px">记一餐</button>'+
       '</article>'+
       '<div class="log" style="margin-top:10px">'+esc(log)+'</div>';
   }
@@ -8113,7 +8560,69 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     renderDraw();
     haptic(12);
     if(res.reason === 'bad-range') toast('请先填写人均预算区间');
-    else if(!res.picked) toast('这个区间没有可抽的店，放宽价格试试');
+    else if(!res.picked){
+      if(res.excludedOut > 0) toast('这个条件下没有候选，可恢复「这次不抽」');
+      else toast('这个条件下没有可抽的店，放宽条件试试');
+    }
+  }
+
+  /* ---------- 抽选结果动作：全部复用既有记录表单 / 想去 / 地图入口 ---------- */
+  function drawRecordOpen(key){
+    var s = findStore(key);
+    if(!s){ toast('没找到这家店'); return; }
+    openForm(null, {
+      name:s.name, city:s.city || '', area:s.area || '', address:s.address || '',
+      lng:s.lng, lat:s.lat, distanceKm:num(s.distanceKm) > 0 ? s.distanceKm : null,
+      visitDate:todayStr(), people:db.settings.defaultPeople || 4, drawRef:true
+    }, 'quick');
+  }
+  function drawWishAdd(key){
+    var s = findStore(key);
+    if(!s){ toast('没找到这家店'); return; }
+    var cityNow = s.city || '';
+    var dup = db.wishlist.some(function(w){ return w.name === s.name && String(w.city || '') === String(cityNow); });
+    if(dup){ toast('想去清单里已经有这家'); return; }
+    db.wishlist.unshift({
+      id:newId('w'), name:s.name, city:cityNow, area:s.area || '',
+      budget:num(s.perPrice) > 0 ? Math.round(num(s.perPrice)) : null,
+      note:'', createdAt:new Date().toISOString()
+    });
+    save();
+    toast('已加入想去清单');
+  }
+  function drawMapOpen(key){
+    var s = findStore(key);
+    if(!s){ toast('没找到这家店'); return; }
+    openMapModal(mapInfoOf(s));
+  }
+  function drawApplyExclude(key){
+    var s = findStore(key);
+    if(!s){ toast('没找到这家店'); return; }
+    if(drawIsExcluded(s)){ toast('已在「这次不抽」名单'); return; }
+    drawExcludeStore(s);
+    toast('已加入「这次不抽」，不会删除任何店铺或记录');
+    renderDrawSettings();
+    runDrawNow();
+  }
+  function drawRestoreAllNow(){
+    drawRestoreAll();
+    renderDrawSettings();
+    if(drawState) runDrawNow();
+    else renderDrawPoolLine();
+    toast('已恢复全部排除');
+  }
+  function drawUnexcludeNow(id){
+    drawUnexcludeId(id);
+    renderDrawSettings();
+    if(drawState) runDrawNow();
+    else renderDrawPoolLine();
+    toast('已解除这条排除');
+  }
+  function drawRelaxNow(){
+    drawResetFilters();
+    renderDrawSettings();
+    runDrawNow();
+    toast('已清空抽选筛选，价格区间保留');
   }
 
   /* ================= 帮朋友选 ================= */
@@ -9932,9 +10441,29 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return s;
   }
 
+  /* 好友导入的记录默认不计入统计：statsExcluded 为显式开关（true 排除 / false 计入）。
+     旧分享包没有该字段时按「导入即不计入」处理，不改写记录内容。 */
+  function recordCountsInStats(r){
+    if(!r) return false;
+    if(r.statsExcluded === true) return false;
+    if(r.statsExcluded === false) return true;
+    return !r.importedFrom;
+  }
+  function statsRecords(){ return db.records.filter(recordCountsInStats); }
+  function importedStatRecords(){ return db.records.filter(function(r){ return !!r.importedFrom; }); }
+  function statsImportToggleState(){
+    var list = importedStatRecords();
+    return { total:list.length, included:list.filter(recordCountsInStats).length };
+  }
+  function setImportedStats(include){
+    var list = importedStatRecords();
+    list.forEach(function(r){ r.statsExcluded = include ? false : true; });
+    if(list.length) save();
+    return { total:list.length, included:include ? list.length : 0 };
+  }
   function statsPeriodRecords(){
     var year = String(statsState.year), month = statsState.month || 0;
-    return db.records.filter(function(r){
+    return statsRecords().filter(function(r){
       var m = statsMonthOf(r);
       if(!m || m.slice(0,4) !== year) return false;
       return !month || parseInt(m.slice(5,7),10) === month;
@@ -9942,14 +10471,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function statsDataYears(){
     var seen = {};
-    db.records.forEach(function(r){ var m = statsMonthOf(r); if(m) seen[m.slice(0,4)] = 1; });
+    statsRecords().forEach(function(r){ var m = statsMonthOf(r); if(m) seen[m.slice(0,4)] = 1; });
     var list = Object.keys(seen);
     var cy = String(new Date().getFullYear());
     if(list.indexOf(cy) < 0) list.push(cy);
     return list.sort(function(a,b){ return b > a ? 1 : -1; });
   }
   function statsCompute(){
-    var all = db.records;
+    var all = statsRecords();
     var years = statsDataYears();
     if(!statsState.year){
       var latest = '';
@@ -10079,7 +10608,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     $('#statHint').textContent = p.total ? p.total+' 餐 · 金额 '+p.n+' 笔' : '暂无';
 
-    var html = '<p class="stat-note" style="margin:-2px 0 8px">范围 <b>'+esc(d.scopeLabel)+'</b> · 金额只用真实记录，缺失不按人均推算</p>';
+    var imp = statsImportToggleState();
+    var scopeHtml = '<p class="stat-note" style="margin:-2px 0 8px">范围 <b>'+esc(d.scopeLabel)+'</b> · 金额只用真实记录，缺失不按人均推算</p>';
+    if(imp.total){
+      scopeHtml += '<div class="stat-sub" style="margin-top:2px"><h3>统计口径</h3><span class="hint">'+imp.included+' / '+imp.total+' 条计入</span></div>'+
+        '<label class="check"><input type="checkbox" id="statIncludeImport"'+(imp.included === imp.total ? ' checked' : '')+'> 计入好友导入的记录（共 '+imp.total+' 条）</label>'+
+        '<p class="stat-note">默认不计入：好友的记录只作参考，不影响你的花费、排行榜与年度报告；切换立即生效，不改动记录内容。</p>';
+    }
+    var html = scopeHtml;
 
     html += '<div class="stat-grid">'+
       '<div class="stat"><b>'+(p.n ? money(p.sum) : '—')+'</b><span>花费</span></div>'+
@@ -10228,8 +10764,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       html += '<p class="stat-note warn">另有 '+d.unknownDate+' 条日期未知的旧记录：参与餐厅与偏好统计，但不进入按年月的图表。</p>';
     }
     if(!d.records){
-      html = '<div class="empty card flat"><h3>还没有记录</h3><p>记下第一餐后，统计会自动生成。</p>'+
-        '<div class="actions" style="justify-content:center;margin-top:12px"><button class="btn btn-primary" data-act="add">+ 记一餐</button></div></div>';
+      if(imp.total && imp.total === db.records.length){
+        html = scopeHtml + '<div class="empty card flat"><h3>统计暂为空</h3><p>当前 '+imp.total+' 条记录都来自好友导入，默认不计入统计；打开上面的开关即可计入。</p></div>';
+      }else{
+        html = scopeHtml + '<div class="empty card flat"><h3>还没有记录</h3><p>记下第一餐后，统计会自动生成。</p>'+
+          '<div class="actions" style="justify-content:center;margin-top:12px"><button class="btn btn-primary" data-act="add">+ 记一餐</button></div></div>';
+      }
     }
 
     $('#statBox').innerHTML = html;
@@ -10238,7 +10778,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
 
   function statsRecordsFor(kind, key){
-    var all = db.records;
+    var all = statsRecords();
     if(kind === 'cat') return all.filter(function(r){ return statsCatOf(r) === key; });
     if(kind === 'tag') return all.filter(function(r){ return (r.tags||[]).indexOf(key) >= 0; });
     if(kind === 'shop') return all.filter(function(r){ return statsShopKey(r) === key; });
@@ -10411,14 +10951,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function annualYearList(){
     var seen = {}, cy = String(new Date().getFullYear());
-    db.records.forEach(function(r){ var m = statsMonthOf(r); if(m) seen[m.slice(0,4)] = 1; });
+    statsRecords().forEach(function(r){ var m = statsMonthOf(r); if(m) seen[m.slice(0,4)] = 1; });
     seen[cy] = 1;
     reportAll().items.forEach(function(it){ seen[String(it.year)] = 1; });
     return Object.keys(seen).sort(function(a, b){ return parseInt(b, 10) - parseInt(a, 10); });
   }
   function annualYearRecords(year){
     var y = String(year);
-    return db.records.filter(function(r){ var m = statsMonthOf(r); return m && m.slice(0,4) === y; });
+    return statsRecords().filter(function(r){ var m = statsMonthOf(r); return m && m.slice(0,4) === y; });
   }
   function annualCompute(year){
     var t0 = nowMs();
@@ -11396,6 +11936,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     if(name === 'pick'){
       safeRender('renderDraw', renderDraw, '#drawBox');
+      safeRender('renderDrawSettings', renderDrawSettings);
     }
     if(name === 'more'){
       safeRender('renderMore', renderMore, '#statBox');
@@ -11544,10 +12085,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var prefillRef = !r && src && (num(src.perPrice) > 0 || num(src.rating) > 0 ||
       (src.ratings && ['taste','env','service','value'].some(function(k){ return num(src.ratings[k]) > 0; })));
     var tripRef = !r && src && src.tripRef === true;
+    var drawRef = !r && src && src.drawRef === true;
     $('#prefillHint').textContent = tripRef
       ? '来自旅行计划：店名 / 城市 / 商圈 / 坐标已带入；金额、评分、热量不预填，按这次实际填写，不确定就留空。'
-      : (prefillRef ? '人均 / 评分为上次的参考值，请按这次实际确认；不确定就留空。' : '');
-    $('#prefillHint').style.display = (tripRef || prefillRef) ? '' : 'none';
+      : (drawRef
+        ? '来自抽选：店名 / 城市 / 商圈 / 坐标已带入；金额、评分、热量不预填，按这次实际填写，不确定就留空。'
+        : (prefillRef ? '人均 / 评分为上次的参考值，请按这次实际确认；不确定就留空。' : ''));
+    $('#prefillHint').style.display = (tripRef || drawRef || prefillRef) ? '' : 'none';
 
     if(r){
       var ph = photosOfRecord(r);
@@ -15960,6 +16504,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       $('#importPreview').classList.remove('hidden');
       $('#importResult').classList.add('hidden');
       $('#importDupMode').value = 'skip';
+      if($('#importIncludeStats')) $('#importIncludeStats').checked = false;
       renderImportPreview();
       setImportStatus('来源：'+parsed.source+' · '+(parsed.format === 'fandazi-share' ? '新版好友分享包' : (parsed.format === 'fandazi-link' ? '分享链接' : '兼容格式'))+' · 共 '+rows.length+' 条；确认后才会写入。');
       return { source:parsed.source, total:rows.length, sum:importSummary(rows) };
@@ -16007,6 +16552,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var before = JSON.parse(JSON.stringify(db.records));
     makeSnapshot('before-import');
     var addedPhotos = [];
+    var includeStats = !!($('#importIncludeStats') && $('#importIncludeStats').checked);
     var stats = { added:0, overwritten:0, photos:0 };
     var i = 0;
     $('#importStatus').textContent = '正在写入 0/'+rows.length+'…';
@@ -16026,6 +16572,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           rec.source = 'import';
           rec.importedFrom = st.source;
           rec.importedAt = rec.createdAt;
+          rec.statsExcluded = includeStats ? false : true;
           db.records.unshift(rec);
           stats.added++;
           return;
@@ -16043,6 +16590,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           merged.importedFrom = st.source;
           merged.importedAt = merged.updatedAt;
           merged.source = 'import';
+          merged.statsExcluded = includeStats ? false : true;
           if(!photoId){
             if(old.photoId) merged.photoId = old.photoId;
             else if(old.photo) merged.photo = old.photo;
@@ -16055,6 +16603,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           rec.updatedAt = rec.createdAt;
           rec.importedFrom = st.source;
           rec.importedAt = rec.createdAt;
+          rec.statsExcluded = includeStats ? false : true;
           db.records.unshift(rec);
           stats.added++;
         }
@@ -16086,7 +16635,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         $('#importResult').innerHTML =
           '<h3>导入完成</h3>' +
           '<p class="muted">新增 '+stats.added+' 条 · 覆盖 '+stats.overwritten+' 条 · 跳过 '+plan.skip+' 条 · 用时 '+elapsed+' ms'+
-          (stats.photos ? ' · 照片 '+stats.photos+' 张' : '')+'</p>' +
+          (stats.photos ? ' · 照片 '+stats.photos+' 张' : '')+
+          (includeStats ? '' : ' · 默认不计入统计')+'</p>' +
           '<div class="actions"><button type="button" class="btn btn-danger" id="btnImportUndo">撤销这次导入</button>' +
           '<button type="button" class="btn" id="btnImportDone">完成</button></div>' +
           '<p class="dist-note">撤销保留导入前快照，仅在本次打开期间有效；关闭页面后请用导出备份恢复。</p>';
@@ -17759,10 +18309,45 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var se = findStore(key);
       if(se){ haptic(18); quickEat(se, currentMeal()); }
     }
-    else if(act === 'drawEat'){
-      var ds = findStore(key);
-      if(ds){ haptic(18); quickEat(ds, currentMeal()); }
+    else if(act === 'drawRecord'){ if(key){ haptic(10); drawRecordOpen(key); } }
+    else if(act === 'drawWish'){ if(key) drawWishAdd(key); }
+    else if(act === 'drawMap'){ if(key) drawMapOpen(key); }
+    else if(act === 'drawExclude'){ if(key) drawApplyExclude(key); }
+    else if(act === 'drawRestoreAll'){ drawRestoreAllNow(); }
+    else if(act === 'drawUnexclude'){ drawUnexcludeNow(actEl.getAttribute('data-sid') || ''); }
+    else if(act === 'drawRating'){
+      var dr = num(actEl.getAttribute('data-rating'));
+      if(drawSetFilters({ minRating:dr })) onDrawFilterChange();
     }
+    else if(act === 'drawDays'){
+      var dd = num(actEl.getAttribute('data-days'));
+      if(drawSetFilters({ notVisitedDays:dd })) onDrawFilterChange();
+    }
+    else if(act === 'drawTag'){
+      var dtag = actEl.getAttribute('data-dtag') || '';
+      if(dtag){
+        var dtf = drawFilters(), dtags = dtf.tags.slice();
+        var dti = dtags.indexOf(dtag);
+        if(dti >= 0) dtags.splice(dti, 1); else dtags.push(dtag);
+        if(drawSetFilters({ tags:dtags })) onDrawFilterChange();
+      }
+    }
+    else if(act === 'drawOpenNow'){
+      var dof = drawFilters();
+      if(drawSetFilters({ openNow:!dof.openNow })) onDrawFilterChange();
+    }
+    else if(act === 'drawTripOnly'){
+      var dtp = drawFilters();
+      if(!dtp.tripOnly && !Object.keys(drawTripShopIds()).length){ toast('还没有带店的旅行计划'); return; }
+      if(drawSetFilters({ tripOnly:!dtp.tripOnly })) onDrawFilterChange();
+    }
+    else if(act === 'drawResetFilters'){
+      drawResetFilters();
+      renderDrawSettings();
+      if(drawState) runDrawNow(); else renderDrawPoolLine();
+      toast('已重置抽选筛选');
+    }
+    else if(act === 'drawRelax'){ drawRelaxNow(); }
     else if(act === 'drawAgain'){ runDrawNow(); }
     else if(act === 'dailyRotate'){ runDecideNow(true); }
     else if(act === 'qSwap'){ quickSwap(); }
@@ -17982,6 +18567,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     pkNear = !pkNear;
     this.classList.toggle('on', pkNear);
     if(drawState) runDrawNow();
+  });
+  $('#drawSource').addEventListener('change', function(){
+    if(drawSetFilters({ source:String(this.value || 'all') })) onDrawFilterChange();
   });
   $('#btnRemindGo').addEventListener('click', function(){
     reminderMuted = reminderInfo() ? reminderInfo().key : '';
@@ -18423,6 +19011,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var i = raw.indexOf(':');
     if(i < 0) return;
     statsOpenDetail(raw.slice(0,i), raw.slice(i+1), d.getAttribute('data-stat-title') || '');
+  });
+  $('#statBox').addEventListener('change', function(e){
+    if(!e.target || e.target.id !== 'statIncludeImport') return;
+    var on = !!e.target.checked;
+    var out = setImportedStats(on);
+    statsSet({});
+    toast(on ? '已计入 '+out.total+' 条好友导入记录' : '已排除 '+out.total+' 条好友导入记录');
   });
   $('#statDetailClose').addEventListener('click', closeStatDetail);
   $('#statDetailMask').addEventListener('click', function(e){ if(e.target === this) closeStatDetail(); });
@@ -19353,7 +19948,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
   /* ================= 跨设备同步 MVP（GitHub 私有 Gist · 端到端加密） =================
      本版范围：到店记录 + 删除墓碑 + 照片（独立加密 Gist、按内容 sha256 去重、HMAC 不透明引用）。
-     明确后置：墓碑 180 天清理、私有仓库 Contents API 回退、outbox 精细重试、多设备并发压测；
+     墓碑保留 180 天后自动清理；照片引用归零满 7 天回收（均在下一次同步时执行）。
+     明确后置：私有仓库 Contents API 回退、outbox 精细重试、多设备并发压测；
      想去清单/地点/设置/投票不同步。任何情况下不写明文、不静默丢记录。
      照片失败或超配额只影响照片：主记录同步照常成功，界面显示「本机缺 N 张照片」并可重试。 */
   var FZSync = (function(){
@@ -19369,6 +19965,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var PHOTO_FILE_MAX = 1024 * 1024;
     var PHOTO_BATCH = 8;                    /* 单轮最多 8 张，避免一次同步过久 */
     var PHOTO_BUDGET_BYTES = 16 * 1024 * 1024;
+    var PHOTO_GC_DAYS = 7;                  /* 远端照片引用归零满 7 天回收 */
+    var TOMBSTONE_TTL_DAYS = 180;           /* 墓碑保留 180 天，超期自动清理 */
     var key = null;
     var photoKey = null;
     var busy = false;
@@ -19376,7 +19974,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var enc = new TextEncoder();
     var dec = new TextDecoder();
     var subtle = (window.crypto && crypto.subtle) ? crypto.subtle : null;
-    var photoState = { uploaded:0, downloaded:0, missing:0, pending:0, error:'', at:'' };
+    var photoState = { uploaded:0, downloaded:0, missing:0, pending:0, reclaimed:0, error:'', at:'' };
 
     function code(c){ var e = new Error(c); e.code = c; return e; }
     function b64(u8){
@@ -19723,16 +20321,36 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return obj;
     }
 
+    /* 引用计数：needed 里有引用的清 unrefAt；归零的开始计时；满 7 天的进入待回收。
+       直接修改 refsMap（新增/删除 unrefAt），返回 { list, changed }。 */
+    function photoGcPlan(refsMap, neededList, nowMs){
+      var now = new Date(nowMs || Date.now());
+      var needed = {}, list = [], changed = false;
+      (neededList || []).forEach(function(ref){ needed[ref] = 1; });
+      Object.keys(refsMap || {}).forEach(function(ref){
+        var entry = refsMap[ref];
+        if(!entry) return;
+        if(needed[ref]){
+          if(entry.unrefAt){ delete entry.unrefAt; changed = true; }
+          return;
+        }
+        if(!entry.unrefAt){ entry.unrefAt = now.toISOString(); changed = true; return; }
+        var age = ((nowMs || Date.now()) - Date.parse(entry.unrefAt)) / 86400000;
+        if(isFinite(age) && age >= PHOTO_GC_DAYS) list.push(ref);
+      });
+      return { list:list, changed:changed };
+    }
+
     /* 拉取缺失照片 + 上传本轮新照片 + 引用归零满 7 天回收。任何失败只影响照片。 */
     async function photoRoundTrip(records, token, aes, saltB64, uploads){
-      var out = { uploaded:0, downloaded:0, missing:0, pending:0, error:'' };
+      var out = { uploaded:0, downloaded:0, missing:0, pending:0, reclaimed:0, error:'' };
       if(!subtle) { out.error = '当前浏览器缺少加密能力'; return out; }
       var gid = meta.photoGistId;
       var hasWork = (uploads && uploads.length) || records.some(function(r){ return Array.isArray(r.photoRef) && r.photoRef.length; });
       if(!gid && !hasWork){
         var att0 = await attachPhotos(records);
         out.missing = att0.missing;
-        photoState = { uploaded:0, downloaded:0, missing:out.missing, pending:0, error:'', at:new Date().toISOString() };
+        photoState = { uploaded:0, downloaded:0, missing:out.missing, pending:0, reclaimed:0, error:'', at:new Date().toISOString() };
         return out;
       }
       try{ gid = await ensurePhotoGist(token, saltB64); }catch(e){ out.error = errText(e); return out; }
@@ -19790,7 +20408,24 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         }catch(e){ out.pending++; }
       }
 
-      if(out.uploaded || out.downloaded || !loaded.manifest){
+      /* 引用归零回收：远端照片只被记录引用，连续 7 天无人引用即删除文件并移除清单项 */
+      var gcPlan = photoGcPlan(refsMap, neededList, Date.now());
+      var gcList = gcPlan.list, gcChanged = gcPlan.changed;
+      if(gcList.length){
+        var gcFiles = {};
+        gcList.forEach(function(ref){
+          var e = refsMap[ref] || {};
+          (e.parts || []).forEach(function(pt){ if(pt && pt.file) gcFiles[pt.file] = { content:null }; });
+        });
+        try{
+          if(Object.keys(gcFiles).length) await patchGistFiles(gid, gcFiles, token);
+          gcList.forEach(function(ref){ delete refsMap[ref]; });
+          out.reclaimed = gcList.length;
+          gcChanged = true;
+        }catch(e){ out.error = errText(e); }
+      }
+
+      if(out.uploaded || out.downloaded || gcChanged || !loaded.manifest){
         manifest.refs = refsMap;
         manifest.rev = num2(manifest.rev) + 1;
         manifest.updatedAt = new Date().toISOString();
@@ -19802,7 +20437,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var att = await attachPhotos(records);
       out.missing = att.missing;
       out.pending = Math.max(out.pending, 0);
-      photoState = { uploaded:out.uploaded, downloaded:out.downloaded, missing:out.missing, pending:out.pending, error:out.error, at:new Date().toISOString() };
+      photoState = { uploaded:out.uploaded, downloaded:out.downloaded, missing:out.missing, pending:out.pending, reclaimed:out.reclaimed, error:out.error, at:new Date().toISOString() };
       meta.photoMissing = att.missing;
       meta.photoMissingRefs = att.missingRefs.slice(0, 200);
       saveMeta(meta);
@@ -19886,7 +20521,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           rev:rev, parentRev:parentRev,
           photoGistId:meta.photoGistId || '',
           records:outRecords,
-          tombstones:(meta.tombstones || []).slice(),
+          tombstones:pruneTombs(meta.tombstones),
           wishlist:[], places:[], settings:{}, polls:[]
         },
         uploads:uploads
@@ -19898,6 +20533,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       if(ta === tb) return a;
       return ta > tb ? a : b;
     }
+    /* 墓碑保留 180 天：超过期限的记录删除信息不再参与合并，避免无限增长 */
+    function tombAgeDays(t){
+      var ms = Date.parse(String(t && t.deletedAt || ''));
+      if(!isFinite(ms)) return 0;
+      return (Date.now() - ms) / 86400000;
+    }
+    function pruneTombs(list){
+      return (list || []).filter(function(t){ return tombAgeDays(t) <= TOMBSTONE_TTL_DAYS; });
+    }
     function mergeTombs(local, remote){
       var map = {};
       (local || []).concat(remote || []).forEach(function(t){
@@ -19905,7 +20549,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         var k = t.entity + ':' + t.id;
         if(!map[k] || String(t.deletedAt || '') > String(map[k].deletedAt || '')) map[k] = t;
       });
-      return Object.keys(map).map(function(k){ return map[k]; });
+      return pruneTombs(Object.keys(map).map(function(k){ return map[k]; }));
     }
     async function conflictCopy(loser, origId, from){
       var h = await hashRecord(loser);
@@ -19981,7 +20625,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       meta.lastRev = rev;
       meta.lastSyncAt = new Date().toISOString();
       meta.consentAt = meta.consentAt || new Date().toISOString();
-      meta.tombstones = tombstones || meta.tombstones || [];
+      meta.tombstones = pruneTombs(tombstones || meta.tombstones || []);
       meta.tombstones.forEach(function(t){ t.syncedAt = meta.lastSyncAt; });
       meta.baseHashes = await hashAll(db.records);
       meta.dirty = {};
@@ -20200,6 +20844,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var extra = [];
       if(photoState.downloaded) extra.push('本轮补齐 ' + photoState.downloaded + ' 张');
       if(photoState.uploaded) extra.push('本轮上传 ' + photoState.uploaded + ' 张');
+      if(photoState.reclaimed) extra.push('已回收 ' + photoState.reclaimed + ' 张无引用照片');
       var line = photoState.error
         ? '<span class="muted">照片同步异常：' + esc(photoState.error) + '（记录已同步）</span>'
         : miss > 0
@@ -20339,7 +20984,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
     function resetAll(){
       try{ localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(META_KEY); localStorage.removeItem(LOCK_KEY); }catch(e){}
-      meta = loadMeta(); key = null; photoKey = null; photoState = { uploaded:0, downloaded:0, missing:0, pending:0, error:'', at:'' };
+      meta = loadMeta(); key = null; photoKey = null; photoState = { uploaded:0, downloaded:0, missing:0, pending:0, reclaimed:0, error:'', at:'' };
       renderCard();
       return true;
     }
@@ -20371,6 +21016,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         now: function(pass){ return syncNow(pass || ''); },
         markDeleted: markDeleted,
         markAllDeleted: markAllDeleted,
+        pruneTombs: pruneTombs,
+        photoGcPlan: photoGcPlan,
+        tombTtlDays: TOMBSTONE_TTL_DAYS,
+        photoGcDays: PHOTO_GC_DAYS,
         reset: resetAll,
         errText: errText
       }
@@ -20398,7 +21047,66 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       $('#q').value = String(v || '');
       var t0 = nowMs(); renderList(true); return nowMs() - t0;
     },
-    draw: function(){ var t0 = nowMs(); runDrawNow(); return nowMs() - t0; },
+    draw: (function(){
+      var api = function(){ var t0 = nowMs(); runDrawNow(); return nowMs() - t0; };
+      api.state = function(){
+        if(!drawState) return null;
+        return {
+          picked: drawState.picked ? drawState.picked.store.name : null,
+          key: drawState.picked ? drawState.picked.store.key : null,
+          candidateCount: drawState.candidateCount,
+          participate: drawState.participate,
+          total: drawState.total,
+          filteredOut: drawState.filteredOut,
+          excludedOut: drawState.excludedOut,
+          unknown: drawState.unknown,
+          reasons: drawState.reasons,
+          filters: drawState.filters,
+          reason: drawState.reason,
+          notes: drawState.notes
+        };
+      };
+      api.filters = function(){ return drawFilters(); };
+      api.setFilters = function(o){
+        var f = drawSetFilters(o || {});
+        renderDrawSettings(); renderDrawPoolLine();
+        return f;
+      };
+      api.resetFilters = function(){
+        drawResetFilters(); renderDrawSettings(); renderDrawPoolLine();
+        return drawFilters();
+      };
+      api.clearPref = function(){
+        try{ localStorage.removeItem(DRAW_KEY); }catch(e){}
+        drawPrefStore = null;
+        renderDrawSettings(); renderDrawPoolLine();
+        return { filters:drawFilters(), excluded:drawExcludedList() };
+      };
+      api.raw = function(){ try{ return localStorage.getItem(DRAW_KEY); }catch(e){ return null; } };
+      api.excluded = function(){ return drawExcludedList(); };
+      api.restore = function(){ drawRestoreAllNow(); return drawExcludedList(); };
+      api.pool = function(o){
+        var ctx = drawCurrentContext();
+        Object.keys(o || {}).forEach(function(k){ ctx[k] = o[k]; });
+        var r = buildDrawPool(ctx);
+        return {
+          names:r.items.map(function(x){ return x.store.name; }),
+          count:r.items.length, total:r.total, filteredOut:r.filteredOut,
+          excludedOut:r.excludedOut, unknown:r.unknown, reasons:r.reasons, reason:r.reason
+        };
+      };
+      api.resultActions = function(){
+        return $$('#drawBox [data-act]').map(function(b){ return b.getAttribute('data-act'); });
+      };
+      api.text = function(){
+        return {
+          pool: $('#drawPoolLine') ? $('#drawPoolLine').textContent : '',
+          box: $('#drawBox') ? $('#drawBox').textContent : '',
+          excludes: $('#drawExcludeBox') ? $('#drawExcludeBox').textContent : ''
+        };
+      };
+      return api;
+    })(),
     party: function(){ var t0 = nowMs(); $('#btnParty').click(); return nowMs() - t0; },
     friend: function(){ var t0 = nowMs(); $('#btnFriend').click(); return nowMs() - t0; },
     cards: function(){ return $('#listBox').querySelectorAll('.rec-card').length; },
@@ -20652,11 +21360,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       state: function(){
         var st = importPreviewState;
         if(!st) return null;
+        var cb = $('#importIncludeStats');
         return {
           sum:importSummary(st.rows), plan:importPlan(),
+          includeStats:!!(cb && cb.checked),
           rows:st.rows.map(function(r){ return { name:r.rec.name, status:r.status, matchId:r.matchId, decision:r.decision }; })
         };
       },
+      statsToggle: function(on){ var cb = $('#importIncludeStats'); if(cb) cb.checked = !!on; return !!(cb && cb.checked); },
       confirm: function(){ return applyImport(); },
       undo: function(){ return undoImport(); },
       file: readImportFile,
@@ -21149,6 +21860,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       compute: function(){ return JSON.parse(JSON.stringify(statsCompute())); },
       render: function(){ var t0 = nowMs(); renderStats(); return nowMs() - t0; },
       set: function(o){ return statsSet(o || {}); },
+      importState: function(){ return statsImportToggleState(); },
+      includeImport: function(on){ var r = setImportedStats(!!on); renderStats(); return r; },
       switchYear: function(y){ return statsSet({ year:y }); },
       years: function(){ return statsDataYears(); },
       metrics: function(){
