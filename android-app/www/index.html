@@ -1331,6 +1331,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             <button type="button" class="btn btn-sm" id="btnGeoDaily">用当前位置</button>
             <button type="button" class="btn btn-sm hidden" id="btnGeoClear">清除定位</button>
             <button type="button" class="btn btn-sm btn-soft" id="btnGeoManualToggle">手动填起点</button>
+            <button type="button" class="btn btn-sm btn-soft hidden" id="btnGeoOpenSettings">去系统设置</button>
             <span class="geo-state" id="geoDailyState">未定位：距离按手填</span>
           </div>
           <div class="geo-row hidden" id="geoManualRow" style="margin-top:6px">
@@ -6281,6 +6282,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var o = { lat:+num(lat).toFixed(5), lng:+num(lng).toFixed(5), acc:Math.round(num(acc)), at:Date.now() };
     _geoMemo = o; _geoMemoLoaded = true;
     try{ localStorage.setItem('fandazi.geo.last', JSON.stringify(o)); }catch(e){}
+    var b = $('#btnGeoOpenSettings');
+    if(b) b.classList.add('hidden');
     return o;
   }
   function geoClear(){
@@ -6335,16 +6338,77 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var map = {
       insecure:'当前不是安全上下文（http:// 或 file://），浏览器禁用了定位。请用 https:// 打开，或手动填起点。',
       missing:'当前环境不提供定位接口（部分 WebView / file://）。已保留手填，点「手动填起点」即可。',
-      denied:'定位权限被拒绝。网页版请在地址栏站点权限里允许定位；APK 请到「设置 → 应用 → 权限 → 位置」打开，或手动填起点。',
+      denied:'定位权限被拒绝。APK 请点「去系统设置」→「权限 → 位置」选择允许；网页版请在地址栏站点权限里允许定位。也可手动填起点。',
+      denied_permanent:'定位权限已被永久拒绝（再点按钮也不会弹窗）。请打开「设置 → 应用 → i吃饭 → 权限 → 位置」改为「允许」，然后回到应用重试；也可点「手动填起点」。',
+      service_off:'系统定位服务已关闭，权限允许也取不到位置。请打开「设置 → 位置信息（定位）」启用后重试，或点「手动填起点」。',
       timeout:'定位超时（约 18 秒）。室内或信号弱时常见，可重试或在下方手动填起点。',
       unavailable:'系统定位不可用（定位服务关闭、无定位服务或设备不支持）。请开启系统定位，或手动填起点。',
       unknown:'定位失败。已回退到手填，可手动填起点。'
     };
     return map[reason] || map.unknown;
   }
+  /* 原生授权：Capacitor 6 的 BridgeWebChromeClient 在 WebView 请求定位时会自己拉起系统权限框，
+     但它只在 WebView 回调那一刻触发，且不检查定位服务开关。这里在调用前先显式 check/request，
+     把「拒绝 / 永久拒绝 / 服务关闭」拆开提示；网页版没有插件，直接走浏览器定位。 */
+  var geoLastFail = null;
+  function geoNative(){
+    if(window.__fzGeoNative) return window.__fzGeoNative;   /* 测试打桩 */
+    return capNative() ? capPlugin('GeoPermission') : null;
+  }
+  function geoNativeCall(method, arg){
+    var p = geoNative();
+    if(!p || typeof p[method] !== 'function') return Promise.resolve(null);
+    try{ return Promise.resolve(p[method](arg || {})).catch(function(){ return null; }); }
+    catch(e){ return Promise.resolve(null); }
+  }
+  function geoStateOf(r){
+    r = r || {};
+    if(r.state === 'granted' && r.service === false) return 'service_off';
+    return r.state || 'unknown';
+  }
+  function geoOpenSettings(kind){
+    var p = geoNative();
+    if(!p){ toast('网页版请点地址栏左侧的站点权限图标，把「位置」改为允许'); return; }
+    var m = kind === 'location' ? 'openLocationSettings' : 'openAppSettings';
+    if(typeof p[m] !== 'function'){ toast('当前安装包不支持跳转设置，请按提示的系统路径手动打开'); return; }
+    try{ Promise.resolve(p[m]()).catch(function(){ toast('跳转设置失败，请按提示的系统路径手动打开'); }); }catch(e){}
+  }
+  function geoShowSettings(reason){
+    var b = $('#btnGeoOpenSettings');
+    if(!b) return;
+    if(!geoNative() || reason === 'insecure' || reason === 'missing' || reason === 'timeout'){
+      b.classList.add('hidden'); return;
+    }
+    b.dataset.geoKind = reason === 'service_off' ? 'location' : 'app';
+    b.textContent = reason === 'service_off' ? '去开启定位' : '去系统设置';
+    b.classList.remove('hidden');
+  }
+  function geoFail(reason, suffix){
+    var msg = geoMsg(reason) + (suffix || '');
+    geoLastFail = { reason:reason, msg:msg };
+    toast(msg);
+    showGeoManual(geoMsg(reason));
+    geoShowSettings(reason);
+  }
   function locateMe(onOk, onFail){
     var bad = geoSupport();
     if(bad){ onFail(bad); return; }
+    var p = geoNative();
+    if(!p){ geoLocateBrowser(onOk, onFail); return; }
+    geoNativeCall('check').then(function(r){
+      var st = geoStateOf(r);
+      if(st === 'granted'){ geoLocateBrowser(onOk, onFail); return; }
+      if(st === 'denied_permanent'){ onFail('denied_permanent'); return; }
+      if(st === 'service_off'){ onFail('service_off'); return; }
+      if(r && r.canAsk === false){ onFail('denied'); return; }
+      return geoNativeCall('request').then(function(rr){
+        var s2 = geoStateOf(rr);
+        if(s2 === 'granted'){ geoLocateBrowser(onOk, onFail); return; }
+        onFail(s2 === 'denied_permanent' ? 'denied_permanent' : (s2 === 'service_off' ? 'service_off' : 'denied'));
+      });
+    }).catch(function(){ geoLocateBrowser(onOk, onFail); });
+  }
+  function geoLocateBrowser(onOk, onFail){
     var done = false, attempt = 0;
     function finish(fn, arg){ if(done) return; done = true; fn(arg); }
     function tryGet(){
@@ -20220,7 +20284,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   /* 定位按钮：成功后只用本次读数重算距离，失败按原因提示并保留手填 */
   $('#btnGeoDaily').addEventListener('click', function(){
     var btn = this, bad = geoSupport();
-    if(bad){ toast(geoMsg(bad)); renderGeoState(); showGeoManual(geoMsg(bad)); return; }
+    if(bad){ geoFail(bad); renderGeoState(); return; }
     btn.disabled = true; btn.textContent = '定位中…';
     locateMe(function(g){
       btn.disabled = false; btn.textContent = '用当前位置';
@@ -20232,8 +20296,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }, function(reason){
       btn.disabled = false; btn.textContent = '用当前位置';
       renderGeoState();
-      showGeoManual(geoMsg(reason));
-      toast(geoMsg(reason));
+      geoFail(reason);
     });
   });
   $('#btnGeoClear').addEventListener('click', function(){
@@ -20254,11 +20317,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       try{ $('#geoManualLat').focus(); }catch(e){}
     }
   });
+  $('#btnGeoOpenSettings').addEventListener('click', function(){
+    geoOpenSettings(this.dataset.geoKind || 'app');
+  });
   $('#btnGeoManualSave').addEventListener('click', geoUseManual);
   /* 编辑页按钮只填「这家店的坐标」，不覆盖“我的位置”缓存，避免把距离基准变成店铺本身 */
   $('#btnGeoForm').addEventListener('click', function(){
     var btn = this, bad = geoSupport();
-    if(bad){ toast(geoMsg(bad)+' 请在下方纬度/经度手动填写。'); return; }
+    if(bad){ geoFail(bad, ' 请在下方纬度/经度手动填写。'); return; }
     btn.disabled = true; btn.textContent = '定位中…';
     locateMe(function(g){
       btn.disabled = false; btn.textContent = '用当前位置填入店铺坐标';
@@ -20269,7 +20335,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       toast('已填入当前坐标；若你不在店里，请清空或手填');
     }, function(reason){
       btn.disabled = false; btn.textContent = '用当前位置填入店铺坐标';
-      toast(geoMsg(reason)+' 请在下方纬度/经度手动填写。');
+      geoFail(reason, ' 请在下方纬度/经度手动填写。');
     });
   });
   $('#dayNearOnly').addEventListener('click', function(){
@@ -20542,7 +20608,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   $('#mapAmapToCanvas').addEventListener('click', function(){ mapSwitchLayer('blank', true); });
   $('#btnMapLocate').addEventListener('click', function(){
     var btn = this, bad = geoSupport();
-    if(bad){ toast(geoMsg(bad)); return; }
+    if(bad){ geoFail(bad); return; }
     btn.disabled = true; btn.textContent = '定位中…';
     locateMe(function(g){
       btn.disabled = false; btn.textContent = '定位我';
@@ -20550,7 +20616,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       toast('已定位 ±'+Math.round(g.acc || 0)+'m：地图画出「我」与 1/3/5/10 km 同心圈');
     }, function(reason){
       btn.disabled = false; btn.textContent = '定位我';
-      toast(geoMsg(reason));
+      geoFail(reason);
     });
   });
   $('#mapZoomIn').addEventListener('click', function(){ mapZoomBy(1.4); });
@@ -23050,6 +23116,20 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     haversine: function(lat1, lng1, lat2, lng2){ return haversineKm(lat1, lng1, lat2, lng2); },
     geoMsg: function(reason){ return geoMsg(reason); },
     geoSupport: function(){ return geoSupport(); },
+    geoPerm: {
+      native: function(stub){ window.__fzGeoNative = stub || null; },
+      lastFail: function(){ return geoLastFail; },
+      settingsBtn: function(){
+        var b = $('#btnGeoOpenSettings');
+        if(!b || b.classList.contains('hidden')) return null;
+        return { kind:b.dataset.geoKind || 'app', text:b.textContent };
+      },
+      openSettings: function(kind){ geoOpenSettings(kind || 'app'); },
+      reset: function(){
+        window.__fzGeoNative = null; geoLastFail = null;
+        var b = $('#btnGeoOpenSettings'); if(b) b.classList.add('hidden');
+      }
+    },
     clock: function(h, m, weekend){
       testClock = (h === null || h === undefined) ? null : { h:Number(h), m:Number(m||0), weekend:weekend };
       renderDailyInputs();

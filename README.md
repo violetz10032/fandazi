@@ -291,9 +291,13 @@ APK 内接了 `@capacitor/app`（6.0.3），Android 的物理/手势返回键不
 | `http://localhost` / `127.0.0.1` | 可以 | 本地调试等同安全上下文 |
 | `http://` 局域网 IP | 不可以 | 中文提示「不是安全上下文」，回退手填，不白屏 |
 | 双击 `file://` 打开 | 不可以 | 提示当前环境无定位接口，回退手填 |
-| APK（Capacitor WebView） | 清单已声明定位权限（v1.0.2+），**真机未验证** | 首次点击由 Capacitor 触发系统授权；拒绝/失败时中文提示并回退手填 |
+| APK（Capacitor WebView） | `GeoPermission` 原生插件做显式运行时申请（本版 APK），**真机未验证** | 点击后先 `check` 再按需 `request`；拒绝 / 永久拒绝 / 服务关闭各有中文提示与「去系统设置」入口，失败自动展开手填 |
 
-- **APK 定位根因（已修）**：`AndroidManifest.xml` 原先只声明了 `INTERNET`，没有 `ACCESS_COARSE_LOCATION` / `ACCESS_FINE_LOCATION`。Capacitor 的 `BridgeWebChromeClient.onGeolocationPermissionsShowPrompt` 会发起运行时授权，但未在清单声明的权限会被系统直接判为拒绝且**不弹窗**，于是 JS 收到 code 1，表现为「拿不到位置」。已在清单补两个权限，需重新构建 APK 才会生效。
+- **Capacitor 确实会代申请，但不够用**：`BridgeWebChromeClient.onGeolocationPermissionsShowPrompt`（`node_modules/@capacitor/android/.../BridgeWebChromeClient.java`）在 WebView 请求定位且未授权时会 `permissionLauncher.launch(new String[]{COARSE, FINE})`，拉起系统权限框，授权后 `callback.invoke(origin, true, false)` 放行；`Bridge.java` 里还有 `settings.setGeolocationEnabled(true)`。所以「Capacitor 完全不管权限」的说法不成立。
+- **那为什么实测还是取不到**：它只在 WebView 真正发起定位时才触发，且**不检查系统定位服务开关**、**不区分「本次拒绝」与「永久拒绝」**、**没有跳转设置的能力**；更关键的是旧包 `AndroidManifest.xml` 只声明了 `INTERNET`——未在清单声明的权限系统会直接判为拒绝且**不弹窗**，WebView 回调拿到的就是拒绝，JS 侧只看到 code 1。另外「不再询问」已勾选、系统定位关闭、室内高精度超时，这几种在旧 UI 里都表现为同一句「定位失败」，用户无从下手。
+- **现在的做法**：新增原生插件 `GeoPermissionPlugin`（`@CapacitorPlugin(permissions = location → COARSE + FINE)`）暴露 `check / request / openAppSettings / openLocationSettings`。`check` 返回 `{state, precise, service, canAsk, requested}`，`state` 取 `granted / denied / denied_permanent / service_off`：已授权直接定位；本次拒绝发一次系统申请；永久拒绝（申请过且 fine/coarse 都无 rationale）不再弹窗，直接给 `设置 → 应用 → i吃饭 → 权限 → 位置` 的完整路径；`service === false` 时给 `设置 → 位置信息（定位）` 并显示「去开启定位」。三种失败都保留「手动填起点」。
+- 界面按钮：失败时筛选区出现「去系统设置」（永久拒绝 / 本次拒绝）或「去开启定位」（服务关闭），点击即跳对应系统页面；定位成功后按钮自动隐藏。
+- 单测（Web 层打桩模拟原生插件）：`.tmp/geo-permission-test.js` 覆盖授权成功、本次拒绝、永久拒绝、定位服务关闭、网页版无插件回退，**7/7 通过**（`CDP_PORT=9245 node .tmp/geo-permission-test.js`）。
 - 只在点击按钮时取一次位置（先 `enableHighAccuracy:true` / 12s，超时后自动降精度再试 6s），**不后台持续定位、不做轨迹**。
 - 位置缓存在 `localStorage` 的 `fandazi.geo.last`（`{lat,lng,acc,at}`，坐标保留 5 位小数），只存本机、不写入记录、不上传。
 - 拒绝授权（code 1）、超时（code 3）、定位不可用（code 2）、无定位接口都有对应中文提示，按钮会恢复可再次点击；失败时会**自动展开「手动填起点」**。
