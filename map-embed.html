@@ -36,7 +36,15 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
   var map = null;
   var markers = [];
   var pending = null;
+  /* 打点：脚本开始执行 ≈ iframe HTML 载入完成；脚本开始下载 / 脚本载入 / AMap 注册各自记一次 */
+  var T0 = (window.performance && performance.now) ? performance.now() : Date.now();
+  var tScriptStart = null, tScriptLoaded = null, tAmapReady = null;
+  var traceSeq = 0;
 
+  function now(){
+    return (window.performance && performance.now) ? performance.now() : Date.now();
+  }
+  function elapsedMs(){ return Math.round(now() - T0); }
   function send(msg){
     try{
       /* 首次握手还不知道宿主源，只发就绪/错误这类无业务数据；收到第一条消息后锁定为宿主源 */
@@ -61,6 +69,14 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
   function fail(msg){
     send({ type:'fz:error', message:String(msg || '高德地图加载失败') });
   }
+  /* 阶段打点回传宿主：只含阶段名与毫秒数，不含坐标或记录内容 */
+  function trace(stage, extra){
+    try{
+      var m = { type:'fz:trace', stage:String(stage), elapsedMs:elapsedMs(), seq:++traceSeq };
+      if(extra){ for(var k in extra){ if(Object.prototype.hasOwnProperty.call(extra, k)) m[k] = extra[k]; } }
+      send(m);
+    }catch(e){}
+  }
   /* 失败时用同域 fetch 读高德返回的 JSON，拿到真实错误码（响应带 ACAO:*） */
   function diag(reason){
     var timer = setTimeout(function(){ fail(reason + '（诊断请求超时）'); }, 6000);
@@ -82,28 +98,55 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
         fail(reason + '：请求 webapi.amap.com 失败（' + ((e && e.message) || '网络不可达或被拦截') + '）');
       });
   }
+  /* 脚本近 1 MB，移动网络下 5–20 秒都属正常；窗口放到 20 秒，期间每 1 秒回传一次进度 */
+  var ENSURE_TIMEOUT = 20000;
   function ensure(cb){
-    if(window.AMap && typeof window.AMap.Map === 'function'){ cb(null); return; }
+    if(window.AMap && typeof window.AMap.Map === 'function'){
+      if(tAmapReady === null){
+        tAmapReady = elapsedMs();
+        trace('amap-ready', { readyMs:tAmapReady });
+      }
+      cb(null);
+      return;
+    }
+    trace('ensure-start');
     var s = document.createElement('script');
     s.async = true;
     s.src = SRC;
-    var settled = false;
+    var settled = false, waited = 0;
+    tScriptStart = elapsedMs();
+    trace('script-start', { scriptStartMs:tScriptStart });
+    var hb = setInterval(function(){
+      if(settled) return;
+      waited += 1000;
+      trace('script-wait', { waitedMs:waited });
+    }, 1000);
     var timer = setTimeout(function(){
       if(settled) return;
       settled = true;
-      diag('高德脚本加载超时（10 秒）');
-    }, 10000);
+      clearTimeout(timer); clearInterval(hb);
+      trace('script-timeout', { waitedMs:waited });
+      diag('高德脚本加载超时（' + Math.round(ENSURE_TIMEOUT/1000) + ' 秒）');
+    }, ENSURE_TIMEOUT);
     s.onload = function(){
       if(settled) return;
       settled = true;
-      clearTimeout(timer);
-      if(window.AMap && typeof window.AMap.Map === 'function') cb(null);
+      clearTimeout(timer); clearInterval(hb);
+      tScriptLoaded = elapsedMs();
+      trace('script-loaded', { scriptStartMs:tScriptStart, scriptLoadedMs:tScriptLoaded });
+      if(window.AMap && typeof window.AMap.Map === 'function'){
+        tAmapReady = elapsedMs();
+        trace('amap-ready', { scriptStartMs:tScriptStart, scriptLoadedMs:tScriptLoaded, readyMs:tAmapReady });
+        cb(null);
+      }
       else diag('高德脚本已加载但未注册 AMap');
     };
     s.onerror = function(){
       if(settled) return;
       settled = true;
-      clearTimeout(timer);
+      clearTimeout(timer); clearInterval(hb);
+      tScriptLoaded = elapsedMs();
+      trace('script-error', { scriptStartMs:tScriptStart, waitedMs:waited });
       diag('高德地图脚本加载失败');
     };
     document.head.appendChild(s);

@@ -13743,13 +13743,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return (typeof window.__fzEmbedUrl === 'string' && window.__fzEmbedUrl) ||
       'https://violetz10032.github.io/fandazi/map-embed.html';
   }
-  var MAP_EMBED_TIMEOUT = 10000;
+  /* iframe HTML 载入窗口；载入后再给高德脚本 20 秒（脚本近 1 MB，移动网络慢时属正常），
+     两段都只在超时后重试一次，重试仍失败才回落画布 */
+  var MAP_EMBED_LOAD_TIMEOUT = 15000;
+  var MAP_EMBED_READY_TIMEOUT = 20000;
   var MAP_LAYER_PREF_KEY = 'fandazi.mapLayer';
   var amapState = {
     map:null, loading:false, ready:false, err:'', timer:null,
     progUntil:0, lastZ:null, lastC:null, quiet:false, gen:0, cap:null,
     embed:null, embedReady:false, embedOrigin:'', embedCb:null,
-    embedMsgBound:false, embedSig:'', embedTimer:null
+    embedMsgBound:false, embedSig:'', embedTimer:null,
+    embedT0:0, embedLoadMs:0, embedReadyMs:0, embedStage:'', embedTrace:[],
+    embedRetry:0, embedAttempts:0, embedNoteTimer:null
   };
 
   /* WGS84（GPS / 记录里的原始坐标）→ GCJ-02（高德底图）标准偏移算法；反向不回写记录。 */
@@ -14794,6 +14799,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     amapState.lastZ = null; amapState.lastC = null;
     if(amapState.timer){ clearTimeout(amapState.timer); amapState.timer = null; }
     if(amapState.embedTimer){ clearTimeout(amapState.embedTimer); amapState.embedTimer = null; }
+    mapEmbedNoteStop();
     amapState.embedCb = null;
     amapState.embedReady = false;
     amapState.embedSig = '';
@@ -14862,12 +14868,54 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!f || !f.contentWindow || !amapState.embedOrigin) return false;
     try{ f.contentWindow.postMessage(data, amapState.embedOrigin); return true; }catch(e){ return false; }
   }
+  /* 加载期进度：把 iframe 载入 / 脚本下载 / AMap 注册的实测耗时写进地图页提示条 */
+  function mapEmbedStageText(stage){
+    switch(stage){
+      case 'iframe-load': return '内嵌页已载入';
+      case 'ensure-start': return '准备加载高德脚本';
+      case 'script-start': return '高德脚本开始下载';
+      case 'script-wait': return '高德脚本下载中';
+      case 'script-loaded': return '脚本已下载，等待注册 AMap';
+      case 'amap-ready': return '已注册 AMap';
+      case 'script-error': return '脚本请求失败';
+      case 'script-timeout': return '脚本下载超时';
+      default: return '';
+    }
+  }
+  function mapEmbedNoteTick(){
+    if(!amapState.loading) return;
+    var note = $('#mapNote');
+    if(!note) return;
+    var ms = amapState.embedT0 ? Math.round(nowMs() - amapState.embedT0) : 0;
+    var stage = mapEmbedStageText(amapState.embedStage);
+    note.textContent = '高德图层加载中… ' + (ms / 1000).toFixed(1) + ' 秒' +
+      (amapState.embedRetry ? '（第 2 次尝试）' : '') + (stage ? ' · ' + stage : '');
+  }
+  function mapEmbedNoteStart(){
+    mapEmbedNoteStop();
+    mapEmbedNoteTick();
+    amapState.embedNoteTimer = setInterval(mapEmbedNoteTick, 500);
+  }
+  function mapEmbedNoteStop(){
+    if(amapState.embedNoteTimer){ clearInterval(amapState.embedNoteTimer); amapState.embedNoteTimer = null; }
+  }
+  function mapEmbedTrace(d){
+    var hostMs = amapState.embedT0 ? Math.round(nowMs() - amapState.embedT0) : 0;
+    amapState.embedStage = String(d.stage || '');
+    amapState.embedTrace.push({
+      stage:amapState.embedStage, childMs:Number(d.elapsedMs) || 0, hostMs:hostMs,
+      attempt:amapState.embedAttempts, seq:Number(d.seq) || 0
+    });
+    if(amapState.embedTrace.length > 40) amapState.embedTrace.shift();
+    mapEmbedNoteTick();
+  }
   function mapEmbedAbort(msg){
     var cb = amapState.embedCb;
     if(!cb && !amapState.embedReady) return;
     amapState.embedCb = null;
     amapState.loading = false;
     amapState.embedReady = false;
+    mapEmbedNoteStop();
     if(amapState.embedTimer){ clearTimeout(amapState.embedTimer); amapState.embedTimer = null; }
     var f = amapState.embed;
     if(amapState.embed === f) amapState.embed = null;
@@ -14881,15 +14929,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     amapState.embedCb = null;
     amapState.embedReady = true;
     amapState.loading = false;
+    amapState.embedReadyMs = amapState.embedT0 ? Math.round(nowMs() - amapState.embedT0) : 0;
+    mapEmbedNoteStop();
     if(amapState.embedTimer){ clearTimeout(amapState.embedTimer); amapState.embedTimer = null; }
     if(cb) cb(null);
   }
-  /* 内嵌页只回传视野与点击编号 */
+  /* 内嵌页只回传视野、点击编号与加载阶段打点 */
   function mapEmbedOnMessage(e){
     if(!e || e.origin !== amapState.embedOrigin) return;
     var f = amapState.embed;
     if(!f || e.source !== f.contentWindow) return;
     var d = e.data || {};
+    if(d.type === 'fz:trace'){ mapEmbedTrace(d); return; }
     if(d.type === 'fz:script-ready'){ mapEmbedReadyNow(); return; }
     if(d.type === 'fz:error'){
       mapEmbedAbort('内嵌地图页加载失败：' + (d.message || d.code || '未知原因'));
@@ -14929,24 +14980,44 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     amapState.embedSig = sig;
     mapAmapPost({ type:'fz:pts', pts:pts });
   }
-  function mapEmbedStart(cb){
-    if(amapState.embedReady && amapState.embed){ cb(null); return; }
-    if(amapState.loading) return;
+  /* 测试可调窗口（只影响等待时长，不改变失败/回落判断） */
+  function mapEmbedLoadMs(){
+    var o = Number(window.__fzEmbedLoadTimeout);
+    return isFinite(o) && o > 0 ? o : MAP_EMBED_LOAD_TIMEOUT;
+  }
+  function mapEmbedReadyMs(){
+    var o = Number(window.__fzEmbedReadyTimeout);
+    return isFinite(o) && o > 0 ? o : MAP_EMBED_READY_TIMEOUT;
+  }
+  function mapEmbedStart(cb){ mapEmbedMount(cb, 0); }
+  function mapEmbedMount(cb, retry){
+    if(!retry && amapState.embedReady && amapState.embed){ cb(null); return; }
+    if(!retry && amapState.loading) return;
     var layer = $('#amapLayer');
     if(!layer){ cb('缺少地图容器'); return; }
-    amapState.loading = true;
-    amapState.err = '';
-    amapState.embedOrigin = mapEmbedOriginOf(mapEmbedUrl());
+    if(amapState.embedTimer){ clearTimeout(amapState.embedTimer); amapState.embedTimer = null; }
     var old = $('#mapEmbedFrame');
     if(old && old.parentNode) old.parentNode.removeChild(old);
     layer.innerHTML = '';
+    var url = mapEmbedUrl();
+    amapState.loading = true;
+    amapState.err = '';
+    amapState.embedRetry = retry;
+    amapState.embedAttempts++;
+    amapState.embedT0 = nowMs();
+    amapState.embedLoadMs = 0;
+    amapState.embedReadyMs = 0;
+    amapState.embedStage = '';
+    amapState.embedTrace = [];
+    amapState.embedOrigin = mapEmbedOriginOf(url);
     var f = document.createElement('iframe');
     f.id = 'mapEmbedFrame';
     f.className = 'map-embed-frame';
     f.title = '高德地图（内嵌页）';
     f.setAttribute('loading', 'eager');
     f.setAttribute('referrerpolicy', 'no-referrer');
-    f.src = mapEmbedUrl();
+    /* 重试加一次性查询参数，绕开可能被缓存的旧响应 */
+    f.src = retry ? (url + (url.indexOf('?') >= 0 ? '&' : '?') + '_fzr=' + retry) : url;
     amapState.embed = f;
     amapState.embedReady = false;
     amapState.embedCb = cb;
@@ -14954,18 +15025,49 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       window.addEventListener('message', mapEmbedOnMessage);
       amapState.embedMsgBound = true;
     }
-    amapState.embedTimer = setTimeout(function(){
-      mapEmbedAbort('内嵌地图页不可达（10 秒未加载完成）：请检查网络能否访问 ' + amapState.embedOrigin + '。');
-    }, MAP_EMBED_TIMEOUT);
+    mapEmbedNoteStart();
+    amapState.embedTimer = setTimeout(function(){ mapEmbedTimeout('load', retry); }, mapEmbedLoadMs());
     f.onload = function(){
-      if(amapState.embedTimer){ clearTimeout(amapState.embedTimer); }
-      amapState.embedTimer = setTimeout(function(){
-        mapEmbedAbort('内嵌地图页已加载但高德脚本未就绪（6 秒无响应）：可能被网络拦截，或高德返回了错误码。');
-      }, 6000);
+      if(amapState.embed !== f) return;
+      amapState.embedLoadMs = Math.round(nowMs() - amapState.embedT0);
+      amapState.embedStage = 'iframe-load';
+      amapState.embedTrace.push({ stage:'iframe-load', childMs:0, hostMs:amapState.embedLoadMs, attempt:amapState.embedAttempts, seq:0 });
+      mapEmbedNoteTick();
+      if(amapState.embedTimer) clearTimeout(amapState.embedTimer);
+      amapState.embedTimer = setTimeout(function(){ mapEmbedTimeout('ready', retry); }, mapEmbedReadyMs());
     };
     layer.classList.remove('hidden');
     layer.setAttribute('aria-hidden', 'false');
     layer.appendChild(f);
+  }
+  /* 超时只重试一次；重试仍失败才回落，提示区分「还没加载完」与「确实报错」 */
+  function mapEmbedTimeout(kind, retry){
+    if(kind === 'load'){
+      if(!retry){
+        mapEmbedRetry('内嵌地图页 ' + Math.round(mapEmbedLoadMs()/1000) + ' 秒未载入完成，正在重试一次…', retry);
+        return;
+      }
+      mapEmbedAbort('内嵌地图页两次都未载入完成（每次 ' + Math.round(mapEmbedLoadMs()/1000) +
+        ' 秒）：请检查网络能否访问 ' + amapState.embedOrigin + '。');
+      return;
+    }
+    if(!retry){
+      mapEmbedRetry('高德脚本 ' + Math.round(mapEmbedReadyMs()/1000) + ' 秒仍未就绪（脚本可能还在下载），正在重试一次…', retry);
+      return;
+    }
+    mapEmbedAbort('高德脚本在 ' + Math.round(mapEmbedReadyMs()/1000) +
+      ' 秒内仍未完成加载（已重试 1 次）：多为网络较慢或被拦截，并非高德返回错误码；可点「重试高德」稍后再试，或改用画布。');
+  }
+  function mapEmbedRetry(reason, retry){
+    var cb = amapState.embedCb;
+    mapEmbedNoteStop();
+    if(amapState.embedTimer){ clearTimeout(amapState.embedTimer); amapState.embedTimer = null; }
+    amapState.embedReady = false;
+    amapState.loading = false;
+    amapState.embedCb = null;
+    var note = $('#mapNote');
+    if(note) note.textContent = reason;
+    mapEmbedMount(cb, retry + 1);
   }
   function mapEmbedSetup(){
     var layer = $('#amapLayer');
@@ -23438,6 +23540,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         return { id: MAP_LAYER_ID, amapOn: mapAmapActive(), pref: mapLayerPref(),
           ready: amapState.ready, loading: amapState.loading, err: amapState.err,
           origin: mapAmapOrigin(), local: mapAmapIsLocal(), lastErr: mapAmapErrRead(),
+          embed: { attempts:amapState.embedAttempts, retry:amapState.embedRetry,
+            loadMs:amapState.embedLoadMs, readyMs:amapState.embedReadyMs,
+            stage:amapState.embedStage, trace:amapState.embedTrace.slice() },
           env: $('#mapBaseEnv') ? $('#mapBaseEnv').textContent : '' };
       },
       setLayer: function(id){ return mapSwitchLayer(id, true); },
