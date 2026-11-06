@@ -549,6 +549,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .blind-actions .btn{min-height:44px;padding:10px 6px;font-size:12.5px}
   .blind-actions .btn-primary{grid-column:1 / -1}
 
+  /* 智能粘贴 / 速记草稿 */
+  .smart-paste{margin:0 0 12px;padding:10px 12px;border:1px dashed var(--accent-line);border-radius:12px;background:var(--panel)}
+  .smart-paste summary{font-size:12.5px;font-weight:600;cursor:pointer}
+  .smart-paste textarea{margin-top:8px;min-height:64px;resize:vertical}
+  .draft-card{padding:0;overflow:hidden}
+  .draft-head{display:flex;justify-content:space-between;align-items:center;width:100%;border:0;background:var(--soft);color:var(--soft-ink);padding:11px 12px;font-size:13px;cursor:pointer}
+  .draft-list{border-top:1px solid var(--line)}
+  .draft-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .draft-row:last-child{border-bottom:0}
+  .draft-thumb{width:44px;height:44px;border-radius:10px;object-fit:cover;background:var(--chip);flex:none}
+  .draft-main{flex:1;min-width:0}
+  .draft-main b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .draft-main span{font-size:11.5px;color:var(--ink2)}
+  .draft-row .btn{min-height:36px;padding:7px 10px;font-size:12px}
+
   .modal-mask{position:fixed;inset:0;background:var(--mask);z-index:50;display:flex;align-items:center;justify-content:center;padding:18px}
   .modal{width:100%;max-width:440px;background:var(--card);border-radius:18px;padding:18px;box-shadow:0 20px 50px rgba(0,0,0,.2);max-height:88vh;overflow:auto}
   .modal h3{font-size:16px;margin-bottom:4px}
@@ -1137,6 +1152,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           </div>
           <button class="btn btn-primary btn-sm" id="btnSnapRecord" type="button">顺手记</button>
         </div>
+        <div id="draftBox" class="hidden"></div>
         <div class="card flat" style="padding:12px">
           <div class="frow">
             <input class="input" id="q" placeholder="搜索店名 / 商圈 / 标签 / 备注" inputmode="search">
@@ -2037,6 +2053,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     </div>
     <p class="form-hint" id="formModeHint">只填餐厅和日期就能保存；金额、照片、一句话评价都选填。切换模式不会清空已填内容。</p>
 
+    <details class="smart-paste" id="smartPasteBox">
+      <summary>智能粘贴：从平台分享文案识别店名 / 人均 / 商圈</summary>
+      <textarea class="input" id="smartPasteText" rows="3" placeholder="把大众点评 / 高德 / 小红书的分享文案粘到这里"></textarea>
+      <div class="frow" style="margin-top:8px;align-items:center">
+        <button type="button" class="btn btn-soft" id="btnSmartParse">解析</button>
+        <span class="chip hidden" id="smartPasteTag">来自粘贴解析</span>
+      </div>
+      <p class="form-hint" id="smartPasteMsg">不读取剪贴板，请手动长按粘贴；未识别的字段留空、不猜。人均只进「参考人均」，不会写入实付。</p>
+    </details>
+
     <div class="card flat pick-card" id="pickCard">
       <div class="section-head">
         <h2>选餐厅</h2>
@@ -2285,6 +2311,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     </div>
     <div class="quick-save-bar hidden" id="quickSaveBar">
       <div class="qs-hint">只记这一顿也行<span class="qs-keys">金额 / 评分 / 照片都可以以后补</span></div>
+      <button type="button" class="btn" id="btnSaveDraft">存草稿</button>
       <button type="button" class="btn btn-primary" id="btnQuickSave">保存</button>
     </div>
   </form>
@@ -2697,7 +2724,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <button class="btn btn-sm btn-danger hidden" id="btnAnnualDelete">删除存档</button>
       <button class="btn btn-sm" id="btnAnnualCsv">导出存档 CSV</button>
     </div>
-    <p class="dist-note">长图 1080 宽、自动分页；金额只用真实记录，缺失会标注「未记录 N 次」；分享图固定浅色。存档只保存聚合数字与最满意一餐的文字/照片引用，不复制照片原图；一年一份，覆盖后旧数字不可恢复。</p>
+    <p class="dist-note">长图 1080 宽、自动分页；金额只用真实记录，缺失会标注「暂无数据 N 次」；示例、好友导入、估算记录与参考价不进入金额统计。分享图固定浅色。存档只保存聚合数字与最满意一餐的文字/照片引用，不复制照片原图；一年一份，覆盖后旧数字不可恢复。</p>
   </div>
 </div>
 
@@ -2850,7 +2877,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function recordPriceText(r){
     var p = perPriceOf(r || {});
-    if(p <= 0) return '金额未记录';
+    if(p <= 0) return '金额暂无数据';
     return amountExcludedReason(r) ? '参考人均 '+money(p) : '实际人均 '+money(p);
   }
   function storeRatingText(store){
@@ -6464,7 +6491,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<button class="chip-toggle'+(dailySession.recentDays ? ' on' : '')+'" data-act="qNoRecent">排除最近吃过的</button>'+
         (currentMain() ? '<button class="chip-toggle prof-act danger" data-act="qSkip" data-key="'+esc(currentMain().store.key)+'">暂时不考虑这家</button>' : '')+
       '</div>'+picker+
-      '<p class="prof-note">换一家 / 暂时不考虑：仅本次会话排除，不改记录；价格再低 = 当前主推人均 ×0.8；距离更近 = 当前候选中位距离 ×0.7；排除最近吃过的 = 7 天内到访。</p>'+
+      '<p class="prof-note">换一家 / 暂时不考虑：仅本次会话排除，不改记录；价格再低 = 当前主推参考人均 ×0.8；距离更近 = 当前候选中位距离 ×0.7；排除最近吃过的 = 7 天内到访。</p>'+
     '</div>';
   }
   function quickSwap(){
@@ -6488,7 +6515,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!cur || cur <= 0) cur = num(dailyState.ctx.max);
     var cap = Math.max(1, Math.round(cur * 0.8));
     var floor = num($('#day-min').value);
-    if(cap <= floor){ toast('当前主推人均已接近下限，无法再降'); return; }
+    if(cap <= floor){ toast('当前主推参考人均已接近下限，无法再降'); return; }
     dailySession.priceMax = cap;
     runDecideNow(false);
     toast('快捷上限已降到 ¥'+cap+'（原人均 ¥'+cur+' ×0.8）');
@@ -7985,6 +8012,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
   /* force=true 时重新过滤排序；force=false 时复用缓存（用于“加载更多”） */
   function renderList(force){
+    try{ paintDrafts(); }catch(e){}
     var sig = listSignature();
     if(force === true || !listState.items || listState.sig !== sig){
       var q = String($('#q').value||'').trim().toLowerCase();
@@ -8171,7 +8199,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var amount = diaryAmount(r);
     var rating = num(r.rating) > 0 ? String(r.rating) : '';
     var meta = [
-      rating ? '评分 '+rating : '未评分',
+      rating ? '评分 '+rating : '暂无评分',
       esc(r.people || 1)+' 人',
       r.category ? esc(r.category) : '未分类'
     ].join(' · ');
@@ -8192,7 +8220,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<div class="diary-foot">'+
           (amount != null
             ? '<span class="diary-amount">'+money(amount)+'</span>'
-            : '<span class="diary-amount miss">实付未记录</span>')+
+            : '<span class="diary-amount miss">实付暂无数据</span>')+
         '</div>'+
       '</div>'+
     '</article>';
@@ -8241,7 +8269,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       html += '<div class="diary-mhead"><h3>'+esc(g.unk ? '日期未知' : diaryMonthLabel(g.month))+'</h3>'+
         '<span class="hint">'+g.items.length+' 餐'+
           (g.unk ? ' · 不计入月份统计'
-                 : ' · '+(g.amount > 0 ? '花费 '+money(g.amount) : '花费未记录')+(g.missing ? ' · '+g.missing+' 餐未记金额' : ''))+
+                 : ' · '+(g.amount > 0 ? '花费 '+money(g.amount) : '花费暂无数据')+(g.missing ? ' · '+g.missing+' 餐暂无金额' : ''))+
         '</span></div>';
       html += take.map(diaryRow).join('');
     });
@@ -8310,7 +8338,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<div class="nm">'+esc(d.name)+'</div>'+
         (d.note ? '<div class="mt" style="text-align:left;margin-top:2px">'+esc(d.note)+'</div>' : '')+
         (photos ? '<div class="dish-photos" style="margin-top:6px">'+photos+'</div>' : '')+
-      '</div><div class="mt">'+esc(meta.join(' · ') || '未填价 / 未评分')+'</div></div>';
+      '</div><div class="mt">'+esc(meta.join(' · ') || '暂无价格 / 暂无评分')+'</div></div>';
     }).join('') + '</div>' : '<p class="muted" style="margin:0">暂无数据</p>';
     return '<div class="card flat" style="padding:12px;margin-bottom:12px"><p class="muted" style="margin-bottom:6px">本次菜品</p>'+body+'</div>';
   }
@@ -8537,7 +8565,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var unk = [];
     if(res.unknown.rating) unk.push('无评分 '+res.unknown.rating+' 家'+(f.minRating > 0 ? '（已排除）' : '（按未知参与）'));
     if(res.unknown.open) unk.push('无营业时间 '+res.unknown.open+' 家'+(f.openNow ? '（已排除）' : '（按未知参与）'));
-    if(res.unknown.price) unk.push('未填人均 '+res.unknown.price+' 家（沿用价格条件，已排除）');
+    if(res.unknown.price) unk.push('暂无参考价 '+res.unknown.price+' 家（沿用价格条件，已排除）');
     if(unk.length) lines.push(unk.join(' · '));
     var act = [];
     [['无评分',f.minRating > 0],['无营业时间',f.openNow],['标签不匹配',f.tags.length > 0],['未到未去时长',f.notVisitedDays > 0],['不在行程',f.tripOnly]].forEach(function(pair){
@@ -8653,7 +8681,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '② 筛选：'+drawFilterSummary(st.filters),
       '③ 权重表：'+top.map(function(x){ return x.store.name+' '+x.w.toFixed(2)+'（'+Math.round(x.norm*100)+'%）'; }).join('；')+avoidText,
       '④ 总权重 '+st.totalW.toFixed(2)+'，随机数 r='+st.r.toFixed(4)+' → 命中「'+st.picked.store.name+'」',
-      '⑤ 复核：人均 '+money(st.picked.store.perPrice)+' ∈ ['+num($('#pk-min').value)+', '+num($('#pk-max').value)+']'+(pkNear ? '，距离 ≤ 3 km（定位/手填）' : '')+(num($('#pkMaxMin').value) > 0 ? '，耗时 ≤ '+num($('#pkMaxMin').value)+' 分钟（手填估算）' : '')
+      '⑤ 复核：参考人均 '+money(st.picked.store.perPrice)+' ∈ ['+num($('#pk-min').value)+', '+num($('#pk-max').value)+']'+(pkNear ? '，距离 ≤ 3 km（定位/手填）' : '')+(num($('#pkMaxMin').value) > 0 ? '，耗时 ≤ '+num($('#pkMaxMin').value)+' 分钟（手填估算）' : '')
     ].join('\n');
     var k = esc(st.picked.store.key);
     box.innerHTML =
@@ -8909,10 +8937,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var sig = tags.slice(0, 3).join(' / ');
     var km = storeRealKm(s);
     var dist = km != null ? ('距我约 '+distText(km)+'（定位）') : '距离：暂无数据';
-    var price = num(s.perPrice) > 0 ? (money(s.perPrice)+'/人（参考）') : '人均：暂无数据';
+    var price = storePriceText(s);
     var geo = [s.city, s.area].filter(Boolean).join(' · ');
     body.innerHTML =
       '<p class="blind-meta">'+esc([geo, price, dist].filter(Boolean).join(' · '))+'</p>'+
+      '<p class="blind-meta">'+esc(storeRatingText(s)+' · '+storeFreshnessText(s))+'</p>'+
       (sig ? '<p class="blind-meta">'+esc(sig)+'</p>' : '')+
       '<p class="blind-reason">'+esc(blindReason(s, b))+'</p>';
     acts.innerHTML =
@@ -9038,9 +9067,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var s = x.store;
       return '<article class="card">'+
         '<div class="top"><div style="min-width:0"><h3>'+(i+1)+'. '+esc(s.name)+'</h3>'+
-        '<p class="meta">'+esc([s.city,s.area].filter(Boolean).join(' · '))+' · '+esc(s.category||'未分类')+' · 人均 '+money(s.perPrice)+'</p></div>'+
+        '<p class="meta">'+esc([s.city,s.area].filter(Boolean).join(' · '))+' · '+esc(s.category||'未分类')+' · '+esc(storePriceText(s))+'</p></div>'+
         '<div class="score-pill '+scoreClass(x.score)+'">'+x.score+'<small>匹配</small></div></div>'+
-        '<div class="why">'+x.reasons.map(function(t){ return '<div class="why-item">'+t+'</div>'; }).join('')+'</div>'+
+        '<div class="why">'+x.reasons.map(function(t){ return '<div class="why-item">'+esc(reasonTrim(t))+'</div>'; }).join('')+'</div>'+
         '<div class="actions" style="margin-top:10px">'+
           '<button class="btn btn-sm btn-soft" data-act="jumpStore" data-key="'+esc(s.key)+'">打开平台</button>'+
           '<button class="btn btn-sm" data-act="copyStore" data-key="'+esc(s.key)+'">复制店名</button>'+
@@ -9087,13 +9116,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<div style="min-width:0">'+
           '<p class="muted">方案 '+(idx+1)+' · '+esc(SCENE_INFO[plan.scene].label)+'</p>'+
           '<div class="plan-main">'+esc(main.name)+'</div>'+
-          '<p class="draw-price">预估总价 '+money(plan.total)+' · 人均 '+money(plan.perCap)+'</p>'+
+          '<p class="draw-price">按参考人均预估总价 '+money(plan.total)+' · 参考人均 '+money(plan.perCap)+'</p>'+
           '<p class="meta">'+esc([main.city,main.area].filter(Boolean).join(' · '))+' · '+esc(main.category||'未分类')+'</p>'+
         '</div>'+
         '<div class="score-pill '+scoreClass(plan.score)+'">'+plan.score+'<small>方案分</small></div>'+
       '</div>'+
-      (plan.addon ? '<div class="plan-addon"><p class="muted">加餐可选</p><p style="font-size:14px;font-weight:600">'+esc(plan.addon.name)+' · '+esc(plan.addon.category||'')+' · 人均 '+money(plan.addon.perPrice)+'</p></div>' : '')+
-      '<div class="why">'+plan.reasons.map(function(t){ return '<div class="why-item">'+t+'</div>'; }).join('')+'</div>'+
+      (plan.addon ? '<div class="plan-addon"><p class="muted">加餐可选</p><p style="font-size:14px;font-weight:600">'+esc(plan.addon.name)+' · '+esc(plan.addon.category||'')+' · 参考人均 '+money(plan.addon.perPrice)+'</p></div>' : '')+
+      '<div class="why">'+plan.reasons.map(function(t){ return '<div class="why-item">'+esc(reasonTrim(t))+'</div>'; }).join('')+'</div>'+
       '<div class="actions" style="margin-top:12px">'+
         '<button class="btn btn-primary btn-sm" data-act="planVote" data-idx="'+idx+'">生成投票清单</button>'+
         '<button class="btn btn-sm btn-soft" data-act="jumpStore" data-key="'+esc(main.key)+'">打开平台</button>'+
@@ -9126,7 +9155,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         var sc = v.scores[it.key]||0;
         return '<div class="vote-item">'+
           '<div style="flex:1;min-width:0">'+
-            '<div style="font-size:13px">'+(i===0 && sc>0 ? '<span class="tag warn">领先</span> ' : '')+'<b>'+esc(it.name)+'</b> <span class="muted">'+money(it.price)+'/人</span></div>'+
+            '<div style="font-size:13px">'+(i===0 && sc>0 ? '<span class="tag warn">领先</span> ' : '')+'<b>'+esc(it.name)+'</b> <span class="muted">'+esc(num(it.price)>0 ? '参考人均 '+money(it.price) : '暂无参考价')+'</span></div>'+
             '<div class="vote-bar"><i style="width:'+(sc/max*100)+'%"></i></div>'+
           '</div>'+
           '<div class="vote-score">'+sc+'</div>'+
@@ -9366,7 +9395,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var fails = [];
     if(isBlack(store)) fails.push({ type:'blacklist', text:'在「不再推荐」名单' });
     if(perCap > 0 && num(store.perPrice) > perCap){
-      fails.push({ type:'budget', text:'人均 ' + money(store.perPrice) + ' 超预算 ' + money(perCap) });
+      fails.push({ type:'budget', text:'参考人均 ' + money(store.perPrice) + ' 超预算 ' + money(perCap) });
     }
     g.participants.forEach(function(p){
       gatherEffectiveAvoid(p).forEach(function(tag){
@@ -9415,7 +9444,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(num(store.rating) > 0) r.push('评分 ' + (Math.round(num(store.rating) * 10) / 10));
     var km = storeKm(store);
     if(km != null) r.push('距离 ' + km.toFixed(1) + ' km');
-    if(perCap > 0 && num(store.perPrice) > 0) r.push('人均 ' + money(store.perPrice) + '，预算内（≤' + money(perCap) + '）');
+    if(perCap > 0 && num(store.perPrice) > 0) r.push('参考人均 ' + money(store.perPrice) + '，预算内（≤' + money(perCap) + '）');
     if(num(store.days) > 0 && num(store.days) < 90) r.push('最近 90 天内去过，口味熟悉');
     else if(num(store.days) >= 365) r.push('一年没去了，换换口味');
     else if(num(store.days) > 0) r.push(Math.round(num(store.days)) + ' 天没去了');
@@ -9701,9 +9730,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return '<div class="g-cand' + (isWin ? ' win' : '') + '">' +
       '<div class="g-cand-top"><span class="g-cnum">' + no + '</span>' +
         '<div style="flex:1;min-width:0">' +
-          '<div style="font-size:13.5px;font-weight:600;overflow-wrap:anywhere">' + esc(c.name) + ' <span class="muted" style="font-weight:400">' + (c.perPrice ? money(c.perPrice) + '/人' : '人均未记录') + '</span></div>' +
+          '<div style="font-size:13.5px;font-weight:600;overflow-wrap:anywhere">' + esc(c.name) + ' <span class="muted" style="font-weight:400">' + esc(num(c.perPrice) > 0 ? '参考人均 '+money(c.perPrice) : '暂无参考价') + '</span></div>' +
           '<p class="g-meta">' + esc(meta || '未分类') + ' · 匹配分 ' + c.score + '</p>' +
-          '<div class="g-why">' + c.reasons.map(function(t){ return '· ' + esc(t); }).join('<br>') + '</div>' +
+          '<div class="g-why">' + c.reasons.map(function(t){ return '· ' + esc(reasonTrim(t)); }).join('<br>') + '</div>' +
           '<div class="g-line">' + (c.okNames.length ? '能吃：' + esc(c.okNames.join('、')) : '未设参与者，按人数估算') +
             (c.badNames.length ? ' · 忌口冲突：' + esc(c.badNames.join('、')) : '') + '</div>' +
         '</div>' +
@@ -9787,7 +9816,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var arrived = !!g.recordId;
       winBlock = '<div class="notice" style="margin-top:12px">已结算：<b>' + esc(g.winner ? g.winner.name : '') + '</b>' +
         (g.winner ? ' · ' + g.winner.votes + ' 票' : '') +
-        (g.winner && g.winner.estimated ? ' · 参考人均 ' + money(g.winner.perPrice) + '（金额未填）' : (g.winner ? ' · 未记录人均，金额留空' : '') ) +
+        (g.winner && g.winner.estimated ? ' · 参考人均 ' + money(g.winner.perPrice) + '（金额暂无数据）' : (g.winner ? ' · 暂无参考价，金额留空' : '') ) +
         '<br>' + (arrived
           ? '已确认到店，日记里有 1 条记录（' + g.people + ' 人 · 场景「朋友聚会」）'
           : '<b>尚未写入日记</b>：确认到店后才生成记录，投票结果本身不算一次到访。') +
@@ -10310,7 +10339,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function voteListText(g){
     return (g && g.candidates ? g.candidates : []).map(function(c, i){
-      return (i + 1) + '. ' + c.name + (num(c.perPrice) ? ' · 人均 ' + num(c.perPrice) + ' 元' : '');
+      return (i + 1) + '. ' + c.name + (num(c.perPrice) ? ' · 参考人均 ' + num(c.perPrice) + ' 元' : ' · 暂无参考价');
     }).join('\n');
   }
   function voteReadHash(){
@@ -10476,7 +10505,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       ? '<div class="notice" style="margin-bottom:10px">已过截止时间' + (dl ? '（' + esc(dl) + '）' : '') + '，本页只读，不能再投票。</div>'
       : '<div class="notice" style="margin-bottom:10px">截止 ' + esc(dl || '未设置') + ' · 朋友局，无签名校验；只记录随机投票编号，不收集昵称或账号。</div>';
     var rows = p.candidates.map(function(c, i){
-      var meta = [c.city, c.area, c.perPrice ? '人均 ' + c.perPrice + ' 元' : ''].filter(Boolean).join(' · ');
+      var meta = [c.city, c.area, num(c.perPrice) ? '参考人均 ' + num(c.perPrice) + ' 元' : '暂无参考价'].filter(Boolean).join(' · ');
       var v = st.votes[i], dis = st.expired ? ' disabled' : '';
       return '<div class="pv-cand"><div class="g-cand-top"><span class="g-cnum">' + (i + 1) + '</span>' +
         '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;overflow-wrap:anywhere">' + esc(c.name) + '</div>' +
@@ -10603,14 +10632,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#fitBox').innerHTML = res.list.slice(0,6).map(function(x){
       return '<article class="card" style="padding:13px">'+
         '<div class="top"><div style="min-width:0"><h3 style="font-size:15px">'+esc(x.store.name)+'</h3>'+
-        '<p class="meta">'+money(x.store.perPrice)+'/人 · '+esc(x.store.category||'未分类')+'</p></div>'+
+        '<p class="meta">'+esc(storePriceText(x.store)+' · '+(x.store.category||'未分类'))+'</p>'+
+        '<p class="meta">'+esc(storeRatingText(x.store)+' · '+storeFreshnessText(x.store))+'</p></div>'+
         '<div class="score-pill '+scoreClass(x.score)+'">'+x.score+'<small>匹配</small></div></div>'+
         '<div class="nutri">'+
           (x.kcal?'<span>约 '+x.kcal+' kcal</span>':'<span>热量未记录</span>')+
           (x.protein?'<span>蛋白 '+x.protein+' g</span>':'<span>蛋白未记录</span>')+
           (x.store.friendly?'<span>健身友好</span>':'')+
         '</div>'+
-        '<div class="why">'+x.reasons.slice(0,2).map(function(t){ return '<div class="why-item">'+t+'</div>'; }).join('')+'</div>'+
+        '<div class="why">'+x.reasons.slice(0,2).map(function(t){ return '<div class="why-item">'+esc(reasonTrim(t))+'</div>'; }).join('')+'</div>'+
         '<div class="actions" style="margin-top:10px">'+
           '<button class="btn btn-sm btn-primary" data-act="fastEat" data-key="'+esc(x.store.key)+'">记成一餐</button>'+
           '<button class="btn btn-sm btn-soft" data-act="jumpStore" data-key="'+esc(x.store.key)+'">打开平台</button>'+
@@ -10848,7 +10878,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var src = String(r.source || '').toLowerCase();
     if(src === 'sample' || r.sample === true || r.isSample === true) return 'sample';
     if(r.estimated === true || r.amountEstimated === true || r.isEstimated === true || src === 'estimated') return 'estimated';
-    if(!!r.importedFrom || src === 'imported' || src === 'friend') return 'imported';
+    if(!!r.importedFrom || r.imported === true || r.isImported === true || src === 'imported' || src === 'friend') return 'imported';
     return '';
   }
   function amountCountable(r){
@@ -11067,7 +11097,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       }
       if(d.bestTotal){
         html += '<div class="stat-row" data-stat-detail="shop:'+esc(d.bestTotal.key)+'" data-stat-title="'+esc(d.bestTotal.name+' · 累计最高')+'">'+
-          '<span class="idx">累计</span><span class="name">'+esc(d.bestTotal.name)+'<span class="sub">'+d.bestTotal.n+' 笔有金额'+(d.bestTotal.miss?' · '+d.bestTotal.miss+' 笔未记录':'')+'</span></span>'+
+          '<span class="idx">累计</span><span class="name">'+esc(d.bestTotal.name)+'<span class="sub">'+d.bestTotal.n+' 笔有实际金额'+(d.bestTotal.miss?' · '+d.bestTotal.miss+' 笔暂无数据':'')+'</span></span>'+
           '<span class="num">'+money(d.bestTotal.sum)+'</span></div>';
       }
     }else if(p.total){
@@ -11430,7 +11460,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return d.months.map(function(m){
       var vw = m.total ? Math.max(2, Math.round(m.total/mv*100)) : 0;
       var sw = m.sum ? Math.max(2, Math.round(m.sum/ms*100)) : 0;
-      var spend = m.amountN ? money(m.sum) : (m.total ? '未记录' : '—');
+      var spend = m.amountN ? money(m.sum) : (m.total ? '暂无数据' : '—');
       return '<div class="annual-mrow"><span class="m">'+parseInt(m.key.slice(5,7),10)+' 月</span>'+
         '<span class="track"><i style="width:'+vw+'%"></i></span><span class="v">'+m.total+' 次</span>'+
         '<span class="track p"><i style="width:'+sw+'%"></i></span><span class="v">'+spend+'</span></div>';
@@ -11446,8 +11476,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(d.topCat) lines.push('最喜欢：'+d.topCat.name+'（'+d.topCat.count+' 次 · '+d.topCat.pct+'%）');
     if(d.bestVisit) lines.push('到访最多：'+d.bestVisit.name+'（'+d.bestVisit.visits+' 次）');
     if(d.bestRated) lines.push('最高评分：'+d.bestRated.name+'（'+d.bestRated.rating+' 分 · '+d.bestRated.visits+' 次，至少到访 2 次）');
-    lines.push('消费总额：'+(d.money.n ? money(d.money.sum) : '未记录')+'（样本 '+d.money.n+' 笔 · 未记录 '+d.money.miss+' 次）');
-    lines.push('平均每次：'+(d.money.avgVisit != null ? money(d.money.avgVisit) : '未记录'));
+    lines.push('实际消费总额：'+(d.money.n ? money(d.money.sum) : '暂无数据')+'（样本 '+d.money.n+' 笔 · 暂无数据 '+d.money.miss+' 次）');
+    lines.push('实际均次：'+(d.money.avgVisit != null ? money(d.money.avgVisit) : '暂无数据'));
     if(d.bestMeal){
       lines.push('最满意的一餐：'+d.bestMeal.name+' · '+d.bestMeal.date+' · '+d.bestMeal.rating+' 分');
       if(d.bestMeal.note) lines.push('「'+d.bestMeal.note+'」');
@@ -11502,16 +11532,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }else{
       html += '<div class="annual-hero"><div class="y">'+d.year+'</div><p>共 <b>'+d.records+'</b> 次到访 · <b>'+d.stores+'</b> 家餐厅'+
         (d.firstDate ? ' · '+esc(d.firstDate)+' → '+esc(d.lastDate) : '')+'</p>'+
-        '<p>只统计这一年有日期的记录；日期未知的记录不进入年度报告。</p></div>';
+        '<p>只统计这一年有日期的真实记录；示例 / 好友导入 / 估算记录与参考价都不进入年度金额。</p></div>';
       html += '<div class="annual-grid">'+
-        annualCellHtml(String(d.money.n), '金额样本', '未记录 '+d.money.miss+' 次')+
-        annualCellHtml(d.money.n ? money(d.money.sum) : '—', '年度消费', '只算真实金额')+
-        annualCellHtml(d.money.avgVisit != null ? money(d.money.avgVisit) : '—', '平均每次', '分母 '+d.money.n+' 笔')+
+        annualCellHtml(String(d.money.n), '实际金额样本', '暂无数据 '+d.money.miss+' 次')+
+        annualCellHtml(d.money.n ? money(d.money.sum) : '暂无数据', '年度实际消费', '只算真实实际金额')+
+        annualCellHtml(d.money.avgVisit != null ? money(d.money.avgVisit) : '暂无数据', '实际均次', '分母 '+d.money.n+' 笔')+
         annualCellHtml(d.records+' 次 / '+d.stores+' 家', '到访与餐厅', '不同店名去重')+
         annualCellHtml(d.topCat ? esc(d.topCat.name) : '—', '最喜欢的菜系', d.topCat ? d.topCat.count+' 次 · '+d.topCat.pct+'%' : '没有菜系')+
         annualCellHtml(d.bestVisit ? esc(d.bestVisit.name) : '—', '到访最多餐厅', d.bestVisit ? d.bestVisit.visits+' 次' : '没有记录')+
         annualCellHtml(d.bestRated ? esc(d.bestRated.name) : '暂无', '最高评分餐厅', d.bestRated ? d.bestRated.rating+' 分 · '+d.bestRated.visits+' 次（≥2 次）' : '没有到访 ≥2 次且有评分的店')+
-        annualCellHtml(d.money.miss+' 次', '未记录金额', '不计入总额与均值')+
+        annualCellHtml(d.money.miss+' 次', '暂无数据金额', '不计入总额与均值')+
         '</div>';
       html += '<div class="stat-sub"><h3>最满意的一餐</h3><span class="hint">评分最高</span></div>';
       if(d.bestMeal){
@@ -11531,7 +11561,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       }
       html += '<div class="stat-sub"><h3>月度到访与消费</h3><span class="hint">12 个月</span></div>';
       html += annualMonthHtml(d);
-      html += '<p class="stat-note">金额样本 <b>'+d.money.n+'</b> 笔 / 未记录 <b>'+d.money.miss+'</b> 次；缺失金额的到访不计入总额与平均每次的分母，也不按人均推算。</p>';
+      html += '<p class="stat-note">实际金额样本 <b>'+d.money.n+'</b> 笔 / 暂无数据 <b>'+d.money.miss+'</b> 次；缺失金额的到访不计入总额与实际均次的分母，也不按参考人均推算。</p>';
       if(useArchive) html += '<p class="stat-note muted">存档只保存聚合数字，因此不包含「这一年在吃过的店」明细页。</p>';
     }
     $('#annualBody').innerHTML = html;
@@ -11640,12 +11670,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var cells = [
         ['到访次数', d.records+' 次', '有日期的记录'],
         ['不同餐厅', d.stores+' 家', '按店名去重'],
-        ['年度消费', d.money.n ? money(d.money.sum) : '—', '真实金额样本 '+d.money.n+' 笔'],
-        ['平均每次', d.money.avgVisit != null ? money(d.money.avgVisit) : '—', '分母 '+d.money.n+' 笔'],
+        ['年度实际消费', d.money.n ? money(d.money.sum) : '暂无数据', '真实金额样本 '+d.money.n+' 笔'],
+        ['实际均次', d.money.avgVisit != null ? money(d.money.avgVisit) : '暂无数据', '分母 '+d.money.n+' 笔'],
         ['最喜欢的菜系', d.topCat ? d.topCat.name : '—', d.topCat ? d.topCat.count+' 次 · '+d.topCat.pct+'%' : '没有菜系'],
         ['到访最多餐厅', d.bestVisit ? d.bestVisit.name : '—', d.bestVisit ? d.bestVisit.visits+' 次'+(d.bestVisit.lastDate?' · 上次 '+d.bestVisit.lastDate:'') : '没有记录'],
         ['最高评分餐厅', d.bestRated ? d.bestRated.name : '暂无', d.bestRated ? d.bestRated.rating+' 分 · '+d.bestRated.visits+' 次（≥2 次）' : '没有到访 ≥2 次且有评分的店'],
-        ['未记录金额', d.money.miss+' 次', '不计入总额与均值']
+        ['暂无数据金额', d.money.miss+' 次', '不计入总额与均值']
       ];
       var cw = (W-M*2-24)/2, ch = 172;
       cells.forEach(function(cell, i){
@@ -11676,7 +11706,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       ctx.fillStyle = '#221d19'; ctx.font = '700 36px ' + SHARE_FONT;
       ctx.fillText('月度到访与消费', M, 330);
       ctx.fillStyle = '#9a8f86'; ctx.font = '400 22px ' + SHARE_FONT;
-      ctx.fillText('左条为到访次数，右条为真实金额（未记录不画条）', M, 366);
+      ctx.fillText('左条为到访次数，右条为真实金额（暂无数据不画条）', M, 366);
       var mv = 1, ms = 1;
       d.months.forEach(function(m){ if(m.total > mv) mv = m.total; if(m.sum > ms) ms = m.sum; });
       var ry = 410;
@@ -11693,7 +11723,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         if(sw){ ctx.fillStyle = '#2f8c5a'; roundRectPath(ctx, M+500, ry+2, sw, 18, 9); ctx.fill(); }
         ctx.textAlign = 'right'; ctx.fillStyle = m.amountN ? '#221d19' : '#9a8f86';
         ctx.font = '500 22px ' + SHARE_FONT;
-        ctx.fillText(m.amountN ? money(m.sum) : (m.total ? '未记录' : '—'), W-M, ry+20);
+        ctx.fillText(m.amountN ? money(m.sum) : (m.total ? '暂无数据' : '—'), W-M, ry+20);
         ctx.textAlign = 'left';
         ry += 90;
       });
@@ -11716,14 +11746,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         ctx.fillStyle = '#221d19'; ctx.font = '600 30px ' + SHARE_FONT;
         drawWrapped(ctx, s.name, M+70, sy+52, 400, 34, 1);
         ctx.fillStyle = '#6b615a'; ctx.font = '400 22px ' + SHARE_FONT;
-        ctx.fillText(s.city||'未填城市', M+490, sy+52);
+        ctx.fillText(s.city||'暂无城市', M+490, sy+52);
         ctx.textAlign = 'right';
         ctx.fillStyle = '#e8590c'; ctx.font = '600 26px ' + SHARE_FONT;
         ctx.fillText(s.visits+' 次', W-M-190, sy+52);
         ctx.fillStyle = '#6b615a'; ctx.font = '400 22px ' + SHARE_FONT;
-        ctx.fillText(s.amountN ? money(s.sum) : '未记录', W-M-90, sy+52);
+        ctx.fillText(s.amountN ? money(s.sum) : '暂无数据', W-M-90, sy+52);
         ctx.fillStyle = '#9a8f86'; ctx.font = '400 20px ' + SHARE_FONT;
-        ctx.fillText(s.rating != null ? s.rating+' 分' : '未评分', W-M, sy+52);
+        ctx.fillText(num(s.rating) > 0 ? s.rating+' 分' : '暂无评分', W-M, sy+52);
         ctx.textAlign = 'left';
         sy += 96;
       });
@@ -12407,6 +12437,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     tripPendingCheck = null;
     $('#sheetMask').classList.add('hidden');
     editingId = null;
+    draftEditingId = null;
     formPhoto = null;
     formPhotoId = null;
     formPhotos = [];
@@ -12462,9 +12493,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     formPeopleTouched = false;
     formSaving = false;
     pickedStoreKey = null;
+    draftEditingId = null;
     pickTab = 'recent';
     $('#saveDoneBox').classList.add('hidden');
     $('#f-storeq').value = '';
+    if($('#smartPasteText')){
+      $('#smartPasteText').value = '';
+      $('#smartPasteTag').classList.add('hidden');
+      smartPasteMsg('不读取剪贴板，请手动长按粘贴；未识别的字段留空、不猜。人均只进「参考人均」，不会写入实付。', false);
+    }
+    paintDrafts();
     var r = null, src = null;
     if(id){
       r = db.records.filter(function(x){ return x.id === id; })[0] || null;
@@ -12509,14 +12547,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var tripRef = !r && src && src.tripRef === true;
     var drawRef = !r && src && src.drawRef === true;
     var blindRef = !r && src && src.blindRef === true;
+    var draftRef = !r && src && src.draftRef === true;
     $('#prefillHint').textContent = tripRef
       ? '来自旅行计划：店名 / 城市 / 商圈 / 坐标已带入；金额、评分、热量不预填，按这次实际填写，不确定就留空。'
-      : (blindRef
-        ? '来自盲盒：店名 / 城市已带入；人均是店铺档案里的参考值，不是本次实付，确认后再保存。'
-        : (drawRef
-          ? '来自抽选：店名 / 城市 / 商圈 / 坐标已带入；金额、评分、热量不预填，按这次实际填写，不确定就留空。'
-          : (prefillRef ? '人均 / 评分为上次的参考值，请按这次实际确认；不确定就留空。' : '')));
-    $('#prefillHint').style.display = (tripRef || blindRef || drawRef || prefillRef) ? '' : 'none';
+      : (draftRef
+        ? '来自速记草稿：店名 / 城市 / 照片已带入；补完四维评分后点保存，才转为一次真实到店记录。'
+        : (blindRef
+          ? '来自盲盒：店名 / 城市已带入；人均是店铺档案里的参考值，不是本次实付，确认后再保存。'
+          : (drawRef
+            ? '来自抽选：店名 / 城市 / 商圈 / 坐标已带入；金额、评分、热量不预填，按这次实际填写，不确定就留空。'
+            : (prefillRef ? '人均 / 评分为上次的参考值，请按这次实际确认；不确定就留空。' : ''))));
+    $('#prefillHint').style.display = (tripRef || draftRef || blindRef || drawRef || prefillRef) ? '' : 'none';
 
     if(r){
       var ph = photosOfRecord(r);
@@ -12817,9 +12858,206 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var light = mode === 'quick' || mode === 'backfill' || mode === 'snap';
     var doneOpen = !$('#saveDoneBox').classList.contains('hidden');
     $('#quickSaveBar').classList.toggle('hidden', !light || doneOpen);
+    $('#btnSaveDraft').classList.toggle('hidden', mode !== 'snap' && mode !== 'quick');
   }
   function openQuickSnap(){
     openForm(null, null, 'snap');
+  }
+
+  /* ================= 智能粘贴（只做直接粘贴入口，不读剪贴板） ================= */
+  function smartParseText(raw){
+    var text = String(raw || '').replace(/\r/g, '\n').trim();
+    var out = { name:'', city:'', area:'', address:'', perPrice:null };
+    if(!text) return out;
+    var pm = text.match(/人均(?:\s*消费)?\s*[:：]?\s*[¥￥]?\s*([0-9]{1,4})/) ||
+             text.match(/[¥￥]\s*([0-9]{1,4})/) ||
+             text.match(/([0-9]{1,4})\s*元\s*[\/／]?\s*人/);
+    if(pm){
+      var pv = parseInt(pm[1], 10);
+      if(pv > 0) out.perPrice = Math.min(9999, pv);
+    }
+    var qm = text.match(/[「『《“"]([^」』》”"]{2,32})[」』》”"]/);
+    var name = qm ? qm[1] : '';
+    /* 只有看起来像平台分享文案才猜店名，普通句子一律留空 */
+    var looksShared = /大众点评|高德地图|高德|小红书|美团|抖音|百度地图|【|📍|[¥￥]|人均|(?:\d+元)|路|街|区|商场|广场|地铁站/.test(text);
+    if(!name && looksShared){
+      var t = text;
+      t = t.replace(/^\s*(?:【[^】]{1,14}】|\[[^\]]{1,14}\])\s*/, '');
+      t = t.replace(/^\s*(?:我在)?(?:高德地图|大众点评|美团|小红书|抖音|百度地图)(?:发现|推荐|上看到)?[：:，,\s]*/, '');
+      t = t.replace(/^[\s📍🍴⭐🔥🥢·•#*\-—]+/, '');
+      name = t.split(/[\n|｜,，。;；!！?？]/)[0].trim();
+      name = name.replace(/\s*[（(]\s*[0-9.]+\s*分.*$/, '');
+      name = name.replace(/\s*(?:人均|¥|￥|价格).*$/, '').trim();
+      name = name.replace(/\s{2,}/g, ' ').slice(0, 32).replace(/[\s\-—·•*#]+$/, '');
+    }
+    name = String(name || '').trim();
+    if(name && normStoreName(name).length < 2) name = '';
+    out.name = name;
+    var cm = text.match(/([\u4e00-\u9fa5]{2,4})市/);
+    if(cm) out.city = cm[1];
+    var areaM = text.match(/[\u4e00-\u9fa5]{2,6}区/);
+    if(areaM) out.area = areaM[0];
+    var mallM = text.match(/[\u4e00-\u9fa5A-Za-z0-9]{2,16}(?:商场|广场|地铁站)/);
+    if(mallM && !out.area) out.area = mallM[0];
+    /* 地址可能先出现在店名括号里（如「天平路店」），优先取带门牌号的整条地址 */
+    var roadHits = text.match(/[\u4e00-\u9fa5A-Za-z0-9]{2,16}(?:路|街|大道|巷|弄)[0-9A-Za-z\-号]*/g) || [];
+    var roadPick = roadHits.filter(function(x){ return /号/.test(x); })[0] || roadHits[roadHits.length - 1] || '';
+    if(roadPick){
+      if(out.area && roadPick.indexOf(out.area) === 0) roadPick = roadPick.slice(out.area.length);
+      out.address = roadPick;
+    }
+    return out;
+  }
+  function smartPasteMsg(t, ok){
+    var el = $('#smartPasteMsg');
+    if(!el) return;
+    el.textContent = t;
+    el.style.color = ok ? 'var(--soft-ink)' : '';
+  }
+  function applySmartPaste(){
+    var box = $('#smartPasteText');
+    var raw = box ? String(box.value || '') : '';
+    if(!raw.trim()){
+      smartPasteMsg('先粘贴一段文案', false);
+      $('#smartPasteTag').classList.add('hidden');
+      return null;
+    }
+    var p = smartParseText(raw);
+    var applied = [];
+    function fill(sel, val, label){
+      if(!val) return;
+      var el = $(sel);
+      if(!el) return;
+      if(!String(el.value || '').trim()){ el.value = val; applied.push(label); }
+    }
+    fill('#f-name', p.name, '店名');
+    fill('#f-city', p.city, '城市');
+    fill('#f-area', p.area, '商圈');
+    fill('#f-address', p.address, '地址');
+    fill('#f-per', p.perPrice, '参考人均');
+    if(applied.length){
+      pickedStoreKey = null;
+      paintStoreMemo();
+      $('#smartPasteTag').classList.remove('hidden');
+      smartPasteMsg('已填入：' + applied.join(' / ') + '（来自粘贴解析）。人均只作参考，未写入实付。', true);
+    }else{
+      $('#smartPasteTag').classList.add('hidden');
+      smartPasteMsg('没有识别到可填写的字段；已有内容不会被覆盖，未识别字段保持为空。', false);
+    }
+    return p;
+  }
+  var smartTimer = null;
+  function smartPasteBind(){
+    var box = $('#smartPasteText');
+    if(box && !box.getAttribute('data-ready')){
+      box.setAttribute('data-ready', '1');
+      box.addEventListener('input', function(){
+        if(smartTimer) clearTimeout(smartTimer);
+        smartTimer = setTimeout(applySmartPaste, 420);
+      });
+      box.addEventListener('paste', function(){
+        if(smartTimer) clearTimeout(smartTimer);
+        smartTimer = setTimeout(applySmartPaste, 0);
+      });
+    }
+  }
+
+  /* ================= 极速速记草稿（独立存储，不进记录 / 统计 / 年度） ================= */
+  var DRAFTS_KEY = 'fandazi.drafts';
+  var DRAFT_LIMIT = 30;
+  var draftsOpen = false;
+  var draftEditingId = null;
+  function draftsLoad(){
+    try{
+      var o = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '[]');
+      return Array.isArray(o) ? o.filter(function(d){ return d && d.id && d.name; }) : [];
+    }catch(e){ return []; }
+  }
+  function draftsSaveAll(list){
+    try{ localStorage.setItem(DRAFTS_KEY, JSON.stringify(list.slice(0, DRAFT_LIMIT))); }catch(e){ toast('本机存储空间不足，草稿未保存'); }
+  }
+  function draftFind(id){
+    var list = draftsLoad();
+    for(var i = 0; i < list.length; i++){ if(list[i].id === id) return list[i]; }
+    return null;
+  }
+  function draftUpsert(d){
+    var list = draftsLoad().filter(function(x){ return x.id !== d.id; });
+    list.unshift(d);
+    draftsSaveAll(list);
+    paintDrafts();
+  }
+  function draftRemove(id){
+    draftsSaveAll(draftsLoad().filter(function(x){ return x.id !== id; }));
+    paintDrafts();
+  }
+  function paintDrafts(){
+    var box = $('#draftBox');
+    if(!box) return;
+    var list = draftsLoad();
+    if(!list.length){ box.classList.add('hidden'); box.innerHTML = ''; return; }
+    box.classList.remove('hidden');
+    box.innerHTML = '<div class="card flat draft-card">' +
+      '<button type="button" class="draft-head" data-act="draftToggle"><b>待完善草稿 (' + list.length + ')</b><span>' + (draftsOpen ? '收起' : '展开') + '</span></button>' +
+      (draftsOpen ? '<div class="draft-list">' + list.map(function(d){
+        var sub = [d.createdAt ? String(d.createdAt).slice(0, 10) : '', d.perPrice ? ('参考 ¥' + d.perPrice) : '', d.photoId ? '有照片' : '无照片'].filter(Boolean).join(' · ');
+        return '<div class="draft-row">' +
+          (d.photoThumb ? '<img class="draft-thumb" src="' + esc(d.photoThumb) + '" alt="">' : '<div class="draft-thumb"></div>') +
+          '<div class="draft-main"><b>' + esc(d.name) + '</b><span>' + esc(sub) + '</span></div>' +
+          '<button type="button" class="btn btn-soft" data-act="draftOpen" data-key="' + esc(d.id) + '">补完</button>' +
+          '<button type="button" class="icon-btn" data-act="draftDelete" data-key="' + esc(d.id) + '" aria-label="删除草稿">' + icon('close', 'ico-16') + '</button>' +
+        '</div>';
+      }).join('') + '</div>' : '') +
+    '</div>';
+  }
+  function saveDraftFromForm(){
+    var name = $('#f-name').value.trim();
+    if(!name){ toast('先填店名，再存草稿'); return; }
+    var first = formPhotos.length ? formPhotos[0] : null;
+    var draft = {
+      id: 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      name: name,
+      city: $('#f-city').value.trim(),
+      area: $('#f-area').value.trim(),
+      perPrice: num($('#f-per').value) > 0 ? Math.round(num($('#f-per').value)) : null,
+      photoId: first ? first.id : null,
+      photoThumb: null,
+      lng: num($('#f-lng').value) ? num($('#f-lng').value) : null,
+      lat: num($('#f-lat').value) ? num($('#f-lat').value) : null,
+      createdAt: new Date().toISOString()
+    };
+    /* 当次经纬度：只复用已有定位结果；没有就留空，不额外弹权限、不编造 */
+    if(draft.lng === null && draft.lat === null){
+      var g = geoLast();
+      if(g && num(g.lng) && num(g.lat)){ draft.lng = num(g.lng); draft.lat = num(g.lat); }
+    }
+    draftUpsert(draft);
+    closeForm();
+    renderList(true);
+    toast('已存为草稿，可在记录页「待完善草稿」里补评分');
+    if(first && first.id && typeof photoGetBundle === 'function'){
+      photoGetBundle(first.id).then(function(b){
+        if(!b || !b.thumb) return;
+        var d = draftFind(draft.id);
+        if(d){ d.photoThumb = b.thumb; draftsSaveAll(draftsLoad().map(function(x){ return x.id === draft.id ? d : x; })); paintDrafts(); }
+      }).catch(function(){});
+    }
+  }
+  function openDraft(id){
+    var d = draftFind(id);
+    if(!d){ toast('草稿不存在'); return; }
+    openForm(null, {
+      name:d.name, city:d.city || '', area:d.area || '',
+      perPrice:d.perPrice || null, lng:d.lng, lat:d.lat,
+      visitDate: todayStr(), people: db.settings.defaultPeople || 4, draftRef:true
+    }, 'quick');
+    draftEditingId = d.id;
+    if(d.photoId){
+      formPhotos = [{ id:d.photoId, cat:'visit' }];
+      formPhoto = null;
+      paintPhotoGroups();
+    }
+    toast('草稿已带入：补完评分后点保存，才会转为真实到店记录');
   }
   function paintFormDefaults(){
     if(!$('#setDefPeople')) return;
@@ -12964,6 +13202,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       savedNew = true;
       /* 唯一允许把旅行 stop 置为 checked 的路径 */
       tripOnRecordSaved(rec);
+      /* 草稿补完并保存成功后，草稿本身出列 */
+      if(draftEditingId){ draftRemove(draftEditingId); draftEditingId = null; }
     }
     /* 记录已进 db 之后再落菜品（菜品必须挂在真实存在的 visitId 上） */
     syncFormDishes(rec);
@@ -13759,7 +13999,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '<button type="button" class="chip-toggle'+(mapView.measure === 'visits' ? ' on' : '')+'" data-map-measure="visits">到访次数</button>'+
       '<button type="button" class="chip-toggle'+(mapView.measure === 'rating' ? ' on' : '')+'" data-map-measure="rating">综合评分</button>'+
       '<span class="lg">小<i style="background:'+mapColorOf(0, pal)+'"></i><i style="background:'+mid+'"></i><i style="background:'+mapColorOf(1, pal)+'"></i>大</span>'+
-      '<span class="lg">'+(mapView.measure === 'rating' ? '颜色/大小 = 综合评分（未评分最浅）' : '颜色/大小 = 到访次数（1 次最浅）')+'</span>';
+      '<span class="lg">'+(mapView.measure === 'rating' ? '颜色/大小 = 综合评分（暂无评分最浅）' : '颜色/大小 = 到访次数（1 次最浅）')+'</span>';
     $('#mapLegend').innerHTML = html;
   }
   function renderMapMissing(){
@@ -18780,6 +19020,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     else if(act === 'blindEat'){ if(key) blindEat(key); }
     else if(act === 'blindNav'){ if(key) blindNav(key); }
     else if(act === 'blindClose'){ closeBlind(); }
+    else if(act === 'draftToggle'){ draftsOpen = !draftsOpen; paintDrafts(); }
+    else if(act === 'draftOpen'){ openDraft(key); }
+    else if(act === 'draftDelete'){
+      if(confirm('删除这条草稿？')) { draftRemove(key); toast('草稿已删除'); }
+    }
     else if(act === 'dailyRotate'){ runDecideNow(true); }
     else if(act === 'qSwap'){ quickSwap(); }
     else if(act === 'qCuisine'){ quickCuisineOpen = !quickCuisineOpen; renderDecide(); }
@@ -18824,7 +19069,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         var items = vc.items.slice().sort(function(a,b){ return (vc.scores[b.key]||0)-(vc.scores[a.key]||0); });
         var lines = [vc.title, ''];
         items.forEach(function(it, i){
-          lines.push((i+1)+'. '+it.name+'｜人均 '+money(it.price)+'｜'+(vc.scores[it.key]||0)+' 票');
+          lines.push((i+1)+'. '+it.name+'｜参考人均 '+money(it.price)+'｜'+(vc.scores[it.key]||0)+' 票');
         });
         lines.push('', '（票数只记录在这台手机上）');
         copyText(lines.join('\n'));
@@ -19866,6 +20111,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   $('#f-date').addEventListener('input', function(){ formDateTouched = true; });
   $('#f-meal').addEventListener('change', function(){ formMealTouched = true; });
   $('#btnSnapRecord').addEventListener('click', openQuickSnap);
+  $('#btnSaveDraft').addEventListener('click', saveDraftFromForm);
+  $('#btnSmartParse').addEventListener('click', applySmartPaste);
+  smartPasteBind();
   $('#btnQuickSave').addEventListener('click', function(){
     if(formSaving) return;
     var f = $('#recordForm');
@@ -21588,6 +21836,38 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         };
       },
       formClose: function(){ closeForm(); return true; }
+    },
+    paste: {
+      parse: function(t){ return smartParseText(t); },
+      setText: function(t){ var el = $('#smartPasteText'); if(el) el.value = String(t || ''); return el ? el.value : ''; },
+      apply: function(t){
+        if(t != null && $('#smartPasteText')) $('#smartPasteText').value = String(t);
+        return applySmartPaste();
+      },
+      state: function(){
+        return {
+          name:$('#f-name') ? $('#f-name').value : '',
+          city:$('#f-city') ? $('#f-city').value : '',
+          area:$('#f-area') ? $('#f-area').value : '',
+          address:$('#f-address') ? $('#f-address').value : '',
+          perPrice:$('#f-per') ? $('#f-per').value : '',
+          totalPrice:$('#f-total') ? $('#f-total').value : '',
+          tag: $('#smartPasteTag') ? !$('#smartPasteTag').classList.contains('hidden') : false,
+          msg:$('#smartPasteMsg') ? $('#smartPasteMsg').textContent : ''
+        };
+      }
+    },
+    draft: {
+      list: function(){ return draftsLoad(); },
+      count: function(){ return draftsLoad().length; },
+      toggle: function(open){ draftsOpen = open == null ? !draftsOpen : !!open; paintDrafts(); return draftsOpen; },
+      saveFromForm: function(){ saveDraftFromForm(); return draftsLoad(); },
+      open: function(id){ openDraft(id); return true; },
+      remove: function(id){ draftRemove(id); return draftsLoad(); },
+      stamp: function(){
+        return { records: db.records.length, stats: statsRecords().length, drafts: draftsLoad().length,
+          visitDate: $('#f-date') ? $('#f-date').value : '', name:$('#f-name') ? $('#f-name').value : '' };
+      }
     },
     party: function(){ var t0 = nowMs(); $('#btnParty').click(); return nowMs() - t0; },
     friend: function(){ var t0 = nowMs(); $('#btnFriend').click(); return nowMs() - t0; },
