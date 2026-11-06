@@ -347,6 +347,9 @@ APK 内接了 `@capacitor/app`（6.0.3），Android 的物理/手势返回键不
 - **没有新增存储键**：`defaultPeople / defaultScene / defaultMode / rememberDefaults / recentQueries` 都写进既有 `settings`，v1 与已迁移的 v2 都经 `migrate` 白名单归一化（缺省值分别为 4 / 空 / quick / 开 / 空数组）。
 - v1 直接写 `fandazi.v1`；v2 只写 `fandazi.v2` 并重建 shops / visits，**不双写 v1**（实测保存前后 `fandazi.v1` 逐字节一致）。
 - 快速记录未填的金额 / 评分落库为 `null`，不会凭空生成评分或金额；照片仍走既有 IndexedDB。
+- **从推荐 / 抽签 / 候选直接「记一餐」**：只写入店名、坐标、品类、标签等店铺信息，金额、综合评分、四维评分、热量一律留空；不会把历史均价或旧评分复制成这次的事实数据。
+- **「再来一次」**：复制店铺信息与备注，金额、评分、热量同样清空，提示「可到记录里补填」；统计只累计你这次实际填写的金额。
+- **店铺预填表单**（选已有店 / 从店铺顺手记）仍会带出上次的人均与评分，但表单里会用一行提示标为「上次的参考值，请按这次实际确认；不确定就留空」。
 
 ### 实测（375×812 headless Chrome，`Input.dispatchMouseEvent` 真实点击）
 

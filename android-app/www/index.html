@@ -1984,6 +1984,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <input class="input" type="number" id="f-total" min="0" step="1" placeholder="填总价自动算人均" inputmode="decimal">
       </div>
     </div>
+    <p class="form-hint" id="prefillHint" style="display:none"></p>
 
     <div class="frow full-only">
       <div class="field">
@@ -10240,6 +10241,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#f-r-env').value = num(dims.env) > 0 ? dims.env : '';
     $('#f-r-srv').value = num(dims.service) > 0 ? dims.service : '';
     $('#f-r-val').value = num(dims.value) > 0 ? dims.value : '';
+    var prefillRef = !r && src && (num(src.perPrice) > 0 || num(src.rating) > 0 ||
+      (src.ratings && ['taste','env','service','value'].some(function(k){ return num(src.ratings[k]) > 0; })));
+    $('#prefillHint').textContent = prefillRef ? '人均 / 评分为上次的参考值，请按这次实际确认；不确定就留空。' : '';
+    $('#prefillHint').style.display = prefillRef ? '' : 'none';
 
     if(r){
       var ph = photosOfRecord(r);
@@ -10735,8 +10740,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         id:'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
         name:w.name, city:w.city||'', area:w.area||'', address:'', lat:null, lng:null,
         visitDate:todayStr(), people:1,
-        totalPrice: num(w.budget)>0?num(w.budget):null,
-        perPrice: num(w.budget)>0?num(w.budget):60,
+        totalPrice: null,
+        perPrice: null,
         category:'', rating:null, note:w.note||'', photo:null,
         createdAt:now0, updatedAt:now0,
         mealType: meal||'', scene:'daily', tags:[],
@@ -10757,13 +10762,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       name:store.name, city:store.city||'', area:store.area||'', address:store.address||'',
       lat:null, lng:null, distanceKm: num(store.distanceKm) > 0 ? store.distanceKm : null,
       visitDate:todayStr(), people:1,
-      totalPrice:null, perPrice:store.perPrice||60,
-      category:store.category||'', rating:store.rating||null,
+      totalPrice:null, perPrice:null,
+      category:store.category||'', rating:null,
       note:'', photo:null, createdAt:now, updatedAt:now,
       mealType: meal||'', scene:'daily', tags:(store.tags||[]).slice(),
-      ratings:{taste:num(store.ratings&&store.ratings.taste),env:num(store.ratings&&store.ratings.env),service:num(store.ratings&&store.ratings.service),value:num(store.ratings&&store.ratings.value)},
-      kcal:store.nutrition?store.nutrition.kcal:null,
-      protein:store.nutrition?store.nutrition.protein:null,
+      ratings:{taste:0,env:0,service:0,value:0},
+      kcal:null, protein:null,
       fitnessFriendly:!!store.friendly, source:'decide',
       openStart:store.openStart||'', openEnd:store.openEnd||'',
       fitMeals:(store.fitMeals||[]).slice(), dayType:store.dayType||'any',
@@ -15826,9 +15830,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     copy.createdAt = now;
     copy.updatedAt = now;
     copy.source = 'again';
+    /* 再来一次只复制店铺信息；金额、评分、热量需按这次实际重新确认，不沿用旧值 */
+    copy.totalPrice = null;
+    copy.perPrice = null;
+    copy.rating = null;
+    copy.ratings = { taste:0, env:0, service:0, value:0 };
+    copy.kcal = null;
+    copy.protein = null;
     db.records.unshift(copy);
     save();
-    toast('已把「'+r.name+'」记为今天的一餐');
+    toast('已把「'+r.name+'」记为今天的一餐，金额与评分可到记录里补填');
   }
 
   function addWish(){
@@ -19182,6 +19193,23 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       },
       save: shopMetaSaveFromForm,
       edit: function(linkId){ shopMetaUI.editId = String(linkId || ''); renderShopMetaSheet(); return true; }
+    },
+    quick: {
+      store: function(key, meal){ var s = findStore(key); if(!s) return false; quickEat(s, meal || ''); return true; },
+      again: function(id){ eatAgain(id); return true; },
+      prefill: function(key){
+        var s = findStore(key); if(!s) return false;
+        openForm(null, formPrefillFromStore(s, ''), 'quick');
+        return true;
+      },
+      form: function(){
+        return {
+          open: !$('#sheetMask').classList.contains('hidden'),
+          hint: $('#prefillHint').textContent,
+          hintShown: $('#prefillHint').style.display !== 'none',
+          per: $('#f-per').value, rating: $('#f-rating').value
+        };
+      }
     },
     stats: {
       show: function(){
