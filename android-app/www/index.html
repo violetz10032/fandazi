@@ -1658,7 +1658,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           <button class="btn" id="btnSyncNow" disabled>立即同步</button>
           <button class="btn btn-danger" id="btnSyncOff" disabled>断开</button>
         </div>
-        <p class="dist-note" id="syncInfo">本版只同步到店记录（含删除墓碑）：照片、想去清单、地点、设置与投票暂不同步。</p>
+        <p class="dist-note" id="syncInfo">本版同步到店记录（含删除墓碑）与照片：照片单独加密存到第二个私有 Gist，失败只影响照片，不阻塞记录同步。</p>
+        <div id="syncPhotoBox" style="margin-top:8px"></div>
       </div>
 
       <div class="card" id="v2Card">
@@ -3479,6 +3480,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(photoDbPromise) return photoDbPromise;
     photoDbPromise = new Promise(function(resolve, reject){
       if(!window.indexedDB){ reject(new Error('IndexedDB 不可用')); return; }
+      /* 结构保持 v2：照片同步只在记录上新增可选的 ref/sha 字段，不改对象仓库、不升版本。
+         回滚路径：回退代码后旧版可直接继续打开同一 IndexedDB，不会触发 VersionError；
+         已同步的 ref/sha 字段对旧代码无影响。 */
       var req = indexedDB.open(PHOTO_DB, 2);
       req.onupgradeneeded = function(){
         var d = req.result;
@@ -3501,17 +3505,37 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return d.transaction(SNAPSHOT_STORE, mode).objectStore(SNAPSHOT_STORE);
     });
   }
-  function photoPut(id, dataUrl, thumb, dims){
+  function photoPut(id, dataUrl, thumb, dims, extra){
     return photoStore('readwrite').then(function(store){
       return new Promise(function(resolve, reject){
         var rec = { id:id, dataUrl:dataUrl, bytes:dataUrl.length + (thumb ? thumb.length : 0), at:Date.now() };
         if(thumb) rec.thumb = thumb;
         if(dims){ rec.w = num(dims.w) || 0; rec.h = num(dims.h) || 0; }
+        if(extra){ if(extra.ref) rec.ref = String(extra.ref); if(extra.sha) rec.sha = String(extra.sha); }
         var req = store.put(rec);
         req.onsuccess = function(){ resolve(id); };
         req.onerror = function(){ reject(req.error); };
       });
     });
+  }
+  /* 同步用：一次读出整条照片（全图 + 缩略图 + 尺寸 + 同步元数据） */
+  function photoGetBundle(id){
+    return photoStore('readonly').then(function(store){
+      return new Promise(function(resolve){
+        var req = store.get(id);
+        req.onsuccess = function(){ resolve(req.result || null); };
+        req.onerror = function(){ resolve(null); };
+      });
+    }).catch(function(){ return null; });
+  }
+  function photoAllKeys(){
+    return photoStore('readonly').then(function(store){
+      return new Promise(function(resolve){
+        var req = store.getAllKeys();
+        req.onsuccess = function(){ resolve((req.result || []).map(String)); };
+        req.onerror = function(){ resolve([]); };
+      });
+    }).catch(function(){ return []; });
   }
   function photoGet(id){
     return photoStore('readonly').then(function(store){
@@ -16693,9 +16717,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   voiceInit();
 
   /* ================= 跨设备同步 MVP（GitHub 私有 Gist · 端到端加密） =================
-     本版范围：到店记录 + 删除墓碑的加密上传/下载/合并/回读校验；冲突保留为副本。
-     明确后置：照片分片、墓碑 180 天清理、私有仓库 Contents API 回退、outbox 精细重试、
-     多设备并发压测；想去清单/地点/设置/投票不同步。任何情况下不写明文、不静默丢记录。 */
+     本版范围：到店记录 + 删除墓碑 + 照片（独立加密 Gist、按内容 sha256 去重、HMAC 不透明引用）。
+     明确后置：墓碑 180 天清理、私有仓库 Contents API 回退、outbox 精细重试、多设备并发压测；
+     想去清单/地点/设置/投票不同步。任何情况下不写明文、不静默丢记录。
+     照片失败或超配额只影响照片：主记录同步照常成功，界面显示「本机缺 N 张照片」并可重试。 */
   var FZSync = (function(){
     var TOKEN_KEY = 'fandazi.sync.token';
     var META_KEY = 'fandazi.sync.meta';
@@ -16704,12 +16729,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var PART_PLAIN = 512 * 1024;
     var MAX_PARTS = 12;
     var MANIFEST_FILE = 'manifest.fz.json';
+    var PHOTO_MANIFEST_FILE = 'photos.fz.json';
+    var PHOTO_PART_PLAIN = 512 * 1024;      /* 加密前分片，base64 后在 1MB 以内 */
+    var PHOTO_FILE_MAX = 1024 * 1024;
+    var PHOTO_BATCH = 8;                    /* 单轮最多 8 张，避免一次同步过久 */
+    var PHOTO_BUDGET_BYTES = 16 * 1024 * 1024;
     var key = null;
+    var photoKey = null;
     var busy = false;
     var mode = '';
     var enc = new TextEncoder();
     var dec = new TextDecoder();
     var subtle = (window.crypto && crypto.subtle) ? crypto.subtle : null;
+    var photoState = { uploaded:0, downloaded:0, missing:0, pending:0, error:'', at:'' };
 
     function code(c){ var e = new Error(c); e.code = c; return e; }
     function b64(u8){
@@ -16740,17 +16772,25 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     function syncRecordOf(r){
       var o = {};
       Object.keys(r || {}).forEach(function(k){
-        if(k === 'photo' || k === 'photoId' || k === 'photoIds' || k === 'photos' || k === 'photoRef') return;
+        /* 本机照片 id / 内嵌 dataUrl 一律剥离；只保留不透明 photoRef 列表 */
+        if(k === 'photo' || k === 'photoId' || k === 'photoIds' || k === 'photos') return;
         if(k === 'contentHash' || k === 'rev' || k === 'syncRev') return;
         o[k] = r[k];
       });
       return o;
     }
-    async function hashRecord(r){ return shaHex(enc.encode(stable(syncRecordOf(r)))); }
+    /* 哈希口径刻意不含 photoRef：与旧版哈希一致，避免升级后全量误判冲突；
+       照片变化由记录 updatedAt 驱动，photoRef 只在合并时并集补齐。 */
+    async function hashRecord(r){
+      var o = syncRecordOf(r);
+      delete o.photoRef;
+      return shaHex(enc.encode(stable(o)));
+    }
 
     function defaultMeta(){
       return { enabled:false, deviceId:'', gistId:'', salt:'', lastRev:0, lastSyncAt:'', consentAt:'',
-        userName:'', baseHashes:{}, dirty:{}, tombstones:[] };
+        userName:'', baseHashes:{}, dirty:{}, tombstones:[],
+        photoGistId:'', photoMissing:0, photoMissingRefs:[] };
     }
     function loadMeta(){
       try{
@@ -16793,7 +16833,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         E_NET:'网络异常，无法连接 GitHub；本机记录未改动',
         E_OFF:'同步尚未开启',
         E_PASS:'同步口令至少 10 位',
-        E_NO_GIST:'请填写另一台设备显示的 Gist ID'
+        E_NO_GIST:'请填写另一台设备显示的 Gist ID',
+        E_PHOTO_KEY:'照片引用密钥尚未就绪（刷新后需重新输入同步口令）；记录同步不受影响',
+        E_PHOTO_QUOTA:'照片超出本轮同步配额，已标记待补齐；记录同步不受影响'
       };
       if(MAP[c]) return MAP[c];
       return '同步失败：' + ((e && e.message) || '未知错误') + '（本机记录未改动）';
@@ -16922,6 +16964,251 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     function num2(v){ return Number(v) || 0; }
 
+    /* ---------- 照片同步：sha256 去重 + HMAC 不透明引用 + 独立 Gist 分片 ---------- */
+    async function derivePhotoKey(pass, saltB64){
+      if(!subtle) throw code('E_NO_SUBTLE');
+      var salt = unb64(saltB64);
+      var tag = enc.encode('|fandazi-photo-ref|1');
+      var mix = new Uint8Array(salt.length + tag.length);
+      mix.set(salt, 0); mix.set(tag, salt.length);
+      var base = await subtle.importKey('raw', enc.encode(String(pass).normalize('NFKC')), { name:'PBKDF2' }, false, ['deriveKey']);
+      return subtle.deriveKey(
+        { name:'PBKDF2', salt:mix, iterations:100000, hash:'SHA-256' },
+        base, { name:'HMAC', hash:'SHA-256', length:256 }, false, ['sign']
+      );
+    }
+    async function photoRefOf(sha){
+      if(!photoKey) throw code('E_PHOTO_KEY');
+      var sig = await subtle.sign('HMAC', photoKey, enc.encode('fandazi-photo-ref|1|' + sha));
+      var a = new Uint8Array(sig), out = '';
+      for(var i = 0; i < 16; i++) out += (a[i] < 16 ? '0' : '') + a[i].toString(16);
+      return 'ph_' + out;
+    }
+    /* 单条记录的照片 → 引用列表（含本地数据，供本轮上传）。缺图但旧引用还在时保留旧引用。 */
+    async function recordRefs(r){
+      var ph = photosOfRecord(r);
+      var old = Array.isArray(r.photoRef) ? r.photoRef : [];
+      var out = [];
+      for(var i = 0; i < ph.length; i++){
+        var b = await photoGetBundle(ph[i].id);
+        if(b && b.dataUrl){
+          if(photoKey){
+            var sha = await shaHex(enc.encode(b.dataUrl));
+            var ref = await photoRefOf(sha);
+            out.push({ ref:ref, cat:ph[i].cat || 'visit', sha:sha, dataUrl:b.dataUrl, thumb:b.thumb || '',
+              w:num2(b.w), h:num2(b.h), local:ph[i].id });
+          }else{
+            var keep0 = old[i] && old[i].ref ? old[i] : null;
+            out.push({ ref:keep0 ? keep0.ref : '', cat:ph[i].cat || 'visit', sha:'', local:ph[i].id });
+          }
+        }else{
+          var keep = old[i] && old[i].ref ? old[i] : null;
+          out.push({ ref:keep ? keep.ref : '', cat:ph[i].cat || 'visit', sha:'', local:null });
+        }
+      }
+      if(!ph.length && r.photo && typeof r.photo === 'string' && r.photo.indexOf('data:') === 0 && photoKey){
+        var s2 = await shaHex(enc.encode(r.photo));
+        out.push({ ref:await photoRefOf(s2), cat:'visit', sha:s2, dataUrl:r.photo, thumb:'', w:0, h:0, local:null });
+      }
+      return out;
+    }
+    function emptyPhotoManifest(saltB64){
+      return { format:'fandazi-photo-enc', version:1,
+        kdf:{ alg:'PBKDF2-SHA256', iter:ITER, salt:saltB64 },
+        cipher:{ alg:'AES-256-GCM', tagBits:128 },
+        writerId:ensureDevice(), rev:0, updatedAt:new Date().toISOString(), refs:{} };
+    }
+    function patchGistFiles(id, files, token){
+      return ghRequest('/gists/' + encodeURIComponent(id), { method:'PATCH', token:token, body:{ files:files } });
+    }
+    async function ensurePhotoGist(token, saltB64){
+      if(meta.photoGistId) return meta.photoGistId;
+      var mf = emptyPhotoManifest(saltB64);
+      var g = await createGist({ 'photos.fz.json': { content: JSON.stringify(mf) } }, token);
+      meta.photoGistId = g.id;
+      saveMeta(meta);
+      return g.id;
+    }
+    async function loadPhotoGist(gid, token){
+      try{
+        var g = await gistFiles(gid, token);
+        var f = g.files[PHOTO_MANIFEST_FILE];
+        if(!f || !f.content || f.truncated) return { gist:g, manifest:null };
+        var m = JSON.parse(f.content);
+        if(!m || m.format !== 'fandazi-photo-enc' || Number(m.version) !== 1) return { gist:g, manifest:null };
+        if(!m.refs || typeof m.refs !== 'object') m.refs = {};
+        return { gist:g, manifest:m };
+      }catch(e){ return { gist:null, manifest:null, error:e }; }
+    }
+    async function encryptPhotoEntry(u, aes){
+      var body = JSON.stringify({ format:'fandazi-photo', version:1, sha:u.sha, w:u.w || 0, h:u.h || 0,
+        thumb:u.thumb || '', dataUrl:u.dataUrl });
+      var plain = enc.encode(body);
+      var gz = await gzipBytes(plain);
+      var n = Math.max(1, Math.ceil(gz.data.length / PHOTO_PART_PLAIN));
+      if(n > 24) throw code('E_PHOTO_QUOTA');
+      var files = {}, parts = [];
+      for(var i = 0; i < n; i++){
+        var chunk = gz.data.subarray(i * PHOTO_PART_PLAIN, Math.min(gz.data.length, (i + 1) * PHOTO_PART_PLAIN));
+        var iv = rand(12);
+        var aad = enc.encode('fandazi-photo-enc|1|' + (i + 1) + '|' + n + '|' + u.sha);
+        var ct = new Uint8Array(await subtle.encrypt({ name:'AES-GCM', iv:iv, additionalData:aad, tagLength:128 }, aes, chunk));
+        var name = 'p-' + u.ref + '-' + ('000' + (i + 1)).slice(-4) + '.fz.json';
+        var content = JSON.stringify({ i:i + 1, n:n, iv:b64(iv), ct:b64(ct) });
+        if(content.length > PHOTO_FILE_MAX) throw code('E_PHOTO_QUOTA');
+        files[name] = { content:content };
+        parts.push({ file:name, i:i + 1, iv:b64(iv), sha256:await shaHex(ct), bytes:ct.length });
+      }
+      return { files:files, entry:{ sha:u.sha, bytes:gz.data.length, n:n, compression:gz.compression,
+        parts:parts, at:new Date().toISOString(), w:u.w || 0, h:u.h || 0 } };
+    }
+    async function decryptPhotoEntry(ref, entry, gist, aes){
+      if(!entry || !entry.parts || !entry.parts.length || !entry.sha) throw code('E_FORMAT');
+      var sorted = entry.parts.slice().sort(function(a, b){ return num2(a.i) - num2(b.i); });
+      var chunks = [];
+      for(var i = 0; i < sorted.length; i++){
+        var p = sorted[i];
+        var f = gist.files[p.file];
+        if(!f || typeof f.content !== 'string' || f.truncated) throw code('E_FORMAT');
+        var part = JSON.parse(f.content);
+        var aad = enc.encode('fandazi-photo-enc|1|' + p.i + '|' + sorted.length + '|' + entry.sha);
+        try{
+          var pt = await subtle.decrypt({ name:'AES-GCM', iv:unb64(part.iv || p.iv), additionalData:aad, tagLength:128 }, aes, unb64(part.ct));
+          chunks.push(new Uint8Array(pt));
+        }catch(e){ throw code('E_CRYPTO'); }
+      }
+      var len = chunks.reduce(function(s, c){ return s + c.length; }, 0);
+      var all = new Uint8Array(len), off = 0;
+      chunks.forEach(function(c){ all.set(c, off); off += c.length; });
+      var plain = await gunzipBytes(all, entry.compression);
+      var obj;
+      try{ obj = JSON.parse(dec.decode(plain)); }catch(e){ throw code('E_FORMAT'); }
+      if(!obj || obj.format !== 'fandazi-photo' || Number(obj.version) !== 1 || typeof obj.dataUrl !== 'string') throw code('E_FORMAT');
+      if(await shaHex(enc.encode(obj.dataUrl)) !== entry.sha) throw code('E_FORMAT');
+      return obj;
+    }
+
+    /* 拉取缺失照片 + 上传本轮新照片 + 引用归零满 7 天回收。任何失败只影响照片。 */
+    async function photoRoundTrip(records, token, aes, saltB64, uploads){
+      var out = { uploaded:0, downloaded:0, missing:0, pending:0, error:'' };
+      if(!subtle) { out.error = '当前浏览器缺少加密能力'; return out; }
+      var gid = meta.photoGistId;
+      var hasWork = (uploads && uploads.length) || records.some(function(r){ return Array.isArray(r.photoRef) && r.photoRef.length; });
+      if(!gid && !hasWork){
+        var att0 = await attachPhotos(records);
+        out.missing = att0.missing;
+        photoState = { uploaded:0, downloaded:0, missing:out.missing, pending:0, error:'', at:new Date().toISOString() };
+        return out;
+      }
+      try{ gid = await ensurePhotoGist(token, saltB64); }catch(e){ out.error = errText(e); return out; }
+      var loaded = await loadPhotoGist(gid, token);
+      if(!loaded || !loaded.gist){
+        out.error = loaded && loaded.error ? errText(loaded.error) : '照片空间读取失败';
+        return out;
+      }
+      var manifest = loaded.manifest || emptyPhotoManifest(saltB64);
+      var refsMap = manifest.refs;
+      var keys = await photoAllKeys();
+      var keySet = {}; keys.forEach(function(k){ keySet[k] = 1; });
+
+      var neededList = [];
+      records.forEach(function(r){
+        (r.photoRef || []).forEach(function(x){
+          if(x && x.ref && neededList.indexOf(x.ref) < 0) neededList.push(x.ref);
+        });
+      });
+
+      var budget = PHOTO_BUDGET_BYTES, dl = 0;
+      for(var di = 0; di < neededList.length; di++){
+        var dref = neededList[di];
+        if(keySet[dref]) continue;
+        var entry = refsMap[dref];
+        if(!entry) continue;
+        if(dl >= PHOTO_BATCH || budget < num2(entry.bytes) + 65536) continue;
+        try{
+          var obj = await decryptPhotoEntry(dref, entry, loaded.gist, aes);
+          await photoPut(dref, obj.dataUrl, obj.thumb || '', { w:obj.w, h:obj.h }, { ref:dref, sha:entry.sha });
+          photoCache[dref] = obj.dataUrl;
+          if(obj.thumb) photoCache[dref + '#t'] = obj.thumb;
+          keySet[dref] = 1; dl++; out.downloaded++;
+          budget -= num2(entry.bytes) + 65536;
+        }catch(e){}
+      }
+
+      var upList = [], seen = {};
+      (uploads || []).forEach(function(u){ if(u && u.ref && u.dataUrl && !seen[u.ref] && !refsMap[u.ref]){ seen[u.ref] = 1; upList.push(u); } });
+      var up = 0;
+      for(var ui = 0; ui < upList.length; ui++){
+        var u = upList[ui];
+        if(up >= PHOTO_BATCH || budget < u.dataUrl.length){ out.pending++; continue; }
+        try{
+          var built = await encryptPhotoEntry(u, aes);
+          await patchGistFiles(gid, built.files, token);
+          refsMap[u.ref] = built.entry;
+          up++; out.uploaded++;
+          budget -= u.dataUrl.length;
+          /* 记录里内嵌的旧照片没有本机 IDB 副本：顺手落库，保证本机也能显示 */
+          if(!u.local){
+            await photoPut(u.ref, u.dataUrl, u.thumb || '', { w:u.w, h:u.h }, { ref:u.ref, sha:u.sha });
+            keySet[u.ref] = 1;
+          }
+        }catch(e){ out.pending++; }
+      }
+
+      if(out.uploaded || out.downloaded || !loaded.manifest){
+        manifest.refs = refsMap;
+        manifest.rev = num2(manifest.rev) + 1;
+        manifest.updatedAt = new Date().toISOString();
+        manifest.writerId = ensureDevice();
+        try{ await patchGistFiles(gid, { 'photos.fz.json': { content: JSON.stringify(manifest) } }, token); }
+        catch(e){ out.error = errText(e); }
+      }
+
+      var att = await attachPhotos(records);
+      out.missing = att.missing;
+      out.pending = Math.max(out.pending, 0);
+      photoState = { uploaded:out.uploaded, downloaded:out.downloaded, missing:out.missing, pending:out.pending, error:out.error, at:new Date().toISOString() };
+      meta.photoMissing = att.missing;
+      meta.photoMissingRefs = att.missingRefs.slice(0, 200);
+      saveMeta(meta);
+      renderCard();
+      return out;
+    }
+
+    /* 把记录里的 photoRef 映射成本机能显示的本地照片 id；缺图计数用于界面提示 */
+    async function attachPhotos(records){
+      var keys = await photoAllKeys();
+      var keySet = {}; keys.forEach(function(k){ keySet[k] = 1; });
+      var missing = {};
+      var changed = false;
+      records.forEach(function(r){
+        var refs = Array.isArray(r.photoRef) ? r.photoRef.filter(function(x){ return x && x.ref; }) : [];
+        if(!refs.length) return;
+        var cur = photosOfRecord(r);
+        var out = [], seen = {};
+        refs.forEach(function(x, i){
+          var pid = '';
+          if(cur[i] && keySet[String(cur[i].id)]) pid = String(cur[i].id);
+          else if(keySet[x.ref]) pid = x.ref;
+          if(pid && !seen[pid]){ seen[pid] = 1; out.push({ id:pid, cat:x.cat || 'visit' }); }
+          else if(!pid){ missing[x.ref] = 1; }
+        });
+        cur.forEach(function(p){
+          var pid = String(p.id);
+          if(keySet[pid] && !seen[pid]){ seen[pid] = 1; out.push({ id:pid, cat:p.cat || 'visit' }); }
+          else if(!keySet[pid]) missing[pid] = 1;
+        });
+        var prev = cur.length;
+        r.photos = out;
+        r.photoIds = out.map(function(p){ return p.id; });
+        r.photoId = out.length ? out[0].id : null;
+        r.photo = null;
+        if(prev !== out.length) changed = true;
+      });
+      if(changed) save();
+      return { missing:Object.keys(missing).length, missingRefs:Object.keys(missing) };
+    }
+
     async function gistFiles(id, token){
       var g = await ghRequest('/gists/' + encodeURIComponent(id), { token:token });
       if(!g || !g.files) throw code('E_NOT_FOUND');
@@ -16943,20 +17230,31 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
 
     async function buildPayload(records, rev, parentRev){
-      var outRecords = [];
+      var outRecords = [], uploads = [];
       for(var i = 0; i < records.length; i++){
-        var r = syncRecordOf(records[i]);
-        r.contentHash = await hashRecord(records[i]);
-        r.rev = 1;
-        outRecords.push(r);
+        var r = records[i];
+        var refs = await recordRefs(r);
+        var o = syncRecordOf(r);
+        var clean = refs.filter(function(x){ return !!x.ref; }).map(function(x){
+          return { ref:x.ref, cat:x.cat || 'visit' };
+        });
+        if(clean.length) o.photoRef = clean; else delete o.photoRef;
+        o.contentHash = await hashRecord(r);
+        o.rev = 1;
+        outRecords.push(o);
+        refs.forEach(function(x){ if(x.ref && x.dataUrl) uploads.push(x); });
       }
       return {
-        format:'fandazi-sync', version:2, schemaVersion:3,
-        exportedAt:new Date().toISOString(), source:'device:' + ensureDevice(), deviceId:ensureDevice(),
-        rev:rev, parentRev:parentRev,
-        records:outRecords,
-        tombstones:(meta.tombstones || []).slice(),
-        wishlist:[], places:[], settings:{}, polls:[]
+        payload:{
+          format:'fandazi-sync', version:2, schemaVersion:3,
+          exportedAt:new Date().toISOString(), source:'device:' + ensureDevice(), deviceId:ensureDevice(),
+          rev:rev, parentRev:parentRev,
+          photoGistId:meta.photoGistId || '',
+          records:outRecords,
+          tombstones:(meta.tombstones || []).slice(),
+          wishlist:[], places:[], settings:{}, polls:[]
+        },
+        uploads:uploads
       };
     }
 
@@ -16986,6 +17284,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       o.createdAt = loser.createdAt || o.updatedAt;
       return o;
     }
+    function withRefs(base, other){
+      var a = Array.isArray(base && base.photoRef) ? base.photoRef : [];
+      var b = Array.isArray(other && other.photoRef) ? other.photoRef : [];
+      if(!b.length) return base;
+      if(!a.length){ var o1 = Object.assign({}, base); o1.photoRef = b; return o1; }
+      var seen = {}, out = [];
+      a.concat(b).forEach(function(x){
+        if(x && x.ref && !seen[x.ref]){ seen[x.ref] = 1; out.push({ ref:x.ref, cat:x.cat || 'visit' }); }
+      });
+      var o2 = Object.assign({}, base); o2.photoRef = out; return o2;
+    }
     async function mergeRecords(localRecords, remotePayload){
       var localMap = {}, remoteMap = {};
       localRecords.forEach(function(r){ localMap[r.id] = r; });
@@ -17002,21 +17311,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         if(tombKeys['record:' + id]) continue;
         var l = localMap[id], r = remoteMap[id], base = (meta.baseHashes || {})[id] || '';
         if(l && !r){ out.push(l); continue; }
-        if(r && !l){ out.push(syncRecordOf(r)); continue; }
+        if(r && !l){ out.push(withRefs(syncRecordOf(r), r)); continue; }
         if(!l && !r) continue;
         var lh = await hashRecord(l), rh = await hashRecord(r);
-        if(lh === rh){ out.push(newer(l, r)); continue; }
+        if(lh === rh){ out.push(withRefs(newer(l, r), l === newer(l, r) ? r : l)); continue; }
         var localChanged = base ? base !== lh : true;
         var remoteChanged = base ? base !== rh : true;
         if(localChanged && remoteChanged){
           var winner = newer(l, r), loser = (winner === l) ? r : l;
-          out.push(syncRecordOf(winner));
+          out.push(withRefs(syncRecordOf(winner), winner === l ? r : l));
           var cf = await conflictCopy(loser, id, (loser === l) ? ensureDevice() : (remotePayload.deviceId || remotePayload.source || 'other'));
           if(!localMap[cf.id]){ out.push(cf); conflicts++; }
         }else if(remoteChanged){
-          out.push(syncRecordOf(r));
+          out.push(withRefs(syncRecordOf(r), l));
         }else{
-          out.push(l);
+          out.push(withRefs(l, r));
         }
       }
       return { records:out, tombstones:tombs, conflicts:conflicts };
@@ -17079,7 +17388,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         ensureDevice();
         var salt = b64(rand(16));
         var aes = await deriveKey(o.pass, salt);
-        var payload = await buildPayload(db.records, 1, 0);
+        photoKey = await derivePhotoKey(o.pass, salt).catch(function(){ return null; });
+        /* 先建照片空间并上传本轮照片，主 Gist 的 payload 才能带上 photoGistId；
+           照片任何失败都不阻止主数据创建。 */
+        var photoOut = { uploaded:0, downloaded:0, missing:0, pending:0, error:'' };
+        try{ await ensurePhotoGist(o.token, salt); }catch(e){ photoOut.error = errText(e); }
+        var built = await buildPayload(db.records, 1, 0);
+        if(meta.photoGistId && photoKey){
+          try{ photoOut = await photoRoundTrip(db.records, o.token, aes, salt, built.uploads); }
+          catch(e){ photoOut.error = errText(e); }
+        }
+        var payload = built.payload;
+        payload.photoGistId = meta.photoGistId || '';
         var encrypted = await encryptPayload(payload, aes, salt);
         var gist = await createGist(encrypted.files, o.token);
         var rb = await gistFiles(gist.id, o.token);
@@ -17098,7 +17418,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         meta.dirty = {};
         saveMeta(meta);
         renderCard();
-        return { gistId:gist.id, records:db.records.length, conflicts:0 };
+        return { gistId:gist.id, records:db.records.length, conflicts:0, photos:photoOut };
       }finally{ unlock(lk); }
     }
 
@@ -17110,6 +17430,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var salt = saltB64 || (manifest.kdf && manifest.kdf.salt) || '';
       if(!salt) throw code('E_FORMAT');
       var aes = key || await deriveKey(pass, salt);
+      if(!photoKey && pass && String(pass).length >= 10){
+        photoKey = await derivePhotoKey(pass, salt).catch(function(){ return null; });
+      }
       var payload = await decryptPayload(manifest, g.files, aes);
       return { gist:g, manifest:manifest, payload:payload, key:aes, salt:salt };
     }
@@ -17125,11 +17448,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         await ghRequest('/user', { token:o.token });
         ensureDevice();
         var got = await fetchPayload(o.gistId, o.token, o.pass, '');
+        if(got.payload.photoGistId) meta.photoGistId = got.payload.photoGistId;
         await makeSnapshot('before-sync');
         var merged = await mergeRecords(db.records, got.payload);
         var parent = num2(got.manifest.payloadRev);
         var rev = Math.max(num2(meta.lastRev), parent) + 1;
-        var payload = await buildPayload(merged.records, rev, parent);
+        var built = await buildPayload(merged.records, rev, parent);
+        var payload = built.payload;
+        payload.photoGistId = meta.photoGistId || '';
         var encrypted = await encryptPayload(payload, got.key, got.salt);
         await patchGist(o.gistId, encrypted.files, encrypted.manifest.parts.length, got.manifest.parts.length, o.token);
         var rb = await gistFiles(o.gistId, o.token);
@@ -17138,7 +17464,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         setToken(o.token);
         key = got.key;
         var res = await applySuccess(merged, rev, o.gistId, got.salt, merged.tombstones, db.records.length);
-        return Object.assign({ gistId:o.gistId }, res);
+        /* 主数据已落盘；照片补齐失败只记录状态，不回滚主同步 */
+        var photoOut = { uploaded:0, downloaded:0, missing:0, pending:0, error:'' };
+        if(photoKey){
+          try{ photoOut = await photoRoundTrip(db.records, o.token, got.key, got.salt, built.uploads); }
+          catch(e){ photoOut.error = errText(e); }
+        }
+        return Object.assign({ gistId:o.gistId, photos:photoOut }, res);
       }finally{ unlock(lk); }
     }
 
@@ -17149,11 +17481,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var lk = lock(); if(!lk) throw code('E_BUSY');
       try{
         var got = await fetchPayload(meta.gistId, ghToken(), pass, meta.salt || '');
+        if(got.payload.photoGistId) meta.photoGistId = got.payload.photoGistId;
         await makeSnapshot('before-sync');
         var merged = await mergeRecords(db.records, got.payload);
         var parent = num2(got.manifest.payloadRev);
         var rev = Math.max(num2(meta.lastRev), parent) + 1;
-        var payload = await buildPayload(merged.records, rev, parent);
+        var built = await buildPayload(merged.records, rev, parent);
+        var payload = built.payload;
+        payload.photoGistId = meta.photoGistId || '';
         var encrypted = await encryptPayload(payload, got.key, got.salt);
         await patchGist(meta.gistId, encrypted.files, encrypted.manifest.parts.length, got.manifest.parts.length, ghToken());
         var rb = await gistFiles(meta.gistId, ghToken());
@@ -17161,7 +17496,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         if(mf.writerId !== ensureDevice() || num2(mf.payloadRev) !== rev) throw code('E_CONFLICT');
         key = got.key;
         var res = await applySuccess(merged, rev, meta.gistId, got.salt, merged.tombstones, db.records.length);
-        return Object.assign({ gistId:meta.gistId }, res);
+        var photoOut = { uploaded:0, downloaded:0, missing:0, pending:0, error:'' };
+        if(photoKey){
+          try{ photoOut = await photoRoundTrip(db.records, ghToken(), got.key, got.salt, built.uploads); }
+          catch(e){ photoOut.error = errText(e); }
+        }
+        return Object.assign({ gistId:meta.gistId, photos:photoOut }, res);
       }finally{ unlock(lk); }
     }
 
@@ -17213,10 +17553,25 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       if(on){
         info.innerHTML = 'Gist ID：<b>' + esc(meta.gistId) + '</b> ' +
           '<button class="btn btn-sm" id="btnSyncCopy" style="flex:none">复制</button>' +
-          '<br><span class="muted">口令不保存，刷新后同步需重新输入；照片、想去清单、地点、设置与投票暂不同步。</span>';
+          '<br><span class="muted">口令不保存，刷新后同步需重新输入；照片单独存在第二个私有 Gist，想去清单、地点、设置与投票暂不同步。</span>';
       }else{
-        info.innerHTML = '本版只同步到店记录（含删除墓碑）：照片、想去清单、地点、设置与投票暂不同步。数据加密后上传至 GitHub（境外）。';
+        info.innerHTML = '同步到店记录（含删除墓碑）与照片；照片单独加密上传到第二个私有 Gist，失败只影响照片。数据加密后上传至 GitHub（境外）。';
       }
+      var pbox = $('#syncPhotoBox');
+      if(!pbox) return;
+      if(!on){ pbox.innerHTML = ''; return; }
+      var miss = num2(meta.photoMissing);
+      if(!miss && photoState.missing) miss = photoState.missing;
+      var extra = [];
+      if(photoState.downloaded) extra.push('本轮补齐 ' + photoState.downloaded + ' 张');
+      if(photoState.uploaded) extra.push('本轮上传 ' + photoState.uploaded + ' 张');
+      var line = photoState.error
+        ? '<span class="muted">照片同步异常：' + esc(photoState.error) + '（记录已同步）</span>'
+        : miss > 0
+          ? '<span class="muted">本机缺 ' + miss + ' 张照片（记录已同步，可重试补齐）</span>'
+          : '<span class="muted">照片已同步' + (extra.length ? '，' + extra.join('，') : '') + '</span>';
+      pbox.innerHTML = '<div class="actions" style="margin-top:0;align-items:center">' + line +
+        ((miss > 0 || photoState.error) ? '<button class="btn btn-sm" id="btnSyncPhotoRetry" style="flex:none">补齐照片</button>' : '') + '</div>';
     }
 
     function modalField(id, show){ var el = $('#' + id); if(el) el.classList.toggle('hidden', !show); }
@@ -17238,7 +17593,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       modalField('syncConsentRow', m !== 'now');
       if(m === 'enable'){
         title.textContent = '开启跨设备同步';
-        top.textContent = '第一步：创建你自己的私有 Gist。数据会端到端加密后上传（GitHub 为境外服务）。';
+        top.textContent = '第一步：创建你自己的私有 Gist。记录与照片会分别使用两个私有 Gist，数据端到端加密后上传（GitHub 为境外服务）。';
         bottom.textContent = 'Token 只保存在本机；同步口令不保存，忘记后只能换新口令重新建立（旧密文无法解密）。';
       }else if(m === 'join'){
         title.textContent = '加入已有同步空间';
@@ -17247,7 +17602,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       }else{
         title.textContent = '输入同步口令';
         top.textContent = '同步口令不落盘，刷新页面后需要重新输入才能解密远端数据。';
-        bottom.textContent = '照片等未同步；本版只同步到店记录与删除墓碑。';
+        bottom.textContent = '记录与照片都会同步；照片单独加密存第二个 Gist，失败只影响照片，可稍后重试补齐。';
       }
       $('#syncMask').classList.remove('hidden');
       updateSubmit();
@@ -17268,6 +17623,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       $('#btnSyncSubmit').textContent = mode === 'now' ? '同步' : mode === 'join' ? '加入并合并' : '创建并上传';
     }
 
+    function reportSync(res){
+      toast('同步完成：本机 ' + res.records + ' 条记录' + (res.conflicts ? '，保留 ' + res.conflicts + ' 条冲突副本' : ''));
+      var ph = res.photos || {};
+      if(ph.missing > 0) setTimeout(function(){ toast('照片待补齐：本机缺 ' + ph.missing + ' 张，可在设置里点「补齐照片」重试'); }, 1600);
+      else if(ph.error) setTimeout(function(){ toast('照片未完成：' + ph.error); }, 1600);
+    }
+
     async function submitModal(){
       if(busy) return;
       var pass = $('#syncPass').value || '';
@@ -17283,8 +17645,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         else if(mode === 'join') res = await joinFlow({ token:token, gistId:gist, pass:pass, consent:consent });
         else res = await syncNow(pass);
         closeModal();
-        toast('同步完成：本机 ' + res.records + ' 条记录' + (res.conflicts ? '，保留 ' + res.conflicts + ' 条冲突副本' : ''));
-        if(res.gistId) setTimeout(function(){ toast('Gist ID：' + res.gistId + '（另一台设备用它加入）'); }, 1600);
+        reportSync(res);
+        if(res.gistId) setTimeout(function(){ toast('Gist ID：' + res.gistId + '（另一台设备用它加入）'); }, 2600);
         renderCard();
       }catch(e){
         toast(errText(e));
@@ -17295,11 +17657,22 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       }
     }
 
+    async function retryPhotos(){
+      if(busy) return;
+      if(!key || !photoKey){ openModal('now'); return; }
+      busy = true;
+      try{
+        var r = await syncNow('');
+        reportSync(r);
+      }catch(e){ toast(errText(e)); }
+      finally{ busy = false; renderCard(); }
+    }
+
     function initUI(){
       var en = $('#btnSyncEnable'); if(en) en.addEventListener('click', function(){ openModal('enable'); });
       var jo = $('#btnSyncJoin'); if(jo) jo.addEventListener('click', function(){ openModal('join'); });
       var no = $('#btnSyncNow'); if(no) no.addEventListener('click', async function(){
-        if(key){ try{ busy = true; var r = await syncNow(''); toast('同步完成：本机 ' + r.records + ' 条记录' + (r.conflicts ? '，保留 ' + r.conflicts + ' 条冲突副本' : '')); renderCard(); }
+        if(key){ try{ busy = true; var r = await syncNow(''); reportSync(r); renderCard(); }
           catch(e){ toast(errText(e)); } finally{ busy = false; } return; }
         openModal('now');
       });
@@ -17323,11 +17696,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           navigator.clipboard.writeText(txt).then(function(){ toast('已复制 Gist ID'); }, function(){ toast('复制失败，请长按复制'); });
         }else toast('请长按复制 Gist ID：' + txt);
       });
+      var pbox = $('#syncPhotoBox'); if(pbox) pbox.addEventListener('click', function(e){
+        var b = e.target && e.target.closest ? e.target.closest('#btnSyncPhotoRetry') : null;
+        if(b) retryPhotos();
+      });
     }
 
     function resetAll(){
       try{ localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(META_KEY); localStorage.removeItem(LOCK_KEY); }catch(e){}
-      meta = loadMeta(); key = null; renderCard();
+      meta = loadMeta(); key = null; photoKey = null; photoState = { uploaded:0, downloaded:0, missing:0, pending:0, error:'', at:'' };
+      renderCard();
       return true;
     }
 
@@ -17346,7 +17724,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             enabled:!!m.enabled, gistId:m.gistId || '', lastRev:num2(m.lastRev), lastSyncAt:m.lastSyncAt || '',
             token:ghToken(), dirty:Object.keys(m.dirty || {}).length,
             tombstones:(m.tombstones || []).length, baseHashes:Object.keys(m.baseHashes || {}).length,
-            salt:m.salt || '', keyInMemory:!!key, pending:pendingCount(), modal:!$('#syncMask').classList.contains('hidden')
+            salt:m.salt || '', keyInMemory:!!key, pending:pendingCount(), modal:!$('#syncMask').classList.contains('hidden'),
+            photoGistId:m.photoGistId || '', photoMissing:num2(m.photoMissing),
+            photoKeyInMemory:!!photoKey,
+            photoState:Object.assign({}, photoState)
           };
         },
         meta: function(){ return loadMeta(); },
@@ -17387,6 +17768,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     friend: function(){ var t0 = nowMs(); $('#btnFriend').click(); return nowMs() - t0; },
     cards: function(){ return $('#listBox').querySelectorAll('.rec-card').length; },
     orphanIds: function(){ return orphanPhotoIds(); },
+    media: {
+      put: function(id, dataUrl, thumb, dims){ return photoPut(id, dataUrl, thumb, dims); },
+      get: photoGet,
+      thumb: photoGetThumb,
+      keys: photoAllKeys,
+      stats: photoStats
+    },
     diagMore: function(){ renderMore(); return true; },
     view: function(name){ showView(name); },
     panel: function(name, group){ showPanel(group || 'recommend', name); },
