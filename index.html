@@ -864,6 +864,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     transition:background-color var(--dur-fast) var(--ease),box-shadow var(--dur-fast) var(--ease),transform var(--dur-fast) var(--ease)}
   .btn:active{transform:scale(.975)}
   .btn-sm{min-height:30px;border-radius:min(var(--r),9px);font-weight:500}
+  /* 手机端首屏就能点到：列表卡片与日记详情的操作按钮放大命中区 */
+  .rec-actions .btn,.diary-actions .btn{min-height:44px;padding:9px 12px;font-size:13px}
   .btn-primary{box-shadow:var(--shadow-btn);border-color:var(--accent)}
   .btn-primary:active{box-shadow:none}
   .btn-primary{min-height:44px}          /* 主按钮：≥44px 命中区 */
@@ -5654,11 +5656,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       (r.photoId
         ? '<img class="thumb" data-photo="'+esc(r.photoId)+'" data-thumb="1" loading="lazy" decoding="async" alt="到访照片">'
         : (r.photo ? '<img class="thumb" src="'+esc(r.photo)+'" loading="lazy" decoding="async" alt="到访照片">' : ''))+
-      '<div class="actions">'+
+      '<div class="actions rec-actions">'+
         '<button class="btn btn-sm" data-act="edit" data-id="'+esc(r.id)+'">'+icon('edit')+'编辑</button>'+
+        '<button class="btn btn-sm btn-danger" data-act="del" data-id="'+esc(r.id)+'">删除</button>'+
         '<button class="btn btn-sm btn-soft" data-act="map" data-id="'+esc(r.id)+'" title="点击在高德打开，长按可选高德/百度">'+icon('pin')+'地图</button>'+
         '<button class="btn btn-sm btn-soft" data-act="jump" data-id="'+esc(r.id)+'">'+icon('ext')+'打开平台</button>'+
-        '<button class="btn btn-sm btn-danger" data-act="black" data-id="'+esc(r.id)+'">'+icon('eyeOff')+'不再推荐</button>'+
+        '<button class="btn btn-sm btn-soft" data-act="black" data-id="'+esc(r.id)+'">'+icon('eyeOff')+'不再推荐</button>'+
       '</div>'+
       '<button class="btn btn-soft btn-block btn-lg" data-act="again" data-id="'+esc(r.id)+'" style="margin-top:9px">'+icon('repeat','ico-16')+'再来一次</button>'+
     '</article>';
@@ -5999,7 +6002,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var dimText = ['taste','env','service','value'].map(function(k){
       return num(dims[k]) > 0 ? (DIARY_DIM[k]||k)+' '+num(dims[k]) : '';
     }).filter(Boolean).join(' · ');
-    var html = '';
+    var html = '<div class="actions diary-actions" style="margin-top:0;margin-bottom:12px">'+
+      '<button class="btn btn-primary" data-diary-act="edit" data-id="'+esc(r.id)+'">编辑</button>'+
+      '<button class="btn btn-danger" data-diary-act="del" data-id="'+esc(r.id)+'">删除</button>'+
+      '<button class="btn" data-diary-act="close">关闭</button>'+
+    '</div>';
     if(r.photoId) html += '<img class="diary-photo" data-photo="'+esc(r.photoId)+'" loading="lazy" decoding="async" alt="到访照片">';
     else if(r.photo) html += '<img class="diary-photo" src="'+esc(r.photo)+'" loading="lazy" decoding="async" alt="到访照片">';
     html += '<div class="card flat" style="padding:4px 12px;margin-bottom:12px">'+
@@ -6023,11 +6030,6 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       diaryKv('更新时间', esc(r.updatedAt || '未记录'))+
     '</div>';
     if(r.note) html += '<div class="card flat" style="padding:12px;margin-bottom:12px"><p class="muted" style="margin-bottom:4px">一句话评价</p><p class="desc" style="margin-top:0">'+esc(r.note)+'</p></div>';
-    html += '<div class="actions" style="margin-top:0">'+
-      '<button class="btn btn-primary" data-diary-act="edit" data-id="'+esc(r.id)+'">编辑</button>'+
-      '<button class="btn btn-danger" data-diary-act="del" data-id="'+esc(r.id)+'">删除</button>'+
-      '<button class="btn" data-diary-act="close">关闭</button>'+
-    '</div>';
     $('#diaryDetail').innerHTML = html;
     $('#diaryMask').classList.remove('hidden');
     hydratePhotos($('#diaryDetail'));
@@ -14403,6 +14405,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     else if(act === 'sample'){ openSamplePreview(); }
     else if(act === 'edit'){ openForm(id); }
+    else if(act === 'del'){ deleteRecord(id); }
     else if(act === 'again'){ haptic(10); eatAgain(id); }
     else if(act === 'black'){
       var rb = recordById(id);
