@@ -1838,6 +1838,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           <button class="btn btn-danger" id="btnSyncOff" disabled>断开</button>
         </div>
         <p class="dist-note" id="syncInfo">本版同步到店记录（含删除墓碑）与照片：照片单独加密存到第二个私有 Gist，失败只影响照片，不阻塞记录同步。</p>
+        <div id="syncOutbox" class="dist-note" style="margin-top:8px"></div>
         <div id="syncPhotoBox" style="margin-top:8px"></div>
       </div>
 
@@ -21873,14 +21874,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     function defaultMeta(){
       return { enabled:false, deviceId:'', gistId:'', salt:'', lastRev:0, lastSyncAt:'', consentAt:'',
         userName:'', baseHashes:{}, dirty:{}, tombstones:[],
-        photoGistId:'', photoMissing:0, photoMissingRefs:[] };
+        photoGistId:'', photoMissing:0, photoMissingRefs:[],
+        outbox:{ tries:0, nextAt:0, lastErr:'', lastCode:'', lastTryAt:0, dead:null } };
     }
     function loadMeta(){
       try{
         var raw = localStorage.getItem(META_KEY);
         if(!raw) return defaultMeta();
         var m = JSON.parse(raw);
-        return Object.assign(defaultMeta(), m || {});
+        var out = Object.assign(defaultMeta(), m || {});
+        var ob = (m && m.outbox) || {};
+        out.outbox = { tries:num2(ob.tries), nextAt:num2(ob.nextAt), lastErr:ob.lastErr || '',
+          lastCode:ob.lastCode || '', lastTryAt:num2(ob.lastTryAt), dead:ob.dead || null };
+        return out;
       }catch(e){ return defaultMeta(); }
     }
     function saveMeta(m){ try{ localStorage.setItem(META_KEY, JSON.stringify(m)); }catch(e){} }
@@ -22479,6 +22485,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       meta.tombstones.forEach(function(t){ t.syncedAt = meta.lastSyncAt; });
       meta.baseHashes = await hashAll(db.records);
       meta.dirty = {};
+      outboxOk();
       saveMeta(meta);
       save();
       renderAll();
@@ -22642,6 +22649,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       /* 保留 baseHash：用于判断「仅本机改动 / 双方都改动」 */
       saveMeta(m);
       meta = m;
+      outboxKick(5000);
     }
     function markDeleted(id){
       if(!id) return;
@@ -22653,6 +22661,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       saveMeta(m);
       meta = m;
       renderCard();
+      outboxKick(5000);
     }
     function markAllDeleted(){
       if(!meta.enabled || !db.records.length) return;
@@ -22667,12 +22676,156 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return n;
     }
 
+    /* ---------- outbox：失败重排 + 指数退避 + 不可重试直接标死 ----------
+       失败项不丢弃：dirty / 墓碑本身就持久化在 meta 里，这里只记录「排队状态」。
+       可重试（网络、超时、5xx、限流、冲突）：30s → 2min → 10min → 1h，封顶 1h；
+       不可重试（401 / 403 权限 / 422 校验 / 404 空间不存在 / 口令错）：标死并给可操作提示，
+       等用户改完 Token 或口令后点「重新尝试」再排队。 */
+    var RETRY_STEPS = [30000, 120000, 600000, 3600000];
+    var DEAD_CODES = { E_TOKEN:1, E_SCOPE:1, E_FORMAT:1, E_NOT_FOUND:1, E_NO_GIST:1,
+      E_CRYPTO:1, E_PASS:1, E_OFF:1, E_NO_SUBTLE:1, E_GIST_PUBLIC:1, E_TOO_BIG:1 };
+    var DEAD_HINT = {
+      E_TOKEN:'请到 GitHub 设置里重新生成或粘贴有效 Token（需 gist 权限）',
+      E_SCOPE:'Token 权限不足，请勾选 gist 权限后重新粘贴',
+      E_FORMAT:'远端文件校验失败：确认同步口令与 Gist ID 是否对应',
+      E_NOT_FOUND:'找不到远端空间：Gist 可能已删除，或 Token 无权访问',
+      E_NO_GIST:'缺少 Gist ID，请填另一台设备显示的 ID',
+      E_CRYPTO:'口令不对或远端文件已损坏，请输入正确口令',
+      E_PASS:'同步口令至少 10 位',
+      E_OFF:'同步尚未开启',
+      E_NO_SUBTLE:'当前浏览器缺少加密能力（WebCrypto），无法同步',
+      E_GIST_PUBLIC:'Gist 被创建为公开，已中止并删除；请检查 Token 权限',
+      E_TOO_BIG:'数据量超过本版分片上限，本机记录未改动'
+    };
+    var outTimer = null, outRunning = false;
+    function outbox(){ return meta.outbox || (meta.outbox = defaultMeta().outbox); }
+    function outboxOk(){
+      var ob = outbox();
+      ob.tries = 0; ob.nextAt = 0; ob.lastErr = ''; ob.lastCode = ''; ob.dead = null;
+      if(outTimer){ clearTimeout(outTimer); outTimer = null; }
+      saveMeta(meta);
+    }
+    function outboxFail(e){
+      var c = (e && e.code) || 'E_NET';
+      var ob = outbox();
+      ob.lastTryAt = Date.now();
+      ob.lastCode = c;
+      ob.lastErr = errText(e);
+      if(DEAD_CODES[c]){
+        ob.dead = { code:c, msg:errText(e), hint:DEAD_HINT[c] || '', at:new Date().toISOString() };
+        ob.nextAt = 0;
+        scheduleOutbox(0);
+      }else{
+        ob.dead = null;
+        ob.tries = num2(ob.tries) + 1;
+        var step = RETRY_STEPS[Math.min(ob.tries - 1, RETRY_STEPS.length - 1)];
+        ob.nextAt = Date.now() + step;
+        scheduleOutbox(step);
+      }
+      saveMeta(meta);
+      renderCard();
+    }
+    function hhmm(ts){
+      var d = new Date(num2(ts));
+      function p(n){ return (n < 10 ? '0' : '') + n; }
+      return p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+    function waitText(ms){
+      if(ms <= 0) return '即将重试';
+      if(ms < 60000) return Math.max(1, Math.round(ms / 1000)) + ' 秒后';
+      if(ms < 3600000) return Math.round(ms / 60000) + ' 分钟后';
+      return Math.round(ms / 3600000) + ' 小时后';
+    }
+    function scheduleOutbox(ms){
+      if(outTimer){ clearTimeout(outTimer); outTimer = null; }
+      if(!meta.enabled || !meta.gistId) return;
+      var d = Math.max(0, Math.min(num2(ms), 3600000));
+      outTimer = setTimeout(function(){ outTimer = null; outboxTick(); }, d);
+    }
+    function outboxSeasoned(){
+      if(!meta.enabled || !meta.gistId) return false;
+      if(pendingCount() <= 0) return false;
+      if(outbox().dead) return false;
+      return true;
+    }
+    async function outboxRun(){
+      if(outRunning || busy) return;
+      if(!outboxSeasoned()) return;
+      if(!key){ renderCard(); return; }
+      outRunning = true;
+      try{
+        var res = await syncNow('');
+        outboxOk();
+        renderCard();
+        if(res && res.conflicts) reportSync(res);
+      }catch(e){
+        if(e && e.code === 'E_BUSY'){ scheduleOutbox(15000); }
+        else outboxFail(e);
+      }finally{ outRunning = false; }
+    }
+    function outboxTick(){
+      if(!outboxSeasoned()){ renderCard(); return; }
+      var ob = outbox();
+      var wait = num2(ob.nextAt) - Date.now();
+      if(wait > 0){ scheduleOutbox(wait); renderCard(); return; }
+      outboxRun();
+    }
+    function outboxKick(delay){
+      if(!meta.enabled || !meta.gistId) return;
+      if(outbox().dead) return;
+      scheduleOutbox(delay || 5000);
+    }
+    function outboxResume(delay){
+      if(!meta.enabled || !meta.gistId) return;
+      var ob = outbox();
+      if(ob.dead) return;
+      if(pendingCount() <= 0) return;
+      ob.nextAt = 0;
+      saveMeta(meta);
+      scheduleOutbox(delay || 1000);
+      renderCard();
+    }
+    function outboxRetry(){
+      var ob = outbox();
+      ob.dead = null; ob.tries = 0; ob.nextAt = 0;
+      saveMeta(meta);
+      renderCard();
+      if(!key){ openModal('now'); return; }
+      outboxRun();
+    }
+    function outboxText(){
+      var on = !!(meta.enabled && meta.gistId);
+      if(!on) return '';
+      var n = pendingCount(), ob = outbox(), now = Date.now();
+      if(!n) return '';
+      if(ob.dead){
+        var t = '同步已暂停：' + esc(ob.dead.msg);
+        if(ob.dead.hint && ob.dead.hint !== ob.dead.msg) t += '（' + esc(ob.dead.hint) + '）';
+        return t;
+      }
+      if(!key) return '待同步 ' + n + ' 条 · 输入同步口令后自动重试';
+      if(num2(ob.nextAt) > now){
+        return '待同步 ' + n + ' 条 · 第 ' + (num2(ob.tries) + 1) + ' 次重试在 ' +
+          hhmm(ob.nextAt) + '（' + waitText(num2(ob.nextAt) - now) + '）';
+      }
+      return '待同步 ' + n + ' 条 · 正在排队自动重试';
+    }
+
     function renderCard(){
       var st = $('#syncState');
       if(!st) return;
       var on = !!(meta.enabled && meta.gistId);
       var pend = on ? pendingCount() : 0;
       st.textContent = on ? ('已开启' + (pend ? ' · 待同步 ' + pend + ' 条' : ' · 已同步')) : '未开启';
+      var obBox = $('#syncOutbox');
+      if(obBox){
+        var txt = on ? outboxText() : '';
+        obBox.innerHTML = txt
+          ? '<span' + (outbox().dead ? ' style="color:var(--danger)"' : '') + '>' + txt + '</span>' +
+            '<button class="btn btn-sm" id="btnSyncRetry" style="flex:none;margin-left:8px">' +
+            (outbox().dead ? '重新尝试' : (key ? '立即重试' : '输入口令')) + '</button>'
+          : '';
+      }
       $('#btnSyncEnable').disabled = on;
       $('#btnSyncJoin').disabled = on;
       $('#btnSyncNow').disabled = !on;
@@ -22780,6 +22933,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         renderCard();
       }catch(e){
         toast(errText(e));
+        if(mode === 'now' && meta.enabled && meta.gistId && e && e.code !== 'E_BUSY') outboxFail(e);
       }finally{
         busy = false;
         $('#btnSyncSubmit').disabled = false;
@@ -22793,8 +22947,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       busy = true;
       try{
         var r = await syncNow('');
+        outboxOk();
         reportSync(r);
-      }catch(e){ toast(errText(e)); }
+      }catch(e){ toast(errText(e)); outboxFail(e); }
       finally{ busy = false; renderCard(); }
     }
 
@@ -22830,17 +22985,31 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         var b = e.target && e.target.closest ? e.target.closest('#btnSyncPhotoRetry') : null;
         if(b) retryPhotos();
       });
+      var obox = $('#syncOutbox'); if(obox) obox.addEventListener('click', function(e){
+        var b = e.target && e.target.closest ? e.target.closest('#btnSyncRetry') : null;
+        if(b) outboxRetry();
+      });
     }
 
     function resetAll(){
       try{ localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(META_KEY); localStorage.removeItem(LOCK_KEY); }catch(e){}
       meta = loadMeta(); key = null; photoKey = null; photoState = { uploaded:0, downloaded:0, missing:0, pending:0, reclaimed:0, error:'', at:'' };
+      if(outTimer){ clearTimeout(outTimer); outTimer = null; }
       renderCard();
       return true;
     }
 
     initUI();
     renderCard();
+    /* 打开应用 / 恢复前台 / 网络恢复时，若还有待同步项就提前重排一次 */
+    window.addEventListener('online', function(){ outboxResume(800); });
+    document.addEventListener('visibilitychange', function(){ if(!document.hidden) outboxResume(1000); });
+    try{
+      if(window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.App){
+        Capacitor.Plugins.App.addListener('appStateChange', function(st){ if(st && st.isActive) outboxResume(800); });
+      }
+    }catch(e){}
+    outboxResume(1500);
 
     return {
       renderCard: renderCard,
@@ -22864,12 +23033,27 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         enable: function(token, pass){ return enableFlow({ token:token, pass:pass, consent:true }); },
         join: function(token, gistId, pass){ return joinFlow({ token:token, gistId:gistId, pass:pass, consent:true }); },
         now: function(pass){ return syncNow(pass || ''); },
+        markChanged: markChanged,
         markDeleted: markDeleted,
         markAllDeleted: markAllDeleted,
         pruneTombs: pruneTombs,
         photoGcPlan: photoGcPlan,
         tombTtlDays: TOMBSTONE_TTL_DAYS,
         photoGcDays: PHOTO_GC_DAYS,
+        outbox: function(){
+          var ob = loadMeta().outbox || {};
+          var el = document.getElementById('syncOutbox');
+          return { tries:num2(ob.tries), nextAt:num2(ob.nextAt), lastCode:ob.lastCode || '',
+            lastErr:ob.lastErr || '', dead:ob.dead || null, pending:pendingCount(),
+            text:(el && el.innerText) || '', hasRetry:!!document.getElementById('btnSyncRetry'),
+            keyInMemory:!!key };
+        },
+        outboxTick: function(){ if(outTimer){ clearTimeout(outTimer); outTimer = null; } outboxTick(); return true; },
+        outboxNow: function(){ var ob = outbox(); ob.nextAt = 0; if(outTimer){ clearTimeout(outTimer); outTimer = null; } saveMeta(meta); return outboxRun(); },
+        outboxRun: function(){ return outboxRun(); },
+        outboxFail: function(c){ outboxFail(code(c)); return true; },
+        outboxKick: function(ms){ outboxKick(ms); return true; },
+        outboxResume: function(ms){ outboxResume(ms); return true; },
         reset: resetAll,
         errText: errText
       }
