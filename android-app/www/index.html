@@ -650,6 +650,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .map-fallback{position:absolute;left:8px;right:8px;top:8px;padding:8px 10px;border-radius:10px;background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn-ink);font-size:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .map-fallback b{font-size:12px}
   .map-fallback button{flex:none;padding:4px 9px;font-size:11px;border-radius:8px;border:1px solid var(--warn-line);background:var(--card);color:var(--warn-ink)}
+  /* 平台链接 / 补充信息（店铺详情内嵌） */
+  .sm-row{display:flex;align-items:flex-start;gap:6px;padding:8px 0;border-bottom:1px dashed var(--line)}
+  .sm-row:last-child{border-bottom:0}
+  .sm-main{flex:1;min-width:0}
+  .sm-title{display:block;font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sm-status{flex:none;max-width:92px;font-size:11px;padding:4px 6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink2)}
+  .sm-form{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+  .sm-form input,.sm-form select{width:100%;font-size:13px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+  .sm-form-2{display:flex;gap:6px}
+  .sm-form-2 select{flex:1}
+  .sm-field{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap}
+  .sm-field:last-child{border-bottom:0}
+  .sm-field label{flex:none;width:64px;font-size:12px;color:var(--ink2)}
+  .sm-field input{flex:1;min-width:120px;font-size:13px;padding:6px 9px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+  .sm-field .meta{flex:1 0 100%;font-size:11px;color:var(--ink3);padding-left:72px}
   .map-list-row{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;cursor:pointer;box-shadow:var(--shadow)}
   .map-list-row .mm{flex:1;min-width:0}
   .map-list-row b{font-size:14px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1814,6 +1829,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   </div>
 </div>
 
+<!-- 店铺平台链接 / 补充信息 -->
+<div class="sheet-mask hidden" id="shopMetaMask">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="shopMetaTitle">链接与补充</h2>
+      <button type="button" class="icon-btn" id="shopMetaClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
+    </div>
+    <div id="shopMetaBody"></div>
+  </div>
+</div>
+
 <!-- 统计明细（复用日记的到访行与详情） -->
 <div class="sheet-mask hidden" id="statDetailMask">
   <div class="sheet">
@@ -2890,6 +2916,251 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     while(hex.length < 8) hex = '0' + hex;
     return hex;
   }
+
+  /* ================= 店铺增量信息（fandazi.shopmeta） =================
+   * 不写进 v2.shops：v2 激活后 save() 每次由 db.records 重建 shops/visits，直接写会被覆盖。
+   * 这里只存「店铺级附加信息」：第三方平台链接、用户手填补充字段及其来源/更新时间。
+   * 记录里的坐标、评分、消费金额仍以到店记录为唯一事实来源，参考人均/平台评分不参与计算。
+   */
+  var SHOPMETA_KEY = 'fandazi.shopmeta';
+  var SHOPMETA_VERSION = 1;
+  var SHOPMETA_MAX_LINKS = 20;
+  var SHOP_LINK_STATUS = { ok:'正常', pending:'待确认', broken:'无法访问' };
+  var SHOP_PLATFORM_LIST = [
+    { id:'dianping', name:'大众点评', hosts:['dianping.com'] },
+    { id:'meituan', name:'美团', hosts:['meituan.com'] },
+    { id:'xiaohongshu', name:'小红书', hosts:['xiaohongshu.com','xhslink.com'] },
+    { id:'amap', name:'高德', hosts:['amap.com'] },
+    { id:'douyin', name:'抖音', hosts:['douyin.com','iesdouyin.com'] },
+    { id:'wechat', name:'微信', hosts:['mp.weixin.qq.com','weixin.qq.com'] },
+    { id:'other', name:'其它', hosts:[] }
+  ];
+  var SHOP_META_FIELDS = [
+    { key:'phone', label:'电话' },
+    { key:'avgPrice', label:'参考人均' },
+    { key:'platformRating', label:'平台评分' },
+    { key:'wait', label:'排队 / 等位' },
+    { key:'business', label:'营业状态' }
+  ];
+  var shopMetaStore = null;
+  function shopPlatformName(id){
+    var hit = SHOP_PLATFORM_LIST.filter(function(p){ return p.id === id; })[0];
+    return hit ? hit.name : '其它';
+  }
+  function shopLinkUrl(raw){
+    var s = String(raw == null ? '' : raw).trim();
+    if(!s) return '';
+    if(!/^https?:\/\//i.test(s)) s = 'https://' + s.replace(/^\/+/, '');
+    try{
+      var u = new URL(s);
+      if(u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+      return u.href;
+    }catch(e){ return ''; }
+  }
+  function shopPlatformOf(url){
+    var host = '';
+    try{ host = new URL(shopLinkUrl(url)).hostname.toLowerCase(); }catch(e){ return 'other'; }
+    for(var i = 0; i < SHOP_PLATFORM_LIST.length; i++){
+      var p = SHOP_PLATFORM_LIST[i];
+      for(var j = 0; j < p.hosts.length; j++){
+        if(host === p.hosts[j] || host.slice(-(p.hosts[j].length + 1)) === '.' + p.hosts[j]) return p.id;
+      }
+    }
+    return 'other';
+  }
+  function shopLinkNorm(l){
+    if(!l || typeof l !== 'object') return null;
+    var url = shopLinkUrl(l.url);
+    if(!url) return null;
+    var plat = SHOP_PLATFORM_LIST.some(function(p){ return p.id === l.platform; }) ? String(l.platform) : shopPlatformOf(url);
+    var st = Object.prototype.hasOwnProperty.call(SHOP_LINK_STATUS, String(l.status)) ? String(l.status) : 'pending';
+    return {
+      id: String(l.id || ''),
+      platform: plat, url: url,
+      title: String(l.title == null ? '' : l.title).slice(0, 80),
+      note: String(l.note == null ? '' : l.note).slice(0, 200),
+      at: String(l.at || ''),
+      status: st,
+      lastOpenAt: String(l.lastOpenAt || ''),
+      checkedAt: String(l.checkedAt || '')
+    };
+  }
+  function shopMetaNormEntry(m){
+    if(!m || typeof m !== 'object') return null;
+    var out = { updatedAt: String(m.updatedAt || ''), links: [], fields: {} };
+    (Array.isArray(m.links) ? m.links : []).forEach(function(l){
+      var n = shopLinkNorm(l);
+      if(n) out.links.push(n);
+    });
+    if(out.links.length > SHOPMETA_MAX_LINKS) out.links = out.links.slice(0, SHOPMETA_MAX_LINKS);
+    if(m.fields && typeof m.fields === 'object'){
+      Object.keys(m.fields).forEach(function(k){
+        var f = m.fields[k];
+        if(!f || typeof f !== 'object' || k === '__proto__' || k === 'constructor') return;
+        if(!SHOP_META_FIELDS.some(function(x){ return x.key === k; })) return;
+        out.fields[k] = {
+          value: String(f.value == null ? '' : f.value).slice(0, 80),
+          source: 'user',
+          at: String(f.at || '')
+        };
+      });
+    }
+    return out;
+  }
+  function shopMetaLoad(){
+    if(shopMetaStore) return shopMetaStore;
+    var out = { version: SHOPMETA_VERSION, items:{} };
+    try{
+      var raw = localStorage.getItem(SHOPMETA_KEY);
+      if(raw){
+        var o = JSON.parse(raw);
+        if(o && typeof o === 'object' && o.items && typeof o.items === 'object'){
+          Object.keys(o.items).forEach(function(k){
+            var n = shopMetaNormEntry(o.items[k]);
+            if(n) out.items[k] = n;
+          });
+        }
+      }
+    }catch(e){ logError('平台链接读取', e); }
+    shopMetaStore = out;
+    return out;
+  }
+  function shopMetaWrite(next){
+    var prev = shopMetaStore;
+    shopMetaStore = next || shopMetaStore;
+    try{
+      localStorage.setItem(SHOPMETA_KEY, JSON.stringify(shopMetaStore));
+      return true;
+    }catch(e){
+      shopMetaStore = prev;
+      logError('平台链接保存', e);
+      toast('空间不足，平台链接未保存');
+      return false;
+    }
+  }
+  function shopMetaGet(shopId){
+    var st = shopMetaLoad();
+    var hit = st.items[String(shopId)];
+    return hit ? JSON.parse(JSON.stringify(hit)) : { updatedAt:'', links:[], fields:{} };
+  }
+  function shopMetaTouch(shopId, fn){
+    var st = shopMetaLoad();
+    var id = String(shopId);
+    var cur = st.items[id] ? JSON.parse(JSON.stringify(st.items[id])) : { updatedAt:'', links:[], fields:{} };
+    fn(cur);
+    cur.updatedAt = new Date().toISOString();
+    var next = { version: SHOPMETA_VERSION, items: JSON.parse(JSON.stringify(st.items)) };
+    next.items[id] = shopMetaNormEntry(cur);
+    return shopMetaWrite(next) ? next.items[id] : null;
+  }
+  function shopLinksOf(shopId){
+    return shopMetaGet(shopId).links;
+  }
+  function shopLinkAdd(shopId, link){
+    var url = shopLinkUrl(link && link.url);
+    if(!url) return { ok:false, error:'链接格式不正确，只接受 http / https 地址' };
+    var cur = shopMetaGet(shopId);
+    if(cur.links.length >= SHOPMETA_MAX_LINKS) return { ok:false, error:'每店最多保存 '+SHOPMETA_MAX_LINKS+' 条链接' };
+    var dup = cur.links.filter(function(x){ return x.url === url; })[0];
+    if(dup && dup.id !== (link && link.id)) return { ok:false, error:'这条链接已经保存过' };
+    var item = shopLinkNorm({
+      id: newId('sl'), platform: link.platform, url: url,
+      title: link.title, note: link.note, status: link.status,
+      at: new Date().toISOString()
+    });
+    var saved = shopMetaTouch(shopId, function(m){
+      if(link.id){
+        var at = -1;
+        for(var i = 0; i < m.links.length; i++){ if(m.links[i].id === link.id){ at = i; break; } }
+        if(at >= 0) m.links[at] = item; else m.links.unshift(item);
+      }else{
+        m.links.unshift(item);
+      }
+    });
+    if(!saved) return { ok:false, error:'保存失败' };
+    return { ok:true, link:item };
+  }
+  function shopLinkStatusSet(shopId, linkId, status){
+    if(!Object.prototype.hasOwnProperty.call(SHOP_LINK_STATUS, status)) return false;
+    var saved = shopMetaTouch(shopId, function(m){
+      m.links.forEach(function(l){
+        if(l.id === linkId){ l.status = status; l.checkedAt = new Date().toISOString(); }
+      });
+    });
+    return !!saved;
+  }
+  function shopLinkRemove(shopId, linkId){
+    var saved = shopMetaTouch(shopId, function(m){
+      m.links = m.links.filter(function(l){ return l.id !== linkId; });
+    });
+    return !!saved;
+  }
+  function shopFieldSet(shopId, key, value){
+    if(!SHOP_META_FIELDS.some(function(f){ return f.key === key; })) return false;
+    var v = String(value == null ? '' : value).trim().slice(0, 80);
+    var saved = shopMetaTouch(shopId, function(m){
+      if(v) m.fields[key] = { value: v, source: 'user', at: new Date().toISOString() };
+      else delete m.fields[key];
+    });
+    return !!saved;
+  }
+  function shopFieldOf(shopId, key){
+    var f = shopMetaGet(shopId).fields[key];
+    return f ? f : { value:'', source:'', at:'' };
+  }
+  function shopMetaDay(iso){
+    var s = String(iso || '');
+    return s ? s.slice(0, 10) : '';
+  }
+  /* 平台/用户数据统一文案：有值标「用户填写 + 更新时间」，没有一律「暂无数据」，不推测 */
+  function shopFieldText(shopId, key){
+    var f = shopFieldOf(shopId, key);
+    if(!f.value) return '暂无数据';
+    return f.value + ' · 用户填写' + (f.at ? ' · ' + shopMetaDay(f.at) : '');
+  }
+  function shopMetaBackupData(){
+    return JSON.parse(JSON.stringify(shopMetaLoad()));
+  }
+  /* 旧备份没有该段 → null（保持本机现状）；结构非法 → 抛错，整包拒绝 */
+  function shopMetaBackupValidate(section, where){
+    if(section == null) return null;
+    if(typeof section !== 'object' || Array.isArray(section) || !section.items || typeof section.items !== 'object'){
+      throw new Error('备份里的平台链接格式不正确（' + where + '）');
+    }
+    var out = { version: SHOPMETA_VERSION, items:{} };
+    Object.keys(section.items).forEach(function(k){
+      var n = shopMetaNormEntry(section.items[k]);
+      if(!n) throw new Error('备份里的平台链接「' + k + '」结构无效（' + where + '）');
+      out.items[k] = n;
+    });
+    return out;
+  }
+  function applyBackupShopMeta(section, mode){
+    var incoming = shopMetaBackupValidate(section, '恢复');
+    if(!incoming) return { applied:false, legacy:true, shops:0, links:0 };
+    var prev = JSON.parse(JSON.stringify(shopMetaLoad()));
+    var next;
+    if(mode === 'replace'){
+      next = incoming;
+    }else{
+      next = { version: SHOPMETA_VERSION, items: JSON.parse(JSON.stringify(prev.items)) };
+      Object.keys(incoming.items).forEach(function(k){ next.items[k] = incoming.items[k]; });
+    }
+    shopMetaStore = next;
+    try{
+      localStorage.setItem(SHOPMETA_KEY, JSON.stringify(next));
+    }catch(e){
+      shopMetaStore = prev;
+      logError('平台链接恢复', e);
+      throw new Error('空间不足：平台链接写入失败，本机数据未改动');
+    }
+    var links = 0;
+    Object.keys(next.items).forEach(function(k){ links += next.items[k].links.length; });
+    shopMetaStore = null;
+    shopMetaLoad();
+    return { applied:true, legacy:false, shops:Object.keys(next.items).length, links:links };
+  }
+
 
   /* 旧 record → visit（不虚构：缺失即 null / 空数组） */
   function visitOfRecord(r, sid){
@@ -9351,6 +9622,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return '<div class="vote-item">'+
         '<div style="flex:1;min-width:0"><div style="font-size:13px"><b>'+esc(w.name)+'</b></div>'+
         '<p class="meta">'+esc([w.city,w.area].filter(Boolean).join(' · ')||'未填位置')+(w.budget?' · 预算 '+money(w.budget)+'/人':'')+(w.note?' · '+esc(w.note):'')+'</p></div>'+
+        '<button class="btn btn-sm" data-act="wishMeta" data-id="'+esc(w.id)+'">链接</button>'+
         '<button class="btn btn-sm" data-act="wishEat" data-id="'+esc(w.id)+'">吃过啦</button>'+
         '<button class="btn btn-sm btn-danger" data-act="wishDel" data-id="'+esc(w.id)+'">删除</button>'+
       '</div>';
@@ -11304,6 +11576,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var dimText = ['taste','env','service','value'].map(function(k){
       return num(dims[k]) > 0 ? (DIARY_DIM[k]||k)+' '+num(dims[k]) : '';
     }).filter(Boolean).join(' · ');
+    var sid = shopIdOf(s.name, s.city);
+    var linkCount = shopMetaLinksCount(sid);
     var body =
       '<p class="map-sheet-sub">'+esc([s.city, s.area].filter(Boolean).join(' · ') || '未填位置')+
         ' · 到访 '+s.visits+' 次'+(c ? '' : ' · <span class="tag warn">未填坐标</span>')+'</p>'+
@@ -11316,12 +11590,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         diaryKv('距离', hasKm(s) ? esc(kmLine(s)) : '未填')+
         diaryKv('坐标', c ? esc(c.lng+', '+c.lat) : '未填（不画到图上，也不编造位置）')+
         diaryKv('菜系 / 标签', esc([s.category, (s.tags||[]).join('、')].filter(Boolean).join(' · ') || '未填'))+
+        diaryKv('平台链接', linkCount ? esc(linkCount + ' 条（点下方「链接 / 补充」管理）') : '暂无数据')+
+        diaryKv('补充信息', esc(shopMetaSummary(sid)))+
       '</div>'+
       (visits ? '<div class="card flat" style="padding:10px 12px;margin-bottom:12px"><p class="muted" style="margin-bottom:2px">最近到访（点开看该次详情）</p>'+visits+'</div>' : '')+
       '<div class="actions" style="margin-top:0">'+
         '<a class="btn btn-soft" href="'+esc(mapLinkOf(info, 'amap', false, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">高德'+(c?'定点':'搜索')+'</a>'+
         '<a class="btn" href="'+esc(mapLinkOf(info, 'baidu', false, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">百度搜索</a>'+
         (c ? '<a class="btn" href="'+esc(amapNavUrl(info, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">导航</a>' : '')+
+        '<button type="button" class="btn" data-shop-meta="'+esc(sid)+'" data-shop-meta-title="'+esc(s.name)+'">链接 / 补充</button>'+
         '<button type="button" class="btn" data-map-fix="'+esc(recs[0] ? recs[0].id : '')+'">'+(c?'改坐标':'补坐标')+'</button>'+
         '<button type="button" class="btn" data-map-close="1">关闭</button>'+
       '</div>';
@@ -11364,6 +11641,132 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#mapStoreMask').classList.add('hidden');
     mapView.sheetKey = '';
     mapDraw();
+  }
+
+  /* ================= 平台链接 / 补充信息（店铺详情内嵌入口） ================= */
+  var shopMetaUI = { shopId:'', title:'', editId:'' };
+  function shopMetaStatusTag(st){
+    var txt = SHOP_LINK_STATUS[st] || SHOP_LINK_STATUS.pending;
+    var cls = st === 'ok' ? 'good' : (st === 'broken' ? 'warn' : '');
+    return '<span class="tag ' + cls + '">' + esc(txt) + '</span>';
+  }
+  function shopMetaSummary(shopId){
+    var meta = shopMetaGet(shopId);
+    var filled = SHOP_META_FIELDS.filter(function(f){ return meta.fields[f.key] && meta.fields[f.key].value; });
+    if(!filled.length) return '暂无数据';
+    return filled.map(function(f){ return f.label + ' ' + meta.fields[f.key].value; }).join(' · ') + ' · 用户填写';
+  }
+  function shopMetaLinksCount(shopId){
+    return shopLinksOf(shopId).length;
+  }
+  function openShopMetaSheet(shopId, title){
+    shopMetaUI.shopId = String(shopId || '');
+    shopMetaUI.title = String(title || '店铺');
+    shopMetaUI.editId = '';
+    renderShopMetaSheet();
+    $('#shopMetaMask').classList.remove('hidden');
+    return true;
+  }
+  function closeShopMetaSheet(){
+    $('#shopMetaMask').classList.add('hidden');
+    shopMetaUI.editId = '';
+  }
+  function renderShopMetaSheet(){
+    var sid = shopMetaUI.shopId;
+    var meta = shopMetaGet(sid);
+    var edit = shopMetaUI.editId ? meta.links.filter(function(l){ return l.id === shopMetaUI.editId; })[0] : null;
+    $('#shopMetaTitle').textContent = shopMetaUI.title + ' · 链接与补充';
+    var rows = meta.links.length ? meta.links.map(function(l){
+      var opts = Object.keys(SHOP_LINK_STATUS).map(function(k){
+        return '<option value="'+k+'"'+(k === l.status ? ' selected' : '')+'>'+esc(SHOP_LINK_STATUS[k])+'</option>';
+      }).join('');
+      return '<div class="sm-row">'+
+        '<div class="sm-main">'+
+          '<a href="'+esc(l.url)+'" target="_blank" rel="noopener noreferrer" class="sm-title">'+esc(l.title || l.url)+'</a>'+
+          '<p class="meta">'+esc(shopPlatformName(l.platform))+' · 添加 '+esc(shopMetaDay(l.at) || '未知')+
+            (l.checkedAt ? ' · 状态更新 '+esc(shopMetaDay(l.checkedAt)) : '')+'</p>'+
+          (l.note ? '<p class="meta">'+esc(l.note)+'</p>' : '')+
+        '</div>'+
+        '<select class="sm-status" data-sm-status="'+esc(l.id)+'" aria-label="链接状态">'+opts+'</select>'+
+        '<button type="button" class="btn btn-sm" data-sm-act="edit" data-id="'+esc(l.id)+'">编辑</button>'+
+        '<button type="button" class="btn btn-sm btn-danger" data-sm-act="del" data-id="'+esc(l.id)+'">删除</button>'+
+      '</div>';
+    }).join('') : '<p class="muted">还没有平台链接。可保存大众点评 / 美团 / 小红书等页面地址，点开直接跳转。</p>';
+    var fields = SHOP_META_FIELDS.map(function(f){
+      var v = shopFieldOf(sid, f.key);
+      return '<div class="sm-field">'+
+        '<label for="smf_'+f.key+'">'+esc(f.label)+'</label>'+
+        '<input id="smf_'+f.key+'" data-sm-field="'+f.key+'" value="'+esc(v.value)+'" placeholder="未填">'+
+        '<span class="meta" id="smHint_'+f.key+'">'+esc(v.value ? '用户填写 · '+esc(shopMetaDay(v.at)||'时间未知') : '暂无数据')+'</span>'+
+      '</div>';
+    }).join('');
+    var body =
+      '<p class="muted" style="margin-bottom:10px;line-height:1.6">只做「链接保存 + 跳转」：不自动探测能否打开、不抓取页面、不模拟登录。链接状态由你自己标记。</p>'+
+      '<div class="card flat" style="padding:10px 12px;margin-bottom:12px">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
+          '<b style="font-size:13px">平台链接（'+meta.links.length+'）</b>'+
+          '<span class="meta">同平台可保存多条</span>'+
+        '</div>'+
+        rows+
+      '</div>'+
+      '<div class="card flat" style="padding:10px 12px;margin-bottom:12px">'+
+        '<b style="font-size:13px">'+(edit ? '编辑链接' : '添加链接')+'</b>'+
+        '<div class="sm-form">'+
+          '<input id="smUrl" type="url" inputmode="url" placeholder="粘贴链接，如 https://www.dianping.com/…" value="'+esc(edit ? edit.url : '')+'">'+
+          '<div class="sm-form-2">'+
+            '<select id="smPlatform" aria-label="平台">'+
+              SHOP_PLATFORM_LIST.map(function(p){
+                var sel = edit ? edit.platform === p.id : p.id === 'other';
+                return '<option value="'+p.id+'"'+(sel ? ' selected' : '')+'>'+esc(p.name)+'</option>';
+              }).join('')+
+            '</select>'+
+            '<select id="smStatus" aria-label="状态">'+
+              Object.keys(SHOP_LINK_STATUS).map(function(k){
+                var sel = edit ? edit.status === k : k === 'pending';
+                return '<option value="'+k+'"'+(sel ? ' selected' : '')+'>'+esc(SHOP_LINK_STATUS[k])+'</option>';
+              }).join('')+
+            '</select>'+
+          '</div>'+
+          '<input id="smTitle" placeholder="标题（可选，默认显示网址）" value="'+esc(edit ? edit.title : '')+'">'+
+          '<input id="smNote" placeholder="备注（可选，如「二楼靠窗」）" value="'+esc(edit ? edit.note : '')+'">'+
+          '<div class="actions" style="margin-top:8px">'+
+            '<button type="button" class="btn btn-primary" data-sm-act="save">'+(edit ? '保存修改' : '保存链接')+'</button>'+
+            (edit ? '<button type="button" class="btn" data-sm-act="cancelEdit">取消编辑</button>' : '')+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="card flat" style="padding:10px 12px;margin-bottom:12px">'+
+        '<b style="font-size:13px">补充信息</b>'+
+        '<p class="meta" style="margin:2px 0 8px">手填内容只作参考，<b>不会计入实际消费或个人评分</b>；留空即「暂无数据」，不做推测。</p>'+
+        fields+
+      '</div>'+
+      '<div class="actions"><button type="button" class="btn" data-sm-act="close">关闭</button></div>';
+    $('#shopMetaBody').innerHTML = body;
+    var urlEl = $('#smUrl');
+    if(urlEl && !urlEl.dataset.bound){
+      urlEl.dataset.bound = '1';
+      urlEl.addEventListener('change', function(){
+        var p = $('#smPlatform');
+        if(p && urlEl.value.trim()) p.value = shopPlatformOf(urlEl.value);
+      });
+    }
+  }
+  function shopMetaSaveFromForm(){
+    var url = $('#smUrl') ? $('#smUrl').value : '';
+    var title = $('#smTitle') ? $('#smTitle').value : '';
+    var note = $('#smNote') ? $('#smNote').value : '';
+    var platform = $('#smPlatform') ? $('#smPlatform').value : 'other';
+    var status = $('#smStatus') ? $('#smStatus').value : 'pending';
+    if(!shopLinkUrl(url)){ toast('链接格式不正确，只接受 http / https 地址'); return false; }
+    var res = shopLinkAdd(shopMetaUI.shopId, {
+      id: shopMetaUI.editId || '', url: url, title: title, note: note,
+      platform: platform, status: status
+    });
+    if(!res.ok){ toast(res.error || '保存失败'); return false; }
+    shopMetaUI.editId = '';
+    renderShopMetaSheet();
+    toast('链接已保存');
+    return true;
   }
   function mapSetMode(mode){
     mapView.mode = mode === 'list' ? 'list' : 'map';
@@ -14050,6 +14453,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
   /* ================= 2.0 数据安全网：完整备份 / 校验 / 恢复点 ================= */
   var BACKUP_FORMAT = 'fandazi-backup';
+  /* 备份格式版本：4 = 增加 fandazi.shopmeta（平台链接 + 用户补充字段及来源）。
+     旧备份（≤3）没有该段时恢复保持本机现状，不清空。 */
+  var BACKUP_SCHEMA_VERSION = 4;
   var BACKUP_LAST_KEY = 'fandazi.backup.last';
   var BACKUP_TMP_KEY = KEY + '.restore.tmp';
   var BACKUP_FILE_MAX = 200 * 1024 * 1024;
@@ -14335,6 +14741,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       localConfig: backupLocalConfig(),
       feedback: feedbackBackupData(),
       profile: profileBackupData(),
+      shopmeta: shopMetaBackupData(),
       records: db.records
     };
     /* v2 模式下：records 仍是投影后的 v1 兼容结构（老版本也能读），
@@ -14414,7 +14821,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         return {
           format: BACKUP_FORMAT,
           app: 'i吃饭',
-          schemaVersion: db.version,
+          schemaVersion: BACKUP_SCHEMA_VERSION,
           exportedAt: new Date().toISOString(),
           checksum: { algo:'SHA-256', scope:'canonical(payload+photos)', value:sum },
           stats: {
@@ -14427,6 +14834,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             profileBudget: payload.profile.budgetCap,
             settingsKeys: Object.keys(payload.settings || {}).length,
             localConfigKeys: Object.keys(payload.localConfig || {}).length,
+            shopMetaShops: Object.keys(payload.shopmeta.items || {}).length,
+            shopMetaLinks: Object.keys(payload.shopmeta.items || {}).reduce(function(n,k){ return n + (payload.shopmeta.items[k].links || []).length; }, 0),
             photos: photos.length, photoBytes: photoBytes
           },
           payload: payload,
@@ -14474,12 +14883,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     var ver = num(obj.schemaVersion);
     if(!ver) throw new Error('备份文件缺少 schemaVersion，无法判断版本兼容性');
-    if(ver > db.version) throw new Error('备份版本 '+ver+' 高于当前应用支持的 '+db.version+'，请先升级应用再恢复');
+    if(ver > BACKUP_SCHEMA_VERSION) throw new Error('备份版本 '+ver+' 高于当前应用支持的 '+BACKUP_SCHEMA_VERSION+'，请先升级应用再恢复');
     if(!obj.payload || !Array.isArray(obj.payload.records)) throw new Error('备份内容缺少记录列表');
     /* 反馈段：存在则校验结构，缺失（旧备份）视为「保持现状」 */
     feedbackBackupValidate(obj.payload.feedback, '恢复');
     /* 口味手动设置段：同上，缺失（旧备份）保持本机设置 */
     profileBackupValidate(obj.payload.profile, '恢复');
+    /* 平台链接 / 用户补充字段段：同样允许旧备份缺失 */
+    shopMetaBackupValidate(obj.payload.shopmeta, '恢复');
     if(!obj.checksum || !obj.checksum.value) throw new Error('备份文件缺少校验值，无法确认完整性');
     if(!Array.isArray(obj.photos)) obj.photos = [];
     for(var i = 0; i < obj.photos.length; i++){
@@ -14528,7 +14939,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         reports: reportAll(),
         localConfig: backupLocalConfig(),
         feedback: feedbackBackupData(),
-        profile: profileBackupData()
+        profile: profileBackupData(),
+        shopmeta: shopMetaBackupData()
       }))
     };
     return snapshotStore('readwrite').then(function(store){
@@ -14723,20 +15135,32 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           else localStorage.setItem(REPORT_KEY, rpPrevRaw);
         }catch(_e){}
       }
+      var smPrevRaw = null, smPrevStore = JSON.parse(JSON.stringify(shopMetaLoad()));
+      try{ smPrevRaw = localStorage.getItem(SHOPMETA_KEY); }catch(e){ smPrevRaw = null; }
+      function rollbackShopMeta(){
+        shopMetaStore = smPrevStore;
+        try{
+          if(smPrevRaw == null) localStorage.removeItem(SHOPMETA_KEY);
+          else localStorage.setItem(SHOPMETA_KEY, smPrevRaw);
+        }catch(_e){}
+      }
       var fbResult = { applied:false, count:0 };
       var pmResult = { applied:false, boost:0, block:0, budgetCap:null };
       var rpResult = { applied:false, legacy:true, count:0, added:0 };
+      var smResult = { applied:false, legacy:true, shops:0, links:0 };
       var committed;
       try{
         pmResult = applyBackupProfile(obj.payload.profile);
         fbResult = applyBackupFeedback(obj.payload.feedback);
         rpResult = applyBackupReports(obj.payload.reports, mode);
+        smResult = applyBackupShopMeta(obj.payload.shopmeta, mode);
         /* v2 模式下写 v2（读回校验），v1 模式下沿用 commitDbString */
         committed = commitDbNext(next);
       }catch(e){
         rollbackFeedback();
         rollbackProfile();
         rollbackReports();
+        rollbackShopMeta();
         throw e;
       }
       db = next;
@@ -14753,6 +15177,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         profileApplied:!!pmResult.applied, profileBoost:pmResult.boost,
         profileBlock:pmResult.block, profileBudget:pmResult.budgetCap,
         reports:rpResult.count, reportsApplied:!!rpResult.applied, reportsAdded:rpResult.added,
+        shopMetaApplied:!!smResult.applied, shopMetaShops:smResult.shops, shopMetaLinks:smResult.links,
         missingPhotos:countMissingPhotos(norm, photoMap), ms:Math.round(nowMs() - t0),
         snapshotId:snapRef ? snapRef.id : null
       };
@@ -14797,19 +15222,31 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           else localStorage.setItem(REPORT_KEY, rpPrevRaw);
         }catch(_e){}
       }
+      var smPrevRaw = null, smPrevStore = JSON.parse(JSON.stringify(shopMetaLoad()));
+      try{ smPrevRaw = localStorage.getItem(SHOPMETA_KEY); }catch(e){ smPrevRaw = null; }
+      function rollbackShopMeta(){
+        shopMetaStore = smPrevStore;
+        try{
+          if(smPrevRaw == null) localStorage.removeItem(SHOPMETA_KEY);
+          else localStorage.setItem(SHOPMETA_KEY, smPrevRaw);
+        }catch(_e){}
+      }
       var fbResult = { applied:false, count:0 };
       var pmResult = { applied:false, boost:0, block:0, budgetCap:null };
       var rpResult = { applied:false, legacy:true, count:0, added:0 };
+      var smResult = { applied:false, legacy:true, shops:0, links:0 };
       var committed;
       try{
         pmResult = applyBackupProfile(snap.data.profile);
         fbResult = applyBackupFeedback(snap.data.feedback);
         rpResult = applyBackupReports(snap.data.reports, 'replace');
+        smResult = applyBackupShopMeta(snap.data.shopmeta, 'replace');
         committed = commitDbNext(norm);
       }catch(e){
         rollbackFeedback();
         rollbackProfile();
         rollbackReports();
+        rollbackShopMeta();
         throw e;
       }
       db = norm;
@@ -14893,7 +15330,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var html =
         '<div class="sheet-head" style="margin-bottom:8px"><h3>恢复完整备份</h3>' +
           '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
-        '<p class="muted">备份时间 ' + esc(backupDateText(obj.exportedAt)) + ' · 数据结构 version ' + num(obj.schemaVersion) + '（当前 ' + db.version + '）</p>' +
+        '<p class="muted">备份时间 ' + esc(backupDateText(obj.exportedAt)) + ' · 备份格式 v' + num(obj.schemaVersion) + '（当前 v' + BACKUP_SCHEMA_VERSION + '）</p>' +
         '<div class="stats" style="margin-top:10px">' +
           '<div class="stat"><b>' + norm.records.length + '</b><span>条记录</span></div>' +
           '<div class="stat"><b>' + obj.photos.length + '</b><span>张照片</span></div>' +
@@ -14902,7 +15339,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<p class="dist-note">配置：偏好 ' + Object.keys(norm.settings || {}).length + ' 项 · 黑名单 ' + norm.blacklist.length + ' · 常用地点 ' + norm.places.length + ' · 想去 ' + norm.wishlist.length + ' · 投票 ' + (obj.payload.votes ? obj.payload.votes.length : 0) +
           ' · 反馈 ' + (obj.payload.feedback && Array.isArray(obj.payload.feedback.items) ? obj.payload.feedback.items.length : 0) +
           ' · 口味设置 ' + (obj.payload.profile ? ((obj.payload.profile.boost || []).length + ' 提升 / ' + (obj.payload.profile.block || []).length + ' 拉黑' + (num(obj.payload.profile.budgetCap) > 0 ? ' / 上限 ¥' + Math.round(num(obj.payload.profile.budgetCap)) : '')) : '无（旧备份）') +
-          '；校验值已通过（SHA-256）。' + (missing ? ' 有 ' + missing + ' 条记录引用的照片不在备份里，这些记录会保留无图状态。' : '') + '</p>' +
+          '；校验值已通过（SHA-256）。' + (missing ? ' 有 ' + missing + ' 条记录引用的照片不在备份里，这些记录会保留无图状态。' : '') +
+          ' 平台链接：' + (obj.payload.shopmeta && obj.payload.shopmeta.items ? (Object.keys(obj.payload.shopmeta.items).length + ' 家店 / ' + Object.keys(obj.payload.shopmeta.items).reduce(function(n,k){ return n + ((obj.payload.shopmeta.items[k].links || []).length); }, 0) + ' 条') : '无（旧备份，保持本机现状）') + '。</p>' +
         '<div class="field" style="margin-top:12px"><label>恢复方式</label>' +
           '<select class="input" id="restoreMode">' +
             '<option value="merge">合并：按 城市+店名+日期 去重（人均差 ≤10% 视为同一条）</option>' +
@@ -15659,6 +16097,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         save();
       }
     }
+    else if(act === 'wishMeta'){
+      var wm = db.wishlist.filter(function(x){ return x.id === id; })[0];
+      if(wm) openShopMetaSheet(shopIdOf(wm.name, wm.city), wm.name);
+    }
     else if(act === 'wishEat'){
       var ws = findStore('w|'+id);
       if(ws) quickEat(ws, guessMeal());
@@ -16048,6 +16490,50 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(fix){ closeMapStoreSheet(); if(fix.getAttribute('data-map-fix')) openForm(fix.getAttribute('data-map-fix')); return; }
     var close = e.target.closest ? e.target.closest('[data-map-close]') : null;
     if(close) closeMapStoreSheet();
+    var metaBtn = e.target.closest ? e.target.closest('[data-shop-meta]') : null;
+    if(metaBtn){
+      closeMapStoreSheet();
+      openShopMetaSheet(metaBtn.getAttribute('data-shop-meta'), metaBtn.getAttribute('data-shop-meta-title'));
+    }
+  });
+
+  /* 平台链接 / 补充信息弹层 */
+  $('#shopMetaClose').addEventListener('click', closeShopMetaSheet);
+  $('#shopMetaMask').addEventListener('click', function(e){ if(e.target === this) closeShopMetaSheet(); });
+  $('#shopMetaBody').addEventListener('click', function(e){
+    var act = e.target.closest ? e.target.closest('[data-sm-act]') : null;
+    if(!act) return;
+    var what = act.getAttribute('data-sm-act');
+    if(what === 'save'){ shopMetaSaveFromForm(); return; }
+    if(what === 'edit'){ shopMetaUI.editId = act.getAttribute('data-id') || ''; renderShopMetaSheet(); return; }
+    if(what === 'del'){
+      var delId = act.getAttribute('data-id') || '';
+      if(!delId) return;
+      if(!confirm('删除这条平台链接？（只删本机保存的记录，不影响网页本身）')) return;
+      if(shopLinkRemove(shopMetaUI.shopId, delId)){ if(shopMetaUI.editId === delId) shopMetaUI.editId = ''; renderShopMetaSheet(); toast('已删除'); }
+      return;
+    }
+    if(what === 'cancelEdit'){ shopMetaUI.editId = ''; renderShopMetaSheet(); return; }
+    if(what === 'close') closeShopMetaSheet();
+  });
+  $('#shopMetaBody').addEventListener('change', function(e){
+    var st = e.target.closest ? e.target.closest('[data-sm-status]') : null;
+    if(st){
+      if(shopLinkStatusSet(shopMetaUI.shopId, st.getAttribute('data-sm-status'), st.value)) toast('链接状态已更新');
+      renderShopMetaSheet();
+      return;
+    }
+    var f = e.target.closest ? e.target.closest('[data-sm-field]') : null;
+    if(f){
+      var key = f.getAttribute('data-sm-field');
+      shopFieldSet(shopMetaUI.shopId, key, f.value);
+      var hint = $('#smHint_' + key);
+      if(hint){
+        var v = shopFieldOf(shopMetaUI.shopId, key);
+        hint.textContent = v.value ? '用户填写 · ' + (shopMetaDay(v.at) || '时间未知') : '暂无数据';
+      }
+      toast('已保存');
+    }
   });
 
   /* Canvas 手势：拖动平移、双指/滚轮缩放、点击命中 */
@@ -18649,6 +19135,51 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         clear: function(){ geoClear(); }
       },
       setLayer: mapSetBaseLayer
+    },
+    shopmeta: {
+      key: SHOPMETA_KEY,
+      version: SHOPMETA_VERSION,
+      shopId: function(name, city){ return shopIdOf(name, city); },
+      get: function(shopId){ return shopMetaGet(shopId); },
+      raw: function(){ return shopMetaLoad(); },
+      links: function(shopId){ return shopLinksOf(shopId); },
+      linksCount: function(shopId){ return shopMetaLinksCount(shopId); },
+      summary: function(shopId){ return shopMetaSummary(shopId); },
+      add: function(shopId, link){ return shopLinkAdd(shopId, link || {}); },
+      status: function(shopId, linkId, st){ return shopLinkStatusSet(shopId, linkId, st); },
+      remove: function(shopId, linkId){ return shopLinkRemove(shopId, linkId); },
+      setField: function(shopId, key, value){ return shopFieldSet(shopId, key, value); },
+      field: function(shopId, key){ return shopFieldOf(shopId, key); },
+      fieldText: function(shopId, key){ return shopFieldText(shopId, key); },
+      linkUrl: shopLinkUrl,
+      platformOf: shopPlatformOf,
+      platformName: shopPlatformName,
+      backupData: shopMetaBackupData,
+      apply: function(section, mode){ return applyBackupShopMeta(section, mode); },
+      open: function(shopId, title){ return openShopMetaSheet(shopId, title); },
+      close: function(){ closeShopMetaSheet(); return true; },
+      ui: function(){ return { shopId: shopMetaUI.shopId, title: shopMetaUI.title, editId: shopMetaUI.editId }; },
+      sheet: function(){
+        var b = $('#shopMetaBody');
+        return {
+          open: !$('#shopMetaMask').classList.contains('hidden'),
+          title: $('#shopMetaTitle').textContent,
+          text: b ? b.innerText : '', html: b ? b.innerHTML : '',
+          rows: b ? b.querySelectorAll('.sm-row').length : 0,
+          links: b ? Array.prototype.map.call(b.querySelectorAll('.sm-row a[target="_blank"]'), function(a){ return a.getAttribute('href'); }) : []
+        };
+      },
+      form: function(o){
+        o = o || {};
+        if(o.url != null && $('#smUrl')) $('#smUrl').value = String(o.url);
+        if(o.title != null && $('#smTitle')) $('#smTitle').value = String(o.title);
+        if(o.note != null && $('#smNote')) $('#smNote').value = String(o.note);
+        if(o.platform && $('#smPlatform')) $('#smPlatform').value = String(o.platform);
+        if(o.status && $('#smStatus')) $('#smStatus').value = String(o.status);
+        return true;
+      },
+      save: shopMetaSaveFromForm,
+      edit: function(linkId){ shopMetaUI.editId = String(linkId || ''); renderShopMetaSheet(); return true; }
     },
     stats: {
       show: function(){
