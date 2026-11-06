@@ -1802,6 +1802,25 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <input type="file" id="fileRestore" accept=".json,application/json" class="hidden">
         <p class="muted" style="margin-top:10px" id="backupState"></p>
         <div id="snapshotBox" style="margin-top:6px"></div>
+        <details class="smart-paste" id="webdavBox" style="margin-top:12px">
+          <summary>WebDAV 云备份：传到自己网盘（坚果云等）</summary>
+          <div class="field" style="margin-top:10px"><label for="wdUrl">服务器地址（指向一个文件夹）</label>
+            <input class="input" id="wdUrl" placeholder="https://dav.jianguoyun.com/dav/i吃饭" autocomplete="off" spellcheck="false"></div>
+          <div class="field"><label for="wdUser">用户名</label>
+            <input class="input" id="wdUser" autocomplete="username" spellcheck="false"></div>
+          <div class="field"><label for="wdPass">应用独立密码</label>
+            <input class="input" id="wdPass" type="password" autocomplete="off" spellcheck="false"></div>
+          <div class="field"><label for="wdFile">备份文件名</label>
+            <input class="input" id="wdFile" placeholder="fandazi_backup.json" autocomplete="off" spellcheck="false"></div>
+          <p class="dist-note" id="wdHint">密码只保存在本机，不声称已加密。</p>
+          <div class="actions" style="margin-top:8px">
+            <button class="btn" id="btnWdTest">测试连接</button>
+            <button class="btn btn-soft" id="btnWdUpload">上传备份</button>
+            <button class="btn" id="btnWdPull">拉取还原</button>
+            <button class="btn btn-danger" id="btnWdForget">清除本机口令</button>
+          </div>
+          <p class="muted" style="margin-top:10px" id="wdState">未配置。</p>
+        </details>
         <p class="muted" style="margin-top:10px" id="verInfo"></p>
       </div>
 
@@ -18533,6 +18552,287 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#backupRemindText').textContent = '建议备份：' + info.text;
     bar.classList.remove('hidden');
   }
+  /* ================= WebDAV 云备份与还原 =================
+   * 复用现有完整备份对象与校验：上传就是 buildBackupObject() 的 JSON 原样 PUT，
+   * 拉取就是 GET 回来走 parseBackupText + verifyBackup，再进入现有 replace / merge 恢复流程。
+   * 网页版受浏览器跨域（CORS）限制：WebDAV 的 PROPFIND / PUT 通常过不了预检，
+   * 因此入口保留、如实提示，不绕行、不代理。
+   * APK 内直接调用 CapacitorHttp 走原生 HTTP，不受 CORS 限制；
+   * 不启用 CapacitorHttp 的全局 fetch 补丁，避免影响高德 JS API 动态加载与 Gist 同步。
+   */
+  var WEBDAV_KEY = 'fandazi.webdav';
+  var WEBDAV_LAST_KEY = 'fandazi.webdav.last';
+  var WEBDAV_DEFAULT_FILE = 'fandazi_backup.json';
+  var WEBDAV_TIMEOUT = 20000;
+  var WEBDAV_PROPFIND_BODY = '<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>';
+  var webdavBusy = false;
+  var webdavTransport = null; /* 测试注入：function(method, url, headers, body) -> Promise<{status,text}> */
+
+  function webdavCfg(){
+    var out = { url:'', user:'', pass:'', file:WEBDAV_DEFAULT_FILE };
+    try{
+      var o = JSON.parse(localStorage.getItem(WEBDAV_KEY) || 'null');
+      if(o && typeof o === 'object'){
+        if(typeof o.url === 'string') out.url = o.url;
+        if(typeof o.user === 'string') out.user = o.user;
+        if(typeof o.pass === 'string') out.pass = o.pass;
+        if(typeof o.file === 'string' && o.file) out.file = o.file;
+      }
+    }catch(e){}
+    return out;
+  }
+  function webdavSaveCfg(o){
+    try{ localStorage.setItem(WEBDAV_KEY, JSON.stringify(o)); }
+    catch(e){ logError('WebDAV 配置保存', e); }
+  }
+  function webdavLast(){
+    try{
+      var o = JSON.parse(localStorage.getItem(WEBDAV_LAST_KEY) || 'null');
+      return (o && num(o.at) > 0) ? o : null;
+    }catch(e){ return null; }
+  }
+  function setWebdavLast(o){
+    try{ localStorage.setItem(WEBDAV_LAST_KEY, JSON.stringify(o)); }
+    catch(e){ logError('WebDAV 上传记录', e); }
+  }
+  function webdavDir(){
+    var u = String(webdavCfg().url || '').trim();
+    if(!u) return '';
+    return u.replace(/\/+$/, '') + '/';
+  }
+  function webdavFileUrl(){
+    var f = String(webdavCfg().file || WEBDAV_DEFAULT_FILE).trim() || WEBDAV_DEFAULT_FILE;
+    return webdavDir() + encodeURIComponent(f);
+  }
+  function webdavTransportName(){
+    if(webdavTransport) return 'fake';
+    if(capNative() && capPlugin('CapacitorHttp')) return 'native';
+    return 'fetch';
+  }
+  function webdavNative(method, url, headers, body, timeout){
+    var Http = capPlugin('CapacitorHttp');
+    if(!Http || typeof Http.request !== 'function') return Promise.reject(new Error('原生 HTTP 插件不可用'));
+    return Promise.resolve(Http.request({
+      url:url, method:method, headers:headers,
+      data: body == null ? undefined : body,
+      responseType:'text',
+      connectTimeout: timeout || WEBDAV_TIMEOUT,
+      readTimeout: timeout || WEBDAV_TIMEOUT
+    })).then(function(res){
+      var data = res && res.data;
+      if(typeof data !== 'string'){
+        try{ data = JSON.stringify(data); }catch(e){ data = String(data == null ? '' : data); }
+      }
+      return { status:num(res && res.status), text:data || '' };
+    }, function(e){
+      if(e && num(e.status)) return { status:num(e.status), text:String(e.errorMessage || e.message || '') };
+      var err = new Error((e && (e.errorMessage || e.message)) || '原生 HTTP 请求失败');
+      err.timeout = /timeout|time out|超时/i.test(String(err.message));
+      throw err;
+    });
+  }
+  function webdavFetch(method, url, headers, body, timeout){
+    var ac = null, timer = null;
+    var opts = { method:method, headers:headers };
+    if(body != null) opts.body = body;
+    if(typeof AbortController === 'function'){
+      ac = new AbortController();
+      opts.signal = ac.signal;
+      timer = setTimeout(function(){ try{ ac.abort(); }catch(e){} }, timeout || WEBDAV_TIMEOUT);
+    }
+    return fetch(url, opts).then(function(res){
+      if(timer) clearTimeout(timer);
+      return res.text().then(function(text){ return { status:res.status, text:text }; });
+    }, function(e){
+      if(timer) clearTimeout(timer);
+      var aborted = !!(ac && ac.signal.aborted);
+      var err = new Error(aborted ? '请求超时' : '网络请求失败');
+      err.timeout = aborted;
+      err.cause = e;
+      throw err;
+    });
+  }
+  function webdavReq(method, url, body, timeout){
+    var cfg = webdavCfg();
+    var headers = {};
+    if(cfg.user || cfg.pass) headers['Authorization'] = 'Basic ' + utf8Base64(cfg.user + ':' + cfg.pass);
+    if(method === 'PROPFIND'){
+      headers['Depth'] = '0';
+      headers['Content-Type'] = 'application/xml; charset=utf-8';
+    }else if(method === 'PUT'){
+      headers['Content-Type'] = 'application/json; charset=utf-8';
+    }
+    if(webdavTransport) return Promise.resolve(webdavTransport(method, url, headers, body));
+    if(webdavTransportName() === 'native') return webdavNative(method, url, headers, body, timeout);
+    return webdavFetch(method, url, headers, body, timeout);
+  }
+  function webdavStatusText(code, ctx){
+    var c = num(code);
+    if(!c) return '请求没有完成：多为跨域被浏览器拦截（网页版常见），也可能是网络不可达或地址写错（HTTP 0）';
+    if(c === 207) return '目录可访问，账号有权限（HTTP 207）';
+    if(c >= 200 && c < 300){
+      if(ctx === 'upload') return '上传成功（HTTP ' + c + '）';
+      if(ctx === 'pull') return '已取回备份（HTTP ' + c + '）';
+      return '请求成功（HTTP ' + c + '）';
+    }
+    if(c === 401) return '密码或用户名不正确：坚果云请填「应用独立密码」（网页版 账户信息 → 安全 → 应用密码），不是账号登录密码（HTTP 401）';
+    if(c === 403) return '权限不足或路径不对：确认服务器地址指向自己创建的可读写文件夹，账号有该目录权限（HTTP 403）';
+    if(c === 404) return ctx === 'upload'
+      ? '目标文件夹不存在：先创建该文件夹再填到服务器地址，注意路径大小写（HTTP 404）'
+      : '目录或文件不存在：检查服务器地址是否指向已创建的文件夹、备份文件名是否正确（HTTP 404）';
+    if(c === 405) return '服务器不接受这个方法：确认填的是 WebDAV 服务地址（坚果云通常以 /dav 结尾），不是网盘网页地址（HTTP 405）';
+    if(c === 409) return '父文件夹不存在：先在网盘里创建目标文件夹，再填到服务器地址（HTTP 409）';
+    if(c === 423) return '文件被锁定：稍后重试，或先在网盘网页版解除锁定（HTTP 423）';
+    if(c === 507) return '网盘空间不足：清理后再上传（HTTP 507）';
+    return '请求失败（HTTP ' + c + '）：检查服务器地址、账号权限与网络';
+  }
+  function webdavErrorText(e){
+    var raw = String((e && (e.message || e.errorMessage)) || '');
+    if(e && e.timeout) return '请求超时：网页版多为跨域被拦截，APK 内请检查网络与服务器地址';
+    if(webdavTransportName() === 'fetch') return '请求没有完成：网页版最常见原因是跨域（CORS）被浏览器拦截，请在 APK 内使用' + (raw ? '（' + raw.slice(0, 60) + '）' : '');
+    return '请求失败' + (raw ? '：' + raw.slice(0, 80) : '');
+  }
+  function webdavSetState(text, kind){
+    var el = $('#wdState');
+    if(!el) return;
+    el.textContent = text;
+    el.className = kind === 'error' ? 'notice' : 'muted';
+  }
+  function webdavHintText(){
+    if(capNative()){
+      return '当前在 APK 内：走原生 HTTP 通道，不受浏览器跨域限制。密码只保存在本机 localStorage，未加密；建议使用网盘的应用独立密码。';
+    }
+    return '当前是网页版：浏览器会因跨域（CORS）拦截 WebDAV 的测试连接、上传与拉取，入口保留但通常无法使用，建议在 APK 内操作。密码只保存在本机 localStorage，未加密；建议使用网盘的应用独立密码。';
+  }
+  function webdavReadInputs(){
+    return {
+      url: ($('#wdUrl') && $('#wdUrl').value.trim()) || '',
+      user: ($('#wdUser') && $('#wdUser').value.trim()) || '',
+      pass: ($('#wdPass') && $('#wdPass').value) || '',
+      file: (($('#wdFile') && $('#wdFile').value.trim()) || WEBDAV_DEFAULT_FILE)
+    };
+  }
+  function webdavPersist(){
+    var o = webdavReadInputs();
+    /* 地址为空时不覆盖已保存的配置：避免「测试连接」在空地址时把原地址清掉 */
+    if(!o.url) return o;
+    webdavSaveCfg(o);
+    return o;
+  }
+  function webdavPaintState(){
+    var cfg = webdavCfg();
+    var last = webdavLast();
+    if(!cfg.url){ webdavSetState('未配置：填写服务器地址（指向网盘里的一个文件夹）、用户名与应用独立密码，先点「测试连接」。'); return; }
+    var head = last
+      ? '上次上传：' + backupDateText(last.at) + ' · ' + fmtBytes(num(last.sizeBytes)) + ' · ' + num(last.records) + ' 条 / ' + num(last.photos) + ' 张照片'
+      : '还没有通过本应用上传过备份';
+    webdavSetState(head + '。密码仅保存在本机（未加密）。');
+  }
+  function webdavInit(){
+    var cfg = webdavCfg();
+    var u = $('#wdUrl'), us = $('#wdUser'), p = $('#wdPass'), f = $('#wdFile'), hint = $('#wdHint');
+    if(u) u.value = cfg.url;
+    if(us) us.value = cfg.user;
+    if(p) p.value = cfg.pass;
+    if(f) f.value = cfg.file;
+    if(hint) hint.textContent = webdavHintText();
+    webdavPaintState();
+  }
+  function webdavTest(){
+    if(!webdavReadInputs().url){
+      webdavSetState('请先填写服务器地址（指向网盘里的一个文件夹）。', 'error');
+      return Promise.resolve({ ok:false, text:'url' });
+    }
+    webdavSetState('正在测试连接…');
+    return webdavReq('PROPFIND', webdavDir(), WEBDAV_PROPFIND_BODY).then(function(res){
+      var ok = res.status >= 200 && res.status < 300;
+      var text = webdavStatusText(res.status, 'test');
+      webdavSetState((ok ? '连接成功：' : '连接失败：') + text, ok ? 'ok' : 'error');
+      return { ok:ok, status:res.status, text:text, transport:webdavTransportName() };
+    }).catch(function(e){
+      var text = webdavErrorText(e);
+      webdavSetState('连接失败：' + text, 'error');
+      return { ok:false, status:0, timeout:!!(e && e.timeout), text:text, transport:webdavTransportName() };
+    });
+  }
+  function webdavUpload(){
+    if(webdavBusy){ toast('正在处理，请稍候'); return Promise.resolve({ busy:true }); }
+    if(!webdavReadInputs().url){
+      webdavSetState('请先填写服务器地址（指向网盘里的一个文件夹）。', 'error');
+      return Promise.resolve({ ok:false, text:'url' });
+    }
+    webdavBusy = true;
+    webdavSetState('正在打包本机数据（含照片并计算 SHA-256）…');
+    var t0 = nowMs();
+    return buildBackupObject().then(function(obj){
+      var text = JSON.stringify(obj);
+      return webdavReq('PUT', webdavFileUrl(), text).then(function(res){
+        if(res.status >= 200 && res.status < 300){
+          var rec = { at:Date.now(), sizeBytes:text.length, records:obj.stats.records, photos:obj.stats.photos, exportedAt:obj.exportedAt, schemaVersion:obj.schemaVersion };
+          setWebdavLast(rec);
+          setBackupLast({
+            at:rec.at, records:obj.stats.records, stores:obj.stats.stores,
+            photos:obj.stats.photos, photoBytes:obj.stats.photoBytes, sizeBytes:text.length,
+            schemaVersion:obj.schemaVersion, exportedAt:obj.exportedAt
+          });
+          renderBackupState();
+          webdavSetState('上传成功：' + fmtBytes(text.length) + ' · ' + num(obj.stats.records) + ' 条 / ' + num(obj.stats.photos) + ' 张照片 · ' + backupDateText(rec.at), 'ok');
+          toast('已上传到 WebDAV');
+          return { ok:true, status:res.status, size:text.length, records:obj.stats.records, photos:obj.stats.photos, ms:Math.round(nowMs() - t0) };
+        }
+        var msg = webdavStatusText(res.status, 'upload');
+        webdavSetState('上传失败：' + msg, 'error');
+        return { ok:false, status:res.status, text:msg };
+      });
+    }).catch(function(e){
+      var msg = webdavErrorText(e);
+      webdavSetState('上传失败：' + msg, 'error');
+      return { ok:false, status:0, timeout:!!(e && e.timeout), text:msg };
+    }).then(function(r){ webdavBusy = false; return r; });
+  }
+  function webdavPull(){
+    if(webdavBusy){ toast('正在处理，请稍候'); return Promise.resolve({ busy:true }); }
+    if(!webdavReadInputs().url){
+      webdavSetState('请先填写服务器地址（指向网盘里的一个文件夹）。', 'error');
+      return Promise.resolve({ ok:false, text:'url' });
+    }
+    webdavBusy = true;
+    webdavSetState('正在从云端拉取备份…');
+    var t0 = nowMs();
+    return webdavReq('GET', webdavFileUrl()).then(function(res){
+      if(res.status < 200 || res.status >= 300){
+        var err = new Error(webdavStatusText(res.status, 'pull'));
+        err.httpStatus = res.status;
+        throw err;
+      }
+      var txt = res.text || '';
+      var obj = parseBackupText(txt);
+      return verifyBackup(obj).then(function(){
+        return { obj:obj, size:txt.length, status:res.status };
+      });
+    }).then(function(r){
+      webdavBusy = false;
+      uiOpenRestorePreview(r.obj);
+      webdavSetState('已取回备份（' + fmtBytes(r.size) + '，校验值已通过）：请在弹窗里选择合并或替换。', 'ok');
+      return { ok:true, status:r.status, size:r.size, schemaVersion:r.obj.schemaVersion, records:r.obj.payload.records.length, stage:'preview', ms:Math.round(nowMs() - t0) };
+    }).catch(function(e){
+      webdavBusy = false;
+      var msg = (e && e.timeout) ? webdavErrorText(e)
+        : (e && e.httpStatus) ? String(e.message)
+        : String((e && e.message) || '未知错误');
+      webdavSetState('拉取失败：' + msg, 'error');
+      return { ok:false, status:0, timeout:!!(e && e.timeout), text:msg };
+    });
+  }
+  function webdavForget(){
+    var o = webdavReadInputs();
+    o.pass = '';
+    webdavSaveCfg(o);
+    var p = $('#wdPass');
+    if(p) p.value = '';
+    webdavSetState('已清除本机保存的密码；服务器地址与用户名保留。');
+  }
+
   /* ================= 新版数据（v2）：迁移入口与安全操作 =================
      只复用现有的卡片 / 备份弹窗 / notice 样式；未迁移时除本卡片外行为与旧版完全一致。 */
   var v2UiBusy = false;
@@ -19887,6 +20187,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     e.target.value = '';
   });
   $('#btnBackupGo').addEventListener('click', openBackupPanel);
+  if($('#btnWdTest')){
+    $('#btnWdTest').addEventListener('click', function(){ webdavPersist(); webdavTest(); });
+    $('#btnWdUpload').addEventListener('click', function(){ webdavPersist(); webdavUpload(); });
+    $('#btnWdPull').addEventListener('click', function(){ webdavPersist(); webdavPull(); });
+    $('#btnWdForget').addEventListener('click', webdavForget);
+    ['#wdUrl','#wdUser','#wdPass','#wdFile'].forEach(function(sel){
+      var el = $(sel);
+      if(el) el.addEventListener('change', webdavPersist);
+    });
+  }
   $('#btnBackupClose').addEventListener('click', function(){
     backupReminderMuted = true;
     renderBackupReminder();
@@ -20510,6 +20820,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   initLauncherIcon();
   initTheme();
   renderAll();
+  webdavInit();
   showView('record');
   try{ blindBallInit(); blindShakeBind(); }catch(e){ logError('盲盒初始化', e); }
   setTimeout(function(){ try{ updateBlindShakeUi(); }catch(e){} }, 5000);
@@ -22411,6 +22722,40 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             return JSON.stringify(obj);
           });
         });
+      }
+    },
+    webdav: {
+      cfg: webdavCfg,
+      save: function(o){ webdavSaveCfg(o); return webdavCfg(); },
+      readInputs: webdavReadInputs,
+      persist: webdavPersist,
+      dir: webdavDir,
+      fileUrl: webdavFileUrl,
+      statusText: webdavStatusText,
+      mode: webdavTransportName,
+      transport: function(fn){ webdavTransport = typeof fn === 'function' ? fn : null; return webdavTransportName(); },
+      test: webdavTest,
+      upload: webdavUpload,
+      pull: webdavPull,
+      forget: webdavForget,
+      last: webdavLast,
+      init: webdavInit,
+      state: function(){
+        var el = $('#wdState');
+        return {
+          text: el ? el.textContent : '',
+          cls: el ? el.className : '',
+          hint: $('#wdHint') ? $('#wdHint').textContent : '',
+          inputs: webdavReadInputs(),
+          open: $('#webdavBox') ? $('#webdavBox').hasAttribute('open') : false,
+          last: webdavLast()
+        };
+      },
+      pending: function(){ return pendingRestore ? { schemaVersion:pendingRestore.schemaVersion, exportedAt:pendingRestore.exportedAt, records:pendingRestore.payload.records.length } : null; },
+      reset: function(){
+        try{ localStorage.removeItem(WEBDAV_KEY); localStorage.removeItem(WEBDAV_LAST_KEY); }catch(e){}
+        webdavInit();
+        return true;
       }
     },
     diary: {
