@@ -1537,6 +1537,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <div id="wishBox" style="margin-top:12px"></div>
       </div>
 
+      <div class="card" id="tripCard">
+        <div class="section-head" style="margin:0 0 10px">
+          <h2>旅行计划</h2>
+          <span class="hint" id="tripHint"></span>
+        </div>
+        <div id="tripBox"></div>
+        <p class="dist-note">旅行只排店，不新建店铺、不复制记录；状态「已到店」必须经过记录表单保存后才会出现。数据存在独立的 fandazi.trips 键。</p>
+      </div>
+
       <div class="card">
         <div class="section-head" style="margin:0 0 10px">
           <h2>不再推荐（黑名单）</h2>
@@ -1837,6 +1846,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <button type="button" class="icon-btn" id="shopMetaClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
     </div>
     <div id="shopMetaBody"></div>
+  </div>
+</div>
+
+<!-- 旅行计划详情 / 编辑 -->
+<div class="sheet-mask hidden" id="tripMask">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="tripSheetTitle">旅行计划</h2>
+      <button type="button" class="icon-btn" id="tripSheetClose" aria-label="关闭" style="min-width:44px;min-height:44px"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
+    </div>
+    <div id="tripSheetBody"></div>
   </div>
 </div>
 
@@ -3162,6 +3182,720 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return { applied:true, legacy:false, shops:Object.keys(next.items).length, links:links };
   }
 
+
+  /* ================= 旅行计划（独立增量键 fandazi.trips） =================
+   * 只存行程安排，绝不写 v2.shops / v2.visits，也不创建到店记录。
+   * stop 只引用 shopId = shopIdOf(name, city)；同一家店可出现在多个 trip。
+   * 状态 want/planned/skip 的切换不产生记录；checked 只在记录表单保存成功后由
+   * tripOnRecordSaved() 写入（唯一路径）。
+   */
+  var TRIPS_KEY = 'fandazi.trips';
+  var TRIPS_VERSION = 1;
+  var TRIPS_MAX = 100;
+  var TRIPS_MAX_STOPS = 200;
+  var TRIP_STATUS = { want:'想去', planned:'已安排', checked:'已到店', skip:'跳过' };
+  var TRIP_STATUS_ORDER = ['want','planned','checked','skip'];
+  var tripStore = null;
+  var tripUI = { mode:'', tripId:'', editingId:'', filterArea:'', filterDay:'', filterStatus:'', addOpen:false, addQ:'' };
+  var tripPendingCheck = null;
+  var tripAddTimer = null;
+
+  function tripDate(v){
+    var s = String(v == null ? '' : v).trim().slice(0, 10);
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if(!m) return '';
+    var y = +m[1], mo = +m[2], d = +m[3];
+    var dt = new Date(Date.UTC(y, mo - 1, d));
+    if(dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return '';
+    return s;
+  }
+  function tripStopNorm(s){
+    if(!s || typeof s !== 'object' || Array.isArray(s)) return null;
+    var shopId = String(s.shopId == null ? '' : s.shopId).trim();
+    if(!shopId) return null;
+    var st = Object.prototype.hasOwnProperty.call(TRIP_STATUS, String(s.status)) ? String(s.status) : 'want';
+    return {
+      shopId: shopId.slice(0, 40),
+      name: String(s.name == null ? '' : s.name).slice(0, 40),
+      city: String(s.city == null ? '' : s.city).slice(0, 20),
+      area: String(s.area == null ? '' : s.area).slice(0, 30),
+      status: st,
+      day: tripDate(s.day),
+      note: String(s.note == null ? '' : s.note).slice(0, 200)
+    };
+  }
+  function tripNorm(t){
+    if(!t || typeof t !== 'object' || Array.isArray(t)) return null;
+    var id = String(t.id == null ? '' : t.id).trim().slice(0, 40);
+    if(!id) return null;
+    var stops = [], seen = {};
+    (Array.isArray(t.stops) ? t.stops : []).forEach(function(s){
+      var n = tripStopNorm(s);
+      if(!n || seen[n.shopId]) return;
+      seen[n.shopId] = 1;
+      stops.push(n);
+    });
+    if(stops.length > TRIPS_MAX_STOPS) stops = stops.slice(0, TRIPS_MAX_STOPS);
+    return {
+      id: id,
+      name: String(t.name == null ? '' : t.name).slice(0, 40),
+      destination: String(t.destination == null ? '' : t.destination).slice(0, 40),
+      startDate: tripDate(t.startDate),
+      endDate: tripDate(t.endDate),
+      lodging: String(t.lodging == null ? '' : t.lodging).slice(0, 80),
+      budget: num(t.budget) > 0 ? Math.round(num(t.budget)) : null,
+      note: String(t.note == null ? '' : t.note).slice(0, 300),
+      createdAt: String(t.createdAt || ''),
+      updatedAt: String(t.updatedAt || ''),
+      stops: stops
+    };
+  }
+  function tripsLoad(){
+    if(tripStore) return tripStore;
+    var out = { version: TRIPS_VERSION, items: [] };
+    try{
+      var raw = localStorage.getItem(TRIPS_KEY);
+      if(raw){
+        var o = JSON.parse(raw);
+        if(o && typeof o === 'object' && Array.isArray(o.items)){
+          var seen = {};
+          o.items.forEach(function(t){
+            var n = tripNorm(t);
+            if(!n || seen[n.id]) return;
+            seen[n.id] = 1;
+            if(out.items.length < TRIPS_MAX) out.items.push(n);
+          });
+        }
+      }
+    }catch(e){ logError('旅行计划读取', e); }
+    tripStore = out;
+    return out;
+  }
+  function tripsPersist(next){
+    var prev = tripStore;
+    tripStore = next;
+    try{
+      localStorage.setItem(TRIPS_KEY, JSON.stringify(next));
+      return true;
+    }catch(e){
+      tripStore = prev;
+      logError('旅行计划保存', e);
+      toast('空间不足，旅行计划未保存');
+      return false;
+    }
+  }
+  function tripsGet(id){
+    var list = tripsLoad().items;
+    for(var i = 0; i < list.length; i++){ if(list[i].id === id) return list[i]; }
+    return null;
+  }
+  function tripStopOf(t, shopId){
+    if(!t || !Array.isArray(t.stops)) return null;
+    for(var i = 0; i < t.stops.length; i++){ if(t.stops[i].shopId === shopId) return t.stops[i]; }
+    return null;
+  }
+  function tripHasShop(t, shopId){
+    return !!tripStopOf(t, shopId);
+  }
+  function tripCounts(t){
+    var c = { want:0, planned:0, checked:0, skip:0 };
+    (t && t.stops ? t.stops : []).forEach(function(s){
+      if(Object.prototype.hasOwnProperty.call(c, s.status)) c[s.status]++;
+    });
+    return c;
+  }
+  function tripDateText(t){
+    if(t.startDate && t.endDate) return t.startDate + ' ~ ' + t.endDate;
+    if(t.startDate) return t.startDate + ' 出发';
+    if(t.endDate) return t.endDate + ' 返程';
+    return '';
+  }
+  /* 一次修改：整段深拷贝后改动，写失败自动回滚（不触碰 v2） */
+  function tripMutate(tripId, fn){
+    var cur = tripsLoad();
+    var next = JSON.parse(JSON.stringify(cur));
+    var t = null;
+    next.items.forEach(function(x){ if(x.id === tripId) t = x; });
+    if(!t) return false;
+    if(fn(t, next) === false) return false;
+    t.updatedAt = new Date().toISOString();
+    return tripsPersist(next);
+  }
+  function tripStoreOf(shopId){
+    var all = getStores().concat(wishStores());
+    for(var i = 0; i < all.length; i++){
+      if(shopIdOf(all[i].name, all[i].city) === shopId) return all[i];
+    }
+    return null;
+  }
+  /* 一键带入的预填：金额 / 评分 / 热量一律不传入，保持表单为空 */
+  function tripPrefillOf(s, store){
+    var base = {
+      name: String(s.name || (store ? store.name : '') || ''),
+      city: String(s.city || (store ? (store.city || '') : '') || ''),
+      area: String(s.area || (store ? (store.area || '') : '') || '')
+    };
+    if(!store || store.isWish) return base;
+    return {
+      name: base.name, city: base.city, area: base.area,
+      address: store.address || '',
+      lng: mapHasCoords(store) ? store.lng : '',
+      lat: mapHasCoords(store) ? store.lat : '',
+      distanceKm: num(store.distanceKm) > 0 ? store.distanceKm : '',
+      category: store.category || '',
+      tags: (store.tags || []).slice(),
+      openStart: store.openStart || '',
+      openEnd: store.openEnd || '',
+      fitMeals: (store.fitMeals || []).slice(),
+      dayType: store.dayType || 'any',
+      travelMode: store.travelMode || '',
+      travelMin: num(store.travelMin) > 0 ? store.travelMin : '',
+      fromPlace: store.fromPlace || '',
+      people: 1,
+      tripRef: true
+    };
+  }
+
+  /* ---------- 想去清单页里的旅行区块 ---------- */
+  function tripRowHtml(t){
+    var c = tripCounts(t), parts = [];
+    if(c.want) parts.push('想去 ' + c.want);
+    if(c.planned) parts.push('已安排 ' + c.planned);
+    if(c.checked) parts.push('已到店 ' + c.checked);
+    if(c.skip) parts.push('跳过 ' + c.skip);
+    return '<div style="padding:10px 0;border-bottom:1px dashed var(--line)">' +
+      '<div style="font-size:13px"><b>' + esc(t.name) + '</b> <span class="tag dim">' + t.stops.length + ' 家</span></div>' +
+      '<p class="meta">' + esc([t.destination, tripDateText(t)].filter(Boolean).join(' · ') || '未填目的地 / 日期') + '</p>' +
+      '<p class="meta">' + esc(parts.join(' · ') || '还没有添加店铺') + '</p>' +
+      '<div class="frow" style="margin-top:8px;gap:8px">' +
+        '<button type="button" class="btn btn-sm" style="flex:1;min-height:44px" data-act="tripOpen" data-tid="' + esc(t.id) + '">查看行程</button>' +
+        '<button type="button" class="btn btn-sm" style="min-height:44px;min-width:64px" data-act="tripEdit" data-tid="' + esc(t.id) + '">编辑</button>' +
+        '<button type="button" class="btn btn-sm btn-danger" style="min-height:44px;min-width:64px" data-act="tripDel" data-tid="' + esc(t.id) + '">删除</button>' +
+      '</div></div>';
+  }
+  function renderTrips(){
+    var box = $('#tripBox');
+    if(!box) return;
+    var list = tripsLoad().items;
+    var hint = $('#tripHint');
+    if(hint){
+      var stops = 0;
+      list.forEach(function(t){ stops += t.stops.length; });
+      hint.textContent = list.length ? (list.length + ' 个行程 · ' + stops + ' 个地点') : '';
+    }
+    var head = '<button type="button" class="btn btn-block" data-act="tripNew" style="min-height:44px">+ 新建旅行计划</button>';
+    if(!list.length){
+      box.innerHTML = head +
+        '<div class="empty" style="padding-top:14px">' +
+          '<h3>还没有旅行计划</h3>' +
+          '<p>把「想去清单」或已有记录的店按天数排进行程；出发前用「记一餐 / 确认到店」带入记录。没有坐标的店会如实显示暂无数据。</p>' +
+        '</div>';
+      return;
+    }
+    box.innerHTML = head + list.map(tripRowHtml).join('');
+  }
+
+  /* ---------- 旅行详情 / 编辑弹层 ---------- */
+  function openTripDetail(id){
+    var t = tripsGet(id);
+    if(!t){ toast('这个旅行计划已不存在'); return; }
+    tripUI.mode = 'detail'; tripUI.tripId = id;
+    tripUI.filterArea = ''; tripUI.filterDay = ''; tripUI.filterStatus = '';
+    tripUI.addOpen = false; tripUI.addQ = '';
+    renderTripSheet();
+    $('#tripMask').classList.remove('hidden');
+  }
+  function openTripForm(id){
+    var t = id ? tripsGet(id) : null;
+    if(id && !t){ toast('这个旅行计划已不存在'); return; }
+    tripUI.mode = 'form'; tripUI.editingId = t ? t.id : '';
+    renderTripSheet();
+    $('#tripMask').classList.remove('hidden');
+  }
+  function closeTripSheet(){
+    $('#tripMask').classList.add('hidden');
+    tripUI.mode = ''; tripUI.tripId = ''; tripUI.addOpen = false;
+  }
+  function tripFormHtml(t){
+    return '<div class="field"><label for="tripName">旅行名称 <span class="req">*</span></label>' +
+        '<input class="input" id="tripName" maxlength="40" placeholder="例如：成都三日" value="' + esc(t.name || '') + '"></div>' +
+      '<div class="frow"><div class="field"><label for="tripDest">目的地</label>' +
+        '<input class="input" id="tripDest" maxlength="40" placeholder="例如：成都" value="' + esc(t.destination || '') + '"></div>' +
+        '<div class="field"><label for="tripLodging">住宿</label>' +
+        '<input class="input" id="tripLodging" maxlength="80" placeholder="酒店 / 民宿（可选）" value="' + esc(t.lodging || '') + '"></div></div>' +
+      '<div class="frow"><div class="field"><label for="tripStart">出发日期</label>' +
+        '<input class="input" type="date" id="tripStart" value="' + esc(t.startDate || '') + '"></div>' +
+        '<div class="field"><label for="tripEnd">返程日期</label>' +
+        '<input class="input" type="date" id="tripEnd" value="' + esc(t.endDate || '') + '"></div></div>' +
+      '<div class="field"><label for="tripBudget">预算（元）</label>' +
+        '<input class="input" type="number" id="tripBudget" min="0" step="10" inputmode="numeric" placeholder="可选" value="' + (num(t.budget) > 0 ? num(t.budget) : '') + '"></div>' +
+      '<div class="field"><label for="tripNote">备注</label>' +
+        '<input class="input" id="tripNote" maxlength="300" placeholder="例如：带老人，少走路" value="' + esc(t.note || '') + '"></div>' +
+      '<div class="actions" style="margin-top:12px">' +
+        '<button type="button" class="btn btn-primary" data-act="tripSaveForm" style="min-height:44px">保存</button>' +
+        '<button type="button" class="btn" data-act="tripCancelForm" style="min-height:44px">取消</button>' +
+      '</div>';
+  }
+  function tripFilteredStops(t){
+    var f = tripUI;
+    return (t.stops || []).filter(function(s){
+      if(f.filterArea){
+        if(f.filterArea === '__none__'){ if(s.area) return false; }
+        else if(s.area !== f.filterArea) return false;
+      }
+      if(f.filterStatus && s.status !== f.filterStatus) return false;
+      if(f.filterDay){
+        if(f.filterDay === '__none__'){ if(s.day) return false; }
+        else if(f.filterDay === '__inrange__'){
+          if(!s.day || !t.startDate || !t.endDate) return false;
+          if(s.day < t.startDate || s.day > t.endDate) return false;
+        }else if(s.day !== f.filterDay) return false;
+      }
+      return true;
+    });
+  }
+  function tripStopHtml(t, s){
+    var store = tripStoreOf(s.shopId);
+    var metas = [];
+    if(store && store.isWish) metas.push('想去清单');
+    else if(store && num(store.visits) > 0) metas.push(store.visits + ' 次到访');
+    else metas.push('店铺档案暂无数据');
+    var per = store ? (store.isWish ? num(store.perPrice) : perPriceOf(store.latest || {})) : 0;
+    metas.push(per > 0 ? '人均/预算 ' + money(per) : '人均暂无数据');
+    var rating = store ? num(store.rating) : 0;
+    metas.push(rating > 0 ? '评分 ' + rating : '评分暂无数据');
+    var km = store ? storeKm(store) : null;
+    metas.push(km != null ? kmLine(store) : '距离暂无数据');
+    metas.push(store && mapHasCoords(store) ? '坐标 ' + store.lng + ', ' + store.lat : '坐标暂无数据');
+    var opts = TRIP_STATUS_ORDER.map(function(k){
+      if(k === 'checked' && s.status !== 'checked') return '';
+      return '<option value="' + k + '"' + (s.status === k ? ' selected' : '') + '>' + TRIP_STATUS[k] + '</option>';
+    }).join('');
+    return '<div style="padding:10px 0;border-bottom:1px dashed var(--line)" data-trip-stop="' + esc(s.shopId) + '">' +
+      '<div style="font-size:13px"><b>' + esc(s.name || (store ? store.name : '未命名店铺')) + '</b> ' +
+        '<span class="tag ' + (s.status === 'checked' ? '' : 'dim') + '">' + TRIP_STATUS[s.status] + '</span></div>' +
+      '<p class="meta">' + esc([s.city, s.area].filter(Boolean).join(' · ') || '未填城市/区域') + '</p>' +
+      '<p class="meta">' + esc(metas.join(' · ')) + '</p>' +
+      '<div class="frow" style="margin-top:8px;gap:8px">' +
+        '<select class="input" data-trip-status="' + esc(s.shopId) + '" aria-label="状态" style="flex:1;min-height:44px">' + opts + '</select>' +
+        '<input class="input" type="date" data-trip-day="' + esc(s.shopId) + '" aria-label="安排日期" value="' + esc(s.day) + '"' +
+          (t.startDate ? ' min="' + esc(t.startDate) + '"' : '') + (t.endDate ? ' max="' + esc(t.endDate) + '"' : '') +
+          ' style="max-width:160px;min-height:44px">' +
+      '</div>' +
+      '<input class="input" data-trip-note="' + esc(s.shopId) + '" aria-label="备注" placeholder="这个店的备注（可选）" maxlength="200" value="' + esc(s.note) + '" style="margin-top:8px;min-height:44px">' +
+      '<div class="frow" style="margin-top:8px;gap:8px">' +
+        '<button type="button" class="btn btn-primary" data-act="tripStopEat" data-tid="' + esc(t.id) + '" data-sid="' + esc(s.shopId) + '" style="flex:1;min-height:44px">记一餐 / 确认到店</button>' +
+        '<button type="button" class="btn btn-sm" data-act="tripStopDel" data-tid="' + esc(t.id) + '" data-sid="' + esc(s.shopId) + '" style="min-height:44px;min-width:64px">移除</button>' +
+      '</div>' +
+    '</div>';
+  }
+  function tripCandidates(t, q){
+    var out = [], seen = {};
+    function add(s, kind){
+      if(!s || !s.name) return;
+      var sid = shopIdOf(s.name, s.city);
+      if(!sid || seen[sid]) return;
+      if(tripHasShop(t, sid)) return;
+      seen[sid] = 1;
+      out.push({ s:s, sid:sid, kind:kind });
+    }
+    wishStores().forEach(function(s){ add(s, 'wish'); });
+    getStores().forEach(function(s){ add(s, 'record'); });
+    var key = normStoreName(q);
+    if(key){
+      out = out.filter(function(c){
+        return (normStoreName(c.s.name) + '|' + normStoreName(c.s.city || '') + '|' + normStoreName(c.s.area || '')).indexOf(key) >= 0;
+      });
+    }
+    return out.slice(0, q ? 20 : 12);
+  }
+  function tripAddPanelHtml(t){
+    var list = tripCandidates(t, tripUI.addQ);
+    var rows = list.length
+      ? list.map(function(c){
+          return '<div class="vote-item">' +
+            '<div style="flex:1;min-width:0"><div style="font-size:13px"><b>' + esc(c.s.name) + '</b> ' +
+              '<span class="tag ' + (c.kind === 'wish' ? 'dim' : '') + '">' + (c.kind === 'wish' ? '想去清单' : '有记录') + '</span></div>' +
+              '<p class="meta">' + esc([c.s.city, c.s.area].filter(Boolean).join(' · ') || '未填位置') + '</p></div>' +
+            '<button type="button" class="btn btn-sm" style="min-height:44px;min-width:64px" data-act="tripAddPick" data-tid="' + esc(t.id) + '" data-sid="' + esc(c.sid) + '">加入</button>' +
+          '</div>';
+        }).join('')
+      : '<p class="muted" style="font-size:12.5px;margin:4px 0">' +
+        (tripUI.addQ ? '没有匹配的店；旅行不会新建店铺。' : '想去清单和记录里可加的店都已在行程中，或暂时没有可加的店。') + '</p>';
+    return '<div class="card flat" style="padding:10px 12px;margin-bottom:8px">' +
+      '<div class="section-head" style="margin:0 0 8px"><h2 style="font-size:14px">添加店铺</h2>' +
+        '<span class="hint">' + list.length + ' 家可选</span></div>' +
+      '<input class="input" id="tripAddQ" placeholder="搜索店名 / 城市 / 商圈" maxlength="30" value="' + esc(tripUI.addQ) + '" style="min-height:44px">' +
+      '<div style="margin-top:8px">' + rows + '</div>' +
+      '<button type="button" class="btn btn-sm" data-act="tripAddClose" style="margin-top:8px;min-height:44px">收起</button>' +
+    '</div>';
+  }
+  function tripDetailHtml(t){
+    var c = tripCounts(t);
+    var stops = tripFilteredStops(t);
+    var areaSet = {}, daySet = {}, hasNoArea = false, hasNoDay = false;
+    t.stops.forEach(function(s){
+      if(s.area) areaSet[s.area] = 1; else hasNoArea = true;
+      if(s.day) daySet[s.day] = 1; else hasNoDay = true;
+    });
+    var areaOpts = '<option value="">全部区域</option>' +
+      Object.keys(areaSet).sort().map(function(a){ return '<option value="' + esc(a) + '"' + (tripUI.filterArea === a ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join('') +
+      (hasNoArea ? '<option value="__none__"' + (tripUI.filterArea === '__none__' ? ' selected' : '') + '>未填区域</option>' : '');
+    var dayOpts = '<option value="">全部日期</option>' +
+      Object.keys(daySet).sort().map(function(d){ return '<option value="' + esc(d) + '"' + (tripUI.filterDay === d ? ' selected' : '') + '>' + esc(d) + '</option>'; }).join('') +
+      (hasNoDay ? '<option value="__none__"' + (tripUI.filterDay === '__none__' ? ' selected' : '') + '>未定日期</option>' : '') +
+      ((t.startDate && t.endDate) ? '<option value="__inrange__"' + (tripUI.filterDay === '__inrange__' ? ' selected' : '') + '>行程内</option>' : '');
+    var statusChips =
+      '<button type="button" class="chip-toggle' + (tripUI.filterStatus === '' ? ' on' : '') + '" data-act="tripFilterStatus" data-st="" style="min-height:44px;height:44px">全部状态</button>' +
+      TRIP_STATUS_ORDER.map(function(k){
+        return '<button type="button" class="chip-toggle' + (tripUI.filterStatus === k ? ' on' : '') + '" data-act="tripFilterStatus" data-st="' + k + '" style="min-height:44px;height:44px">' + TRIP_STATUS[k] + ' ' + c[k] + '</button>';
+      }).join('');
+    var body;
+    if(!t.stops.length){
+      body = '<div class="empty"><h3>还没有安排店铺</h3><p>点上方「添加店铺」，从想去清单或已有记录里选；同一家店可以同时出现在多个旅行。</p></div>';
+    }else if(!stops.length){
+      body = '<div class="empty"><h3>没有符合筛选的店</h3><p>当前区域 / 日期 / 状态下没有结果，不会显示虚构数据。</p>' +
+        '<div class="actions" style="justify-content:center;margin-top:10px"><button type="button" class="btn" data-act="tripFilterReset" style="min-height:44px">清空筛选</button></div></div>';
+    }else{
+      body = stops.map(function(s){ return tripStopHtml(t, s); }).join('');
+    }
+    return '<div class="card flat" style="padding:10px 12px;margin-bottom:10px">' +
+        diaryKv('目的地', esc(t.destination || '未填')) +
+        diaryKv('日期', esc(tripDateText(t) || '未填')) +
+        diaryKv('住宿', esc(t.lodging || '未填')) +
+        diaryKv('预算', num(t.budget) > 0 ? money(t.budget) : '暂无数据') +
+        diaryKv('备注', esc(t.note || '未填')) +
+      '</div>' +
+      '<div class="actions" style="margin-top:0;margin-bottom:10px">' +
+        '<button type="button" class="btn" data-act="tripMap" data-tid="' + esc(t.id) + '" style="min-height:44px">在地图上看</button>' +
+        '<button type="button" class="btn" data-act="tripEdit" data-tid="' + esc(t.id) + '" style="min-height:44px">编辑</button>' +
+        '<button type="button" class="btn btn-danger" data-act="tripDel" data-tid="' + esc(t.id) + '" style="min-height:44px">删除</button>' +
+      '</div>' +
+      '<div class="frow" style="gap:8px;margin-bottom:8px">' +
+        '<select class="input" id="tripFA" aria-label="按区域筛选" style="min-height:44px">' + areaOpts + '</select>' +
+        '<select class="input" id="tripFD" aria-label="按日期筛选" style="min-height:44px">' + dayOpts + '</select>' +
+      '</div>' +
+      '<div class="chips" style="margin-bottom:8px">' + statusChips + '</div>' +
+      '<div style="margin-bottom:8px">' +
+        (tripUI.addOpen
+          ? tripAddPanelHtml(t)
+          : '<button type="button" class="btn btn-soft btn-block" data-act="tripAddOpen" style="min-height:44px">+ 添加店铺（想去清单 / 记录）</button>') +
+      '</div>' +
+      '<p class="dist-note">「记一餐 / 确认到店」复用现有记录表单：店名、城市、商圈、坐标会带入，金额 / 评分 / 热量保持空白；保存成功后这家店才变为「已到店」。</p>' +
+      body;
+  }
+  function renderTripSheet(){
+    var title = $('#tripSheetTitle'), body = $('#tripSheetBody');
+    if(!title || !body) return;
+    if(tripUI.mode === 'form'){
+      var tp = tripUI.editingId ? tripsGet(tripUI.editingId) : null;
+      title.textContent = tp ? '编辑旅行' : '新建旅行';
+      body.innerHTML = tripFormHtml(tp || {});
+      return;
+    }
+    var t = tripsGet(tripUI.tripId);
+    if(!t){ closeTripSheet(); return; }
+    title.textContent = t.name || '旅行计划';
+    body.innerHTML = tripDetailHtml(t);
+  }
+
+  /* ---------- 增删改 ---------- */
+  function tripSaveForm(){
+    var nameEl = $('#tripName');
+    if(!nameEl) return;
+    var name = String(nameEl.value || '').trim();
+    if(!name){ toast('请填写旅行名称'); return; }
+    var sd = tripDate($('#tripStart') ? $('#tripStart').value : '');
+    var ed = tripDate($('#tripEnd') ? $('#tripEnd').value : '');
+    if(sd && ed && ed < sd){ toast('返程日期不能早于出发日期'); return; }
+    var budget = num($('#tripBudget') ? $('#tripBudget').value : '');
+    var fields = {
+      name: name.slice(0, 40),
+      destination: String($('#tripDest') ? $('#tripDest').value : '').trim().slice(0, 40),
+      startDate: sd,
+      endDate: ed,
+      lodging: String($('#tripLodging') ? $('#tripLodging').value : '').trim().slice(0, 80),
+      budget: budget > 0 ? Math.round(budget) : null,
+      note: String($('#tripNote') ? $('#tripNote').value : '').trim().slice(0, 300)
+    };
+    function apply(tt){
+      tt.name = fields.name;
+      tt.destination = fields.destination;
+      tt.startDate = fields.startDate;
+      tt.endDate = fields.endDate;
+      tt.lodging = fields.lodging;
+      tt.budget = fields.budget;
+      tt.note = fields.note;
+    }
+    if(tripUI.editingId){
+      if(!tripMutate(tripUI.editingId, apply)) return;
+      renderTrips();
+      openTripDetail(tripUI.editingId);
+      toast('已更新旅行计划');
+      return;
+    }
+    if(tripsLoad().items.length >= TRIPS_MAX){ toast('最多 ' + TRIPS_MAX + ' 个旅行计划'); return; }
+    var nowIso = new Date().toISOString();
+    var nt = tripNorm({ id:'t' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name: fields.name, destination: fields.destination, startDate: fields.startDate, endDate: fields.endDate,
+      lodging: fields.lodging, budget: fields.budget, note: fields.note,
+      createdAt: nowIso, updatedAt: nowIso, stops: [] });
+    if(!nt){ toast('旅行计划结构异常，未保存'); return; }
+    var next = { version: TRIPS_VERSION, items: [nt].concat(tripsLoad().items) };
+    if(!tripsPersist(next)) return;
+    renderTrips();
+    tripUI.mode = 'detail'; tripUI.tripId = nt.id; tripUI.editingId = '';
+    renderTripSheet();
+    toast('已创建旅行计划');
+  }
+  function tripDelete(id){
+    var t = tripsGet(id);
+    if(!t) return;
+    if(!confirm('删除旅行「' + t.name + '」？只删除这份行程安排，不会删除店铺档案、到店记录或想去清单。此操作不可撤销。')) return;
+    var next = { version: TRIPS_VERSION, items: tripsLoad().items.filter(function(x){ return x.id !== id; }) };
+    if(!tripsPersist(next)) return;
+    if(tripUI.tripId === id) closeTripSheet();
+    renderTrips();
+    toast('已删除旅行计划');
+  }
+  function tripStopSet(tripId, shopId, patch){
+    var ok = tripMutate(tripId, function(t){
+      var s = tripStopOf(t, shopId);
+      if(!s) return false;
+      if('status' in patch){
+        var st = String(patch.status);
+        if(!Object.prototype.hasOwnProperty.call(TRIP_STATUS, st)) return false;
+        /* 硬约束：已到店只能由记录保存路径写入 */
+        if(st === 'checked' && s.status !== 'checked'){
+          toast('「已到店」请用「记一餐 / 确认到店」保存记录后再标记');
+          return false;
+        }
+        s.status = st;
+      }
+      if('day' in patch) s.day = tripDate(patch.day);
+      if('note' in patch) s.note = String(patch.note == null ? '' : patch.note).slice(0, 200);
+    });
+    if(ok){
+      renderTrips();
+      if(tripUI.mode === 'detail' && tripUI.tripId === tripId) renderTripSheet();
+    }
+    return ok;
+  }
+  function tripStopRemove(tripId, shopId){
+    var t = tripsGet(tripId);
+    if(!t) return;
+    var s = tripStopOf(t, shopId);
+    if(!s) return;
+    if(!confirm('从「' + t.name + '」移出「' + (s.name || '这家店') + '」？只调整行程，不会删除店铺档案、到店记录或想去清单。')) return;
+    var ok = tripMutate(tripId, function(tt){
+      tt.stops = tt.stops.filter(function(x){ return x.shopId !== shopId; });
+    });
+    if(ok){
+      renderTrips();
+      renderTripSheet();
+      toast('已移出行程');
+    }
+  }
+  function tripAddStop(tripId, shopId, name, city, area){
+    var t = tripsGet(tripId);
+    if(!t || !shopId) return false;
+    if(tripHasShop(t, shopId)){
+      toast('这家店已经在行程里了');
+      renderTripSheet();
+      return false;
+    }
+    var store = tripStoreOf(shopId);
+    var nm = String(name || (store ? store.name : '') || '');
+    var ct = String(city || (store ? (store.city || '') : '') || '');
+    var ar = String(area || (store ? (store.area || '') : '') || '');
+    var ok = tripMutate(tripId, function(tt){
+      tt.stops.push({ shopId: shopId, name: nm, city: ct, area: ar, status: 'want', day: '', note: '' });
+    });
+    if(!ok) return false;
+    renderTrips();
+    if(tripUI.mode === 'detail' && tripUI.tripId === tripId) renderTripSheet();
+    toast('已加入「' + nm + '」到行程');
+    return true;
+  }
+  function tripStopEat(tripId, shopId){
+    var t = tripsGet(tripId);
+    if(!t) return;
+    var s = tripStopOf(t, shopId);
+    if(!s) return;
+    var store = tripStoreOf(shopId);
+    var prefill = tripPrefillOf(s, store);
+    tripPendingCheck = { tripId: tripId, shopId: shopId };
+    closeTripSheet();
+    openForm(null, prefill, 'quick');
+    toast('已带入「' + (s.name || (store ? store.name : '这家店')) + '」：金额 / 评分 / 热量留空，按这次实际填写');
+  }
+  /* 唯一能把 stop 置为 checked 的入口：记录表单保存成功后调用 */
+  function tripOnRecordSaved(rec){
+    var p = tripPendingCheck;
+    if(!p) return false;
+    tripPendingCheck = null;
+    var ok = tripMutate(p.tripId, function(t){
+      var s = tripStopOf(t, p.shopId);
+      if(!s) return false;
+      s.status = 'checked';
+    });
+    if(ok){
+      renderTrips();
+      if(tripUI.mode === 'detail' && tripUI.tripId === p.tripId) renderTripSheet();
+      else if($('#tripMask') && !$('#tripMask').classList.contains('hidden') && tripUI.tripId === p.tripId) renderTripSheet();
+      return true;
+    }
+    return false;
+  }
+  /* 地图联动：复用现有地图筛选，只按 shopId 集合过滤，不重画引擎 */
+  function tripShowOnMap(tripId){
+    var t = tripsGet(tripId);
+    if(!t) return;
+    var set = {};
+    t.stops.forEach(function(s){ if(s.shopId) set[s.shopId] = 1; });
+    mapView.tripSet = set;
+    mapView.tripLabel = t.name;
+    closeTripSheet();
+    showView('record');
+    showPanel('record', 'map');
+    renderMap(true);
+    var n = mapStoresFiltered().length;
+    toast('地图只显示「' + t.name + '」内的 ' + n + ' 家有档案的店（想去但无记录的店不画点）');
+  }
+
+  /* ---------- 备份 v5：trips 段 ---------- */
+  function tripBackupData(){
+    return JSON.parse(JSON.stringify(tripsLoad()));
+  }
+  function tripBackupValidate(section, where){
+    if(section == null) return null;
+    if(typeof section !== 'object' || Array.isArray(section) || !Array.isArray(section.items)){
+      throw new Error('备份里的旅行计划格式不正确（' + where + '）');
+    }
+    if(section.items.length > TRIPS_MAX) throw new Error('备份里的旅行计划超过 ' + TRIPS_MAX + ' 个，已整包拒绝（' + where + '）');
+    var out = { version: TRIPS_VERSION, items: [] }, seen = {};
+    section.items.forEach(function(t, i){
+      if(!t || typeof t !== 'object' || Array.isArray(t)) throw new Error('备份里的旅行第 ' + (i + 1) + ' 项结构无效（' + where + '）');
+      var id = String(t.id == null ? '' : t.id).trim();
+      if(!id) throw new Error('备份里的旅行第 ' + (i + 1) + ' 项缺少标识（' + where + '）');
+      if(seen[id]) throw new Error('备份里的旅行标识重复：' + id + '（' + where + '）');
+      seen[id] = 1;
+      if(t.stops != null && !Array.isArray(t.stops)) throw new Error('备份里的旅行「' + id + '」店铺列表结构无效（' + where + '）');
+      (t.stops || []).forEach(function(s, j){
+        if(!s || typeof s !== 'object' || Array.isArray(s)) throw new Error('备份里的旅行「' + id + '」第 ' + (j + 1) + ' 个店铺结构无效（' + where + '）');
+        if(!String(s.shopId == null ? '' : s.shopId).trim()) throw new Error('备份里的旅行「' + id + '」第 ' + (j + 1) + ' 个店铺缺少 shopId（' + where + '）');
+      });
+      var n = tripNorm(t);
+      if(!n) throw new Error('备份里的旅行「' + id + '」结构无效（' + where + '）');
+      out.items.push(n);
+    });
+    return out;
+  }
+  function applyBackupTrips(section, mode){
+    var incoming = tripBackupValidate(section, '恢复');
+    if(!incoming) return { applied:false, legacy:true, trips:0, stops:0 };
+    var prev = JSON.parse(JSON.stringify(tripsLoad()));
+    var next;
+    if(mode === 'replace') next = incoming;
+    else{
+      next = { version: TRIPS_VERSION, items: JSON.parse(JSON.stringify(prev.items)) };
+      var idx = {};
+      next.items.forEach(function(t, i){ idx[t.id] = i; });
+      incoming.items.forEach(function(t){
+        if(idx[t.id] !== undefined) next.items[idx[t.id]] = t;
+        else next.items.unshift(t);
+      });
+      if(next.items.length > TRIPS_MAX) next.items = next.items.slice(0, TRIPS_MAX);
+    }
+    var prevRaw = null;
+    try{ prevRaw = localStorage.getItem(TRIPS_KEY); }catch(e){ prevRaw = null; }
+    if(!tripsPersist(next)){
+      tripStore = prev;
+      try{
+        if(prevRaw == null) localStorage.removeItem(TRIPS_KEY);
+        else localStorage.setItem(TRIPS_KEY, prevRaw);
+      }catch(_e){}
+      throw new Error('空间不足：旅行计划写入失败，本机数据未改动');
+    }
+    var stops = 0;
+    next.items.forEach(function(t){ stops += t.stops.length; });
+    return { applied:true, legacy:false, trips:next.items.length, stops:stops };
+  }
+  function rollbackTrips(prevRaw, prevStore){
+    tripStore = prevStore;
+    try{
+      if(prevRaw == null) localStorage.removeItem(TRIPS_KEY);
+      else localStorage.setItem(TRIPS_KEY, prevRaw);
+    }catch(_e){}
+  }
+
+  /* ---------- 旅行弹层事件（委托） ---------- */
+  function tripAct(act, el){
+    var tid = el.getAttribute('data-tid') || '';
+    var sid = el.getAttribute('data-sid') || '';
+    if(act === 'tripNew'){ openTripForm(); return; }
+    if(act === 'tripOpen'){ openTripDetail(tid); return; }
+    if(act === 'tripEdit'){ closeTripSheet(); openTripForm(tid); return; }  // 从列表或详情都统一
+    if(act === 'tripDel'){ tripDelete(tid); return; }
+    if(act === 'tripBack'){ if(tripUI.editingId) openTripDetail(tripUI.editingId); else closeTripSheet(); return; }
+    if(act === 'tripSaveForm'){ tripSaveForm(); return; }
+    if(act === 'tripCancelForm'){ if(tripUI.editingId) openTripDetail(tripUI.editingId); else closeTripSheet(); return; }
+    if(act === 'tripFilterStatus'){
+      tripUI.filterStatus = el.getAttribute('data-st') || '';
+      renderTripSheet();
+      return;
+    }
+    if(act === 'tripFilterReset'){
+      tripUI.filterArea = ''; tripUI.filterDay = ''; tripUI.filterStatus = '';
+      renderTripSheet();
+      return;
+    }
+    if(act === 'tripStopEat'){ tripStopEat(tid, sid); return; }
+    if(act === 'tripStopDel'){ tripStopRemove(tid, sid); return; }
+    if(act === 'tripAddOpen'){ tripUI.addOpen = true; tripUI.addQ = ''; renderTripSheet(); return; }
+    if(act === 'tripAddClose'){ tripUI.addOpen = false; tripUI.addQ = ''; renderTripSheet(); return; }
+    if(act === 'tripAddPick'){
+      tripAddStop(tid || tripUI.tripId, sid, el.getAttribute('data-tname') || '', el.getAttribute('data-tcity') || '', el.getAttribute('data-tarea') || '');
+      return;
+    }
+    if(act === 'tripMap'){ tripShowOnMap(tid); return; }
+  }
+  function tripSheetChange(e){
+    var tg = e.target;
+    if(!tg) return;
+    var tid = tripUI.tripId;
+    if(!tid) return;
+    if(tg.id === 'tripFA'){
+      tripUI.filterArea = tg.value || '';
+      renderTripSheet();
+      return;
+    }
+    if(tg.id === 'tripFD'){
+      tripUI.filterDay = tg.value || '';
+      renderTripSheet();
+      return;
+    }
+    var st = tg.closest ? tg.closest('[data-trip-status]') : null;
+    if(st){ tripStopSet(tid, st.getAttribute('data-trip-status'), { status: st.value }); return; }
+    var day = tg.closest ? tg.closest('[data-trip-day]') : null;
+    if(day){ tripStopSet(tid, day.getAttribute('data-trip-day'), { day: day.value }); return; }
+    var note = tg.closest ? tg.closest('[data-trip-note]') : null;
+    if(note){ tripStopSet(tid, note.getAttribute('data-trip-note'), { note: note.value }); return; }
+  }
+  function tripSheetInput(e){
+    if(!e.target || e.target.id !== 'tripAddQ' || tripUI.mode !== 'detail') return;
+    tripUI.addQ = e.target.value;
+    clearTimeout(tripAddTimer);
+    tripAddTimer = setTimeout(function(){
+      if(tripUI.mode !== 'detail') return;
+      var focused = document.activeElement && document.activeElement.id === 'tripAddQ';
+      renderTripSheet();
+      if(focused){
+        var q = $('#tripAddQ');
+        if(q){ q.focus(); try{ q.setSelectionRange(q.value.length, q.value.length); }catch(_e){} }
+      }
+    }, 220);
+  }
 
   /* 旧 record → visit（不虚构：缺失即 null / 空数组） */
   function visitOfRecord(r, sid){
@@ -10054,6 +10788,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var yEl = $('#aboutYear'); if(yEl) yEl.textContent = String(new Date().getFullYear());
     renderStats();
     renderWishlist();
+    renderTrips();
     renderBlacklist();
     renderFeedback();
     renderProfile();
@@ -10185,6 +10920,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   /* ================= 表单 ================= */
   function closeForm(){
     try{ voiceAbort(); }catch(e){}
+    tripPendingCheck = null;
     $('#sheetMask').classList.add('hidden');
     editingId = null;
     formPhoto = null;
@@ -10278,8 +11014,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#f-r-val').value = num(dims.value) > 0 ? dims.value : '';
     var prefillRef = !r && src && (num(src.perPrice) > 0 || num(src.rating) > 0 ||
       (src.ratings && ['taste','env','service','value'].some(function(k){ return num(src.ratings[k]) > 0; })));
-    $('#prefillHint').textContent = prefillRef ? '人均 / 评分为上次的参考值，请按这次实际确认；不确定就留空。' : '';
-    $('#prefillHint').style.display = prefillRef ? '' : 'none';
+    var tripRef = !r && src && src.tripRef === true;
+    $('#prefillHint').textContent = tripRef
+      ? '来自旅行计划：店名 / 城市 / 商圈 / 坐标已带入；金额、评分、热量不预填，按这次实际填写，不确定就留空。'
+      : (prefillRef ? '人均 / 评分为上次的参考值，请按这次实际确认；不确定就留空。' : '');
+    $('#prefillHint').style.display = (tripRef || prefillRef) ? '' : 'none';
 
     if(r){
       var ph = photosOfRecord(r);
@@ -10716,6 +11455,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       db.records.unshift(rec);
       toast('已记录「'+name+'」');
       savedNew = true;
+      /* 唯一允许把旅行 stop 置为 checked 的路径 */
+      tripOnRecordSaved(rec);
     }
     if(typeof FZSync !== 'undefined' && FZSync) FZSync.markChanged(rec.id);
     /* 本次移除、且没有任何记录再引用的照片才真正从 IndexedDB 删除 */
@@ -11139,6 +11880,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     size: { w:0, h:0, dpr:1 }, cos: 1,
     points: [], missing: [], clusters: [], labels: [],
     selected: '', sheetKey: '', lastHit: null,
+    tripSet: null, tripLabel: '',
     drawMs: 0, firstDrawMs: null, lastFitMs: 0, lastRenderMs: 0
   };
   var mapPtr = { ids:[], pos:{}, down:false, sx:0, sy:0, moved:0, dragging:false, pinch:null, pinched:false };
@@ -11148,7 +11890,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var q = String(qEl ? qEl.value : '').trim().toLowerCase();
     var cat = cEl ? cEl.value : '';
     var minRate = rEl ? num(rEl.value) : 0;
+    var tripSet = mapView.tripSet;
     return getStores().filter(function(s){
+      if(tripSet && !tripSet[shopIdOf(s.name, s.city)]) return false;
       if(cat && String(s.category || '') !== cat) return false;
       if(minRate > 0 && num(s.rating) < minRate) return false;
       if(q){
@@ -11467,7 +12211,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var miss = mapView.missing.length;
     var clusters = mapView.clusters.length;
     var multi = mapView.clusters.filter(function(c){ return c.count > 1; }).length;
-    return '共 '+total+' 家 · 有坐标 '+pts+' 家 · 未填坐标 '+miss+' 家 · '+
+    var trip = mapView.tripSet ? '旅行「'+mapView.tripLabel+'」内 '+mapStoresFiltered().length+' 家有档案的店 · ' : '';
+    return trip+'共 '+total+' 家 · 有坐标 '+pts+' 家 · 未填坐标 '+miss+' 家 · '+
       clusters+' 个标记'+(multi ? '（其中 '+multi+' 个为合并簇）' : '')+
       ' · 首绘 '+(mapView.firstDrawMs == null ? '—' : fmtMs(mapView.firstDrawMs))+
       ' / 重绘 '+fmtMs(mapView.drawMs);
@@ -11481,6 +12226,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var mid = mapColorOf(0.5, pal);
     var amapOn = mapAmapActive();
     var html =
+      (mapView.tripSet ? '<button type="button" class="chip-toggle on" data-map-trip-clear="1">旅行：'+esc(mapView.tripLabel||'')+' · 退出筛选</button>' : '')+
       '<span class="lg">底图</span>'+
       '<button type="button" class="chip-toggle'+(amapOn ? '' : ' on')+'" data-map-layer="blank" aria-pressed="'+(amapOn ? 'false' : 'true')+'">画布</button>'+
       '<button type="button" class="chip-toggle'+(amapOn ? ' on' : '')+'" data-map-layer="amap" aria-pressed="'+(amapOn ? 'true' : 'false')+'">高德</button>'+
@@ -11639,6 +12385,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<a class="btn" href="'+esc(mapLinkOf(info, 'baidu', false, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">百度搜索</a>'+
         (c ? '<a class="btn" href="'+esc(amapNavUrl(info, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">导航</a>' : '')+
         '<button type="button" class="btn" data-shop-meta="'+esc(sid)+'" data-shop-meta-title="'+esc(s.name)+'">链接 / 补充</button>'+
+        '<button type="button" class="btn" data-trip-join="'+esc(sid)+'" style="min-height:44px">加入旅行计划</button>'+
         '<button type="button" class="btn" data-map-fix="'+esc(recs[0] ? recs[0].id : '')+'">'+(c?'改坐标':'补坐标')+'</button>'+
         '<button type="button" class="btn" data-map-close="1">关闭</button>'+
       '</div>';
@@ -14494,8 +15241,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   /* ================= 2.0 数据安全网：完整备份 / 校验 / 恢复点 ================= */
   var BACKUP_FORMAT = 'fandazi-backup';
   /* 备份格式版本：4 = 增加 fandazi.shopmeta（平台链接 + 用户补充字段及来源）。
-     旧备份（≤3）没有该段时恢复保持本机现状，不清空。 */
-  var BACKUP_SCHEMA_VERSION = 4;
+     5 = 增加 fandazi.trips（旅行计划，独立增量键）。
+     旧备份（≤4）没有 trips 段时恢复保持本机现状，不清空。 */
+  var BACKUP_SCHEMA_VERSION = 5;
   var BACKUP_LAST_KEY = 'fandazi.backup.last';
   var BACKUP_TMP_KEY = KEY + '.restore.tmp';
   var BACKUP_FILE_MAX = 200 * 1024 * 1024;
@@ -14782,6 +15530,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       feedback: feedbackBackupData(),
       profile: profileBackupData(),
       shopmeta: shopMetaBackupData(),
+      trips: tripBackupData(),
       records: db.records
     };
     /* v2 模式下：records 仍是投影后的 v1 兼容结构（老版本也能读），
@@ -14803,8 +15552,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var text = 0;
       try{ text = JSON.stringify(backupPayloadOf()).length; }catch(e){ text = 0; }
       var total = text + num(ps.bytes) + 320;
+      var tripList = tripsLoad().items, tripStops = 0;
+      tripList.forEach(function(t){ tripStops += t.stops.length; });
       return {
         records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length,
+        trips: tripList.length, tripStops: tripStops,
         feedback: feedbackStore.items.length,
         profileBoost: profileManual.boost.length, profileBlock: profileManual.block.length,
         profileBudget: profileManual.budgetCap,
@@ -14812,7 +15564,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         sizeBytes: total, warn: total > BACKUP_WARN_BYTES
       };
     }).catch(function(){
-      return { records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length, feedback: feedbackStore.items.length, profileBoost: profileManual.boost.length, profileBlock: profileManual.block.length, profileBudget: profileManual.budgetCap, photos: 0, photoBytes: 0, textBytes: 0, sizeBytes: 0, warn: false };
+      return { records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length, trips: 0, tripStops: 0, feedback: feedbackStore.items.length, profileBoost: profileManual.boost.length, profileBlock: profileManual.block.length, profileBudget: profileManual.budgetCap, photos: 0, photoBytes: 0, textBytes: 0, sizeBytes: 0, warn: false };
     });
   }
   function backupPhotos(){
@@ -14876,6 +15628,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             localConfigKeys: Object.keys(payload.localConfig || {}).length,
             shopMetaShops: Object.keys(payload.shopmeta.items || {}).length,
             shopMetaLinks: Object.keys(payload.shopmeta.items || {}).reduce(function(n,k){ return n + (payload.shopmeta.items[k].links || []).length; }, 0),
+            trips: payload.trips.items.length,
+            tripStops: payload.trips.items.reduce(function(n,t){ return n + t.stops.length; }, 0),
             photos: photos.length, photoBytes: photoBytes
           },
           payload: payload,
@@ -14931,6 +15685,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     profileBackupValidate(obj.payload.profile, '恢复');
     /* 平台链接 / 用户补充字段段：同样允许旧备份缺失 */
     shopMetaBackupValidate(obj.payload.shopmeta, '恢复');
+    /* 旅行计划段：缺失（v4 及更早）保持本机现状；存在则严格校验，非法整包拒绝 */
+    tripBackupValidate(obj.payload.trips, '恢复');
     if(!obj.checksum || !obj.checksum.value) throw new Error('备份文件缺少校验值，无法确认完整性');
     if(!Array.isArray(obj.photos)) obj.photos = [];
     for(var i = 0; i < obj.photos.length; i++){
@@ -14980,7 +15736,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         localConfig: backupLocalConfig(),
         feedback: feedbackBackupData(),
         profile: profileBackupData(),
-        shopmeta: shopMetaBackupData()
+        shopmeta: shopMetaBackupData(),
+        trips: tripBackupData()
       }))
     };
     return snapshotStore('readwrite').then(function(store){
@@ -15188,12 +15945,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var pmResult = { applied:false, boost:0, block:0, budgetCap:null };
       var rpResult = { applied:false, legacy:true, count:0, added:0 };
       var smResult = { applied:false, legacy:true, shops:0, links:0 };
+      var tpPrevRaw = null, tpPrevStore = JSON.parse(JSON.stringify(tripsLoad()));
+      try{ tpPrevRaw = localStorage.getItem(TRIPS_KEY); }catch(e){ tpPrevRaw = null; }
+      var tpResult = { applied:false, legacy:true, trips:0, stops:0 };
       var committed;
       try{
         pmResult = applyBackupProfile(obj.payload.profile);
         fbResult = applyBackupFeedback(obj.payload.feedback);
         rpResult = applyBackupReports(obj.payload.reports, mode);
         smResult = applyBackupShopMeta(obj.payload.shopmeta, mode);
+        tpResult = applyBackupTrips(obj.payload.trips, mode);
         /* v2 模式下写 v2（读回校验），v1 模式下沿用 commitDbString */
         committed = commitDbNext(next);
       }catch(e){
@@ -15201,6 +15962,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         rollbackProfile();
         rollbackReports();
         rollbackShopMeta();
+        rollbackTrips(tpPrevRaw, tpPrevStore);
         throw e;
       }
       db = next;
@@ -15218,6 +15980,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         profileBlock:pmResult.block, profileBudget:pmResult.budgetCap,
         reports:rpResult.count, reportsApplied:!!rpResult.applied, reportsAdded:rpResult.added,
         shopMetaApplied:!!smResult.applied, shopMetaShops:smResult.shops, shopMetaLinks:smResult.links,
+        tripApplied:!!tpResult.applied, trips:tpResult.trips, tripStops:tpResult.stops,
         missingPhotos:countMissingPhotos(norm, photoMap), ms:Math.round(nowMs() - t0),
         snapshotId:snapRef ? snapRef.id : null
       };
@@ -15275,18 +16038,23 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var pmResult = { applied:false, boost:0, block:0, budgetCap:null };
       var rpResult = { applied:false, legacy:true, count:0, added:0 };
       var smResult = { applied:false, legacy:true, shops:0, links:0 };
+      var tpPrevRaw = null, tpPrevStore = JSON.parse(JSON.stringify(tripsLoad()));
+      try{ tpPrevRaw = localStorage.getItem(TRIPS_KEY); }catch(e){ tpPrevRaw = null; }
+      var tpResult = { applied:false, legacy:true, trips:0, stops:0 };
       var committed;
       try{
         pmResult = applyBackupProfile(snap.data.profile);
         fbResult = applyBackupFeedback(snap.data.feedback);
         rpResult = applyBackupReports(snap.data.reports, 'replace');
         smResult = applyBackupShopMeta(snap.data.shopmeta, 'replace');
+        tpResult = applyBackupTrips(snap.data.trips, 'replace');
         committed = commitDbNext(norm);
       }catch(e){
         rollbackFeedback();
         rollbackProfile();
         rollbackReports();
         rollbackShopMeta();
+        rollbackTrips(tpPrevRaw, tpPrevStore);
         throw e;
       }
       db = norm;
@@ -15297,7 +16065,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       renderAll();
       return { ok:true, records:db.records.length, photos:snap.photoIds ? snap.photoIds.length : 0, at:snap.at, feedback:fbResult.count, feedbackApplied:!!fbResult.applied,
         profileApplied:!!pmResult.applied, profileBoost:pmResult.boost, profileBlock:pmResult.block, profileBudget:pmResult.budgetCap,
-        reports:rpResult.count, reportsApplied:!!rpResult.applied };
+        reports:rpResult.count, reportsApplied:!!rpResult.applied,
+        tripApplied:!!tpResult.applied, trips:tpResult.trips, tripStops:tpResult.stops };
     });
   }
 
@@ -15332,6 +16101,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<p class="dist-note">照片以 base64 文本内联进 JSON，体积约等于现有照片总量（' + fmtBytes(est.photoBytes) + '）加记录文本；照片压缩规则沿用每张 ≤360px、最多 80 张。</p>' +
         '<p class="dist-note">另含推荐反馈 ' + est.feedback + ' 条（想吃 / 吃腻了 / 不喜欢 / 永不推荐），随备份一起还原；反馈不按记录去重。</p>' +
         '<p class="dist-note">另含「我的口味」手动设置：提升 ' + est.profileBoost + ' 项 / 拉黑 ' + est.profileBlock + ' 项 / 人均上限 ' + (est.profileBudget ? '¥' + est.profileBudget : '未设置') + '（自动画像不落盘，恢复后按记录重算）。</p>' +
+        '<p class="dist-note">另含旅行计划 ' + est.trips + ' 个行程 / ' + est.tripStops + ' 个地点（独立键 fandazi.trips，不写店铺档案与到店记录）。</p>' +
         (est.warn ? '<p class="notice" style="margin-top:8px">体积超过 50 MB：生成与下载会占用较多内存和时间，仍可继续。低内存设备建议先清理旧照片。</p>' : '') +
         '<p class="muted" style="margin-top:8px">' + (last ? '上次备份：' + backupAgoText(last) : '还没有生成过完整备份。') + '</p>' +
         '<div class="actions" style="margin-top:14px">' +
@@ -15367,6 +16137,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var missing = countMissingPhotos(norm, (function(){ var m = {}; obj.photos.forEach(function(p){ m[p.id] = 1; }); return m; })());
       var totalPhotoBytes = 0;
       obj.photos.forEach(function(p){ totalPhotoBytes += p.dataUrl.length; });
+      var tripCount = obj.payload.trips ? obj.payload.trips.items.length : 0;
+      var tripStopCount = obj.payload.trips ? obj.payload.trips.items.reduce(function(n,t){ return n + t.stops.length; }, 0) : 0;
       var html =
         '<div class="sheet-head" style="margin-bottom:8px"><h3>恢复完整备份</h3>' +
           '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
@@ -15376,6 +16148,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           '<div class="stat"><b>' + obj.photos.length + '</b><span>张照片</span></div>' +
           '<div class="stat"><b>' + fmtBytes(totalPhotoBytes) + '</b><span>照片体积</span></div>' +
         '</div>' +
+        '<p class="dist-note">旅行计划：' + (obj.payload.trips ? (tripCount + ' 个行程 / ' + tripStopCount + ' 个地点') : '无（旧备份，本机旅行计划保持现状）') + '。</p>' +
         '<p class="dist-note">配置：偏好 ' + Object.keys(norm.settings || {}).length + ' 项 · 黑名单 ' + norm.blacklist.length + ' · 常用地点 ' + norm.places.length + ' · 想去 ' + norm.wishlist.length + ' · 投票 ' + (obj.payload.votes ? obj.payload.votes.length : 0) +
           ' · 反馈 ' + (obj.payload.feedback && Array.isArray(obj.payload.feedback.items) ? obj.payload.feedback.items.length : 0) +
           ' · 口味设置 ' + (obj.payload.profile ? ((obj.payload.profile.boost || []).length + ' 提升 / ' + (obj.payload.profile.block || []).length + ' 拉黑' + (num(obj.payload.profile.budgetCap) > 0 ? ' / 上限 ¥' + Math.round(num(obj.payload.profile.budgetCap)) : '')) : '无（旧备份）') +
@@ -15414,6 +16187,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<p class="dist-note">' + (res.feedbackApplied ? '推荐反馈已按备份还原（' + res.feedback + ' 条，不按记录去重）。' : '该备份不含反馈段（旧版本备份），本机反馈保持不变。') + '</p>' +
         '<p class="dist-note">' + (res.profileApplied ? '「我的口味」手动设置已还原（提升 ' + res.profileBoost + ' 项 / 拉黑 ' + res.profileBlock + ' 项 / 上限 ' + (res.profileBudget ? '¥' + res.profileBudget : '未设置') + '）。' : '该备份不含口味设置段（旧版本备份），本机口味设置保持不变。') + '</p>' +
         '<p class="dist-note">' + (res.reportsApplied ? '年度报告存档已还原（' + res.reports + ' 份）。' : '该备份不含年度存档段（旧版本备份），本机存档保持不变。') + '</p>' +
+        '<p class="dist-note">' + (res.tripApplied ? '旅行计划已按备份还原（' + res.trips + ' 个行程 / ' + res.tripStops + ' 个地点）。' : '该备份不含旅行计划段（旧版本备份），本机旅行计划保持不变。') + '</p>' +
         (res.missingPhotos ? '<p class="dist-note">有 ' + res.missingPhotos + ' 条记录引用的照片缺失，已保留无图状态。</p>' : '') +
         '<p class="dist-note">恢复前的本机数据已存为恢复点；若结果不对，可点下方按钮回到恢复前。</p>' +
         '<div class="actions" style="margin-top:12px">' +
@@ -16197,6 +16971,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var sf = findStore(key);
       if(sf) openForm(null, formPrefillFromStore(sf, guessMeal()));
     }
+    else if(act && act.indexOf('trip') === 0){ tripAct(act, actEl); }
   });
 
   /* 顶部导航与分段 */
@@ -16490,6 +17265,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     b.addEventListener('click', function(){ mapSetMode(b.getAttribute('data-map-mode')); });
   });
   $('#mapLegend').addEventListener('click', function(e){
+    var tc = e.target.closest ? e.target.closest('[data-map-trip-clear]') : null;
+    if(tc){
+      mapView.tripSet = null; mapView.tripLabel = '';
+      renderMap(true);
+      toast('已退出旅行筛选');
+      return;
+    }
     var lay = e.target.closest ? e.target.closest('[data-map-layer]') : null;
     if(lay){ mapSwitchLayer(lay.getAttribute('data-map-layer'), true); return; }
     var b = e.target.closest ? e.target.closest('[data-map-measure]') : null;
@@ -16536,6 +17318,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(open){ openMapStoreSheet(open.getAttribute('data-map-open')); return; }
     var fix = e.target.closest ? e.target.closest('[data-map-fix]') : null;
     if(fix){ closeMapStoreSheet(); if(fix.getAttribute('data-map-fix')) openForm(fix.getAttribute('data-map-fix')); return; }
+    var tj = e.target.closest ? e.target.closest('[data-trip-join]') : null;
+    if(tj){
+      var jsid = tj.getAttribute('data-trip-join');
+      closeMapStoreSheet();
+      var items = tripsLoad().items;
+      if(!items.length){ openTripForm(); toast('还没有旅行计划：先建一个，再把这家店加进去'); return; }
+      tripAddStop(items[0].id, jsid, '', '', '');
+      return;
+    }
     var close = e.target.closest ? e.target.closest('[data-map-close]') : null;
     if(close) closeMapStoreSheet();
     var metaBtn = e.target.closest ? e.target.closest('[data-shop-meta]') : null;
@@ -16583,6 +17374,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       toast('已保存');
     }
   });
+
+  /* 旅行计划弹层 */
+  $('#tripSheetClose').addEventListener('click', closeTripSheet);
+  $('#tripMask').addEventListener('click', function(e){ if(e.target === this) closeTripSheet(); });
+  $('#tripSheetBody').addEventListener('change', tripSheetChange);
+  $('#tripSheetBody').addEventListener('input', tripSheetInput);
 
   /* Canvas 手势：拖动平移、双指/滚轮缩放、点击命中 */
   function mapClickFromEvent(e){
@@ -19013,6 +19810,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           if(opts.profile !== undefined){ obj.payload.profile = JSON.parse(JSON.stringify(opts.profile)); }
           if(opts.dropReports){ try{ delete obj.payload.reports; }catch(e){} }
           if(opts.reports !== undefined){ obj.payload.reports = JSON.parse(JSON.stringify(opts.reports)); }
+          if(opts.dropTrips){ try{ delete obj.payload.trips; }catch(e){} }
+          if(opts.trips !== undefined){ obj.payload.trips = JSON.parse(JSON.stringify(opts.trips)); }
           return backupChecksum(obj.payload, obj.photos).then(function(sum){
             obj.checksum.value = sum;
             return JSON.stringify(obj);
@@ -19228,6 +20027,79 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       },
       save: shopMetaSaveFromForm,
       edit: function(linkId){ shopMetaUI.editId = String(linkId || ''); renderShopMetaSheet(); return true; }
+    },
+    trips: {
+      key: TRIPS_KEY,
+      version: TRIPS_VERSION,
+      statuses: Object.keys(TRIP_STATUS),
+      shopId: function(name, city){ return shopIdOf(name, city); },
+      all: function(){ return tripBackupData(); },
+      raw: function(){ return JSON.parse(JSON.stringify(tripsLoad())); },
+      stored: function(){
+        try{ var raw = localStorage.getItem(TRIPS_KEY); return raw ? JSON.parse(raw) : null; }catch(e){ return { error:String(e && e.message || e) }; }
+      },
+      get: function(id){ var t = tripsGet(id); return t ? JSON.parse(JSON.stringify(t)) : null; },
+      stop: function(tid, sid){ var s = tripStopOf(tripsGet(tid), sid); return s ? JSON.parse(JSON.stringify(s)) : null; },
+      counts: function(tid){ return tripCounts(tripsGet(tid)); },
+      create: function(fields){
+        fields = fields || {};
+        var nowIso = new Date().toISOString();
+        var nt = tripNorm({ id:'t' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          name: fields.name == null ? '测试旅行' : fields.name, destination: fields.destination,
+          startDate: fields.startDate, endDate: fields.endDate, lodging: fields.lodging,
+          budget: fields.budget, note: fields.note, createdAt: nowIso, updatedAt: nowIso, stops: fields.stops || [] });
+        if(!nt) return null;
+        if(!tripsPersist({ version:TRIPS_VERSION, items:[nt].concat(tripsLoad().items) })) return null;
+        renderTrips();
+        return nt.id;
+      },
+      add: function(tid, sid, name, city, area){ return tripAddStop(tid, sid, name || '', city || '', area || ''); },
+      setStop: function(tid, sid, patch){ return tripStopSet(tid, sid, patch || {}); },
+      eat: function(tid, sid){ tripStopEat(tid, sid); return true; },
+      open: function(id){ openTripDetail(id); return true; },
+      form: function(id){ openTripForm(id); return true; },
+      close: function(){ closeTripSheet(); return true; },
+      delete: function(id){ tripDelete(id); return true; },
+      fillForm: function(o){
+        o = o || {};
+        if(o.name != null && $('#tripName')) $('#tripName').value = String(o.name);
+        if(o.destination != null && $('#tripDest')) $('#tripDest').value = String(o.destination);
+        if(o.startDate != null && $('#tripStart')) $('#tripStart').value = String(o.startDate);
+        if(o.endDate != null && $('#tripEnd')) $('#tripEnd').value = String(o.endDate);
+        if(o.lodging != null && $('#tripLodging')) $('#tripLodging').value = String(o.lodging);
+        if(o.budget != null && $('#tripBudget')) $('#tripBudget').value = String(o.budget);
+        if(o.note != null && $('#tripNote')) $('#tripNote').value = String(o.note);
+        return true;
+      },
+      saveForm: tripSaveForm,
+      filters: function(o){
+        o = o || {};
+        ['filterArea','filterDay','filterStatus'].forEach(function(k){ if(o[k] !== undefined) tripUI[k] = o[k]; });
+        renderTripSheet();
+        var t = tripsGet(tripUI.tripId);
+        return t ? tripFilteredStops(t).map(function(s){ return s.shopId; }) : [];
+      },
+      pending: function(){ return tripPendingCheck ? JSON.parse(JSON.stringify(tripPendingCheck)) : null; },
+      clearPending: function(){ tripPendingCheck = null; return true; },
+      onRecordSaved: function(rec){ return tripOnRecordSaved(rec || {}); },
+      ui: function(){ return { mode:tripUI.mode, tripId:tripUI.tripId, editingId:tripUI.editingId, area:tripUI.filterArea, day:tripUI.filterDay, status:tripUI.filterStatus, addOpen:tripUI.addOpen, q:tripUI.addQ }; },
+      sheet: function(){
+        var b = $('#tripSheetBody');
+        return {
+          open: !$('#tripMask').classList.contains('hidden'),
+          title: $('#tripSheetTitle') ? $('#tripSheetTitle').textContent : '',
+          text: b ? b.innerText : '', html: b ? b.innerHTML : '',
+          stops: b ? b.querySelectorAll('[data-trip-stop]').length : 0,
+          cands: b ? b.querySelectorAll('[data-act="tripAddPick"]').length : 0
+        };
+      },
+      map: function(id){ tripShowOnMap(id); return { set: mapView.tripSet, label: mapView.tripLabel, count: mapStoresFiltered().length }; },
+      mapClear: function(){ mapView.tripSet = null; mapView.tripLabel = ''; renderMap(true); return true; },
+      backupData: tripBackupData,
+      validate: function(section){ return tripBackupValidate(section, '测试'); },
+      apply: function(section, mode){ return applyBackupTrips(section, mode); },
+      reset: function(){ return tripsPersist({ version:TRIPS_VERSION, items:[] }); },
+      candidates: function(tid, q){ var t = tripsGet(tid); return t ? tripCandidates(t, q || '').map(function(c){ return { sid:c.sid, name:c.s.name, kind:c.kind }; }) : []; }
     },
     quick: {
       store: function(key, meal){ var s = findStore(key); if(!s) return false; quickEat(s, meal || ''); return true; },
