@@ -77,14 +77,44 @@ jobs:
         run: |
           APK=app/build/outputs/apk/debug/app-debug.apk
           AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
-          "$AAPT2" dump badging "$APK" | grep -E "^package:|^application-label:|^application-icon|^launchable-activity:" || true
-          BADGING=$("$AAPT2" dump badging "$APK")
-          echo "$BADGING" | grep -q "launchable-activity:" || { echo "::error::APK 缺少启动入口（activity-alias 配置可能有误）"; exit 1; }
+          # 已知行为：aapt / aapt2 的 badging 不会把 activity-alias 报成 launchable-activity，
+          # 因此启动入口以合并清单的结构为准，badging 仅作参考输出。
+          "$AAPT2" dump badging "$APK" | grep -E "^package:|^application-label:|^application-icon" | head -12 || true
           "$AAPT2" dump xmltree "$APK" --file AndroidManifest.xml > /tmp/manifest.txt
-          grep -q "MainActivityA" /tmp/manifest.txt || { echo "::error::清单缺少 MainActivityA"; exit 1; }
-          grep -q "MainActivityB" /tmp/manifest.txt || { echo "::error::清单缺少 MainActivityB"; exit 1; }
-          grep -q "ic_launcher_b" /tmp/manifest.txt || { echo "::error::清单未引用 B 套图标资源"; exit 1; }
-          echo "启动入口与 A/B 图标引用校验通过"
+          python3 - <<'PY'
+          import re, sys
+          text = open('/tmp/manifest.txt', encoding='utf-8').read()
+          blocks = {}
+          for part in re.split(r'\n\s*E: activity-alias ', text)[1:]:
+              if 'MainActivityA' in part:
+                  blocks['A'] = part
+              elif 'MainActivityB' in part:
+                  blocks['B'] = part
+          ok = True
+          for key, want_enabled, want_icon in (('A', True, 'ic_launcher'), ('B', False, 'ic_launcher_b')):
+              b = blocks.get(key)
+              if not b:
+                  print('缺少 alias ' + key, flush=True)
+                  ok = False
+                  continue
+              if 'android.intent.action.MAIN' not in b or 'android.intent.category.LAUNCHER' not in b:
+                  print(key + ' 缺少 MAIN/LAUNCHER', flush=True)
+                  ok = False
+              m = re.search(r'android:enabled\(0x0101000e\)=[^\n]*?0x(0|ffffffff)', b)
+              enabled = bool(m and m.group(1) == 'ffffffff')
+              if enabled != want_enabled:
+                  print(key + ' enabled 与预期不符', flush=True)
+                  ok = False
+              if want_icon not in b:
+                  print(key + ' 未引用 ' + want_icon, flush=True)
+                  ok = False
+              if 'targetActivity' not in b:
+                  print(key + ' 缺少 targetActivity', flush=True)
+                  ok = False
+          if not ok:
+              sys.exit('清单结构校验失败')
+          print('启动入口结构校验通过：A 默认启用、B 默认关闭、两者都带 MAIN/LAUNCHER')
+          PY
 
       - name: 上传 APK
         uses: actions/upload-artifact@v4
