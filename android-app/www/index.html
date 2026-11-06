@@ -6331,9 +6331,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       $('#listBox').innerHTML =
         '<div class="empty card flat">'+
           '<h3>还没有记录</h3>'+
-          '<p>记下吃过的店，推荐、抽签、聚会方案才有数据可用。<br>也可以先看看示例（只预览，不会写入你的记录）。</p>'+
-          '<div class="actions" style="justify-content:center;margin-top:14px">'+
-            '<button class="btn btn-primary" data-act="add">+ 记一餐</button>'+
+          '<p>记下第一家吃过的店，推荐、抽签、聚会方案才有数据可用。<br>朋友发来的分享链接或分享包，也可以直接导入；先看示例只预览，不会写入你的记录。</p>'+
+          '<div class="actions" style="justify-content:center;margin-top:14px;flex-wrap:wrap">'+
+            '<button class="btn btn-primary" data-act="add">+ 记第一家店</button>'+
+            '<button class="btn" data-act="importShare">从链接 / 分享包导入</button>'+
             '<button class="btn" data-act="sample">看示例（不保存）</button>'+
           '</div>'+
         '</div>';
@@ -9615,7 +9616,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
   function renderWishlist(){
     if(!db.wishlist.length){
-      $('#wishBox').innerHTML = '<p class="muted">还没有想去的店。加到清单后，每日推荐也会考虑它们。</p>';
+      $('#wishBox').innerHTML = '<p class="muted">还没有想去的店。在上面填店名点「加入」，没去过也能被推荐；从朋友分享包导入的记录也会自动进清单。</p>';
       return;
     }
     $('#wishBox').innerHTML = db.wishlist.map(function(w){
@@ -15992,6 +15993,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       renderList(false);
     }
     else if(act === 'sample'){ openSamplePreview(); }
+    else if(act === 'importShare'){ openImport({}); }
     else if(act === 'edit'){ openForm(id); }
     else if(act === 'del'){ deleteRecord(id); }
     else if(act === 'again'){ haptic(10); eatAgain(id); }
