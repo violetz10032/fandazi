@@ -663,6 +663,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .map-legend .lg i{width:8px;height:8px;border-radius:50%;display:inline-block}
   .map-canvas-wrap{position:relative;height:clamp(300px,52vh,520px);background:var(--map-bg);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:10px}
   #amapLayer{position:absolute;inset:0;z-index:0;background:var(--map-bg)}
+  /* APK 内高德走 Pages 上的内嵌页（源为 github.io，可通过域名校验） */
+  .map-embed-frame{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:var(--map-bg)}
   #mapCanvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab;position:relative;z-index:1}
   #mapCanvas.dragging{cursor:grabbing}
   .map-canvas-wrap.amap-on #mapCanvas{pointer-events:none;cursor:default}
@@ -4106,6 +4108,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(typeof section !== 'object' || Array.isArray(section) || !Array.isArray(section.items)){
       throw new Error('备份里的菜品格式不正确（' + where + '）');
     }
+    if(section.version != null && Number(section.version) !== DISHES_VERSION){
+      throw new Error('备份里的菜品版本不受支持：' + section.version + '（' + where + '）');
+    }
     if(section.items.length > DISHES_MAX){
       throw new Error('备份里的菜品超过 ' + DISHES_MAX + ' 道，已整包拒绝（' + where + '）');
     }
@@ -5240,8 +5245,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var i = 0, added = 0;
     function step(){
       if(i >= list.length){
-        formDishes[idx].photoIds = (formDishes[idx].photoIds || []).slice();
-        paintDishes();
+        if(formDishes.indexOf(d) >= 0){
+          d.photoIds = (d.photoIds || []).slice();
+          paintDishes();
+        }
         if(added) toast('已添加 ' + added + ' 张菜品照片');
         return;
       }
@@ -5254,7 +5261,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         }
         var pid = 'p' + newId('');
         photoPut(pid, res.full, res.thumb, { w:res.w, h:res.h }).then(function(){
-          formDishes[idx].photoIds.push({ id:pid, cat:'dish' });
+          if(formDishes.indexOf(d) < 0){ releasePhoto(pid, null); step(); return; }
+          d.photoIds.push({ id:pid, cat:'dish' });
           added++;
           photoStats();
           step();
@@ -12309,10 +12317,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var AMAP_SECURITY = '78f8691c16bcd9c0ea947e808157ccd2';
   var AMAP_SCRIPT_SRC = 'https://webapi.amap.com/maps?v=2.0&key=' + AMAP_KEY;
   var AMAP_LOAD_TIMEOUT = 12000;
+  /* APK（源 https://localhost）无法加入高德 Web 端 Key 白名单，改由 Pages 上的内嵌页加载地图；
+     该页源是 violetz10032.github.io，能通过域名校验。测试可通过 __fzEmbedUrl 指向本地副本。 */
+  function mapEmbedUrl(){
+    return (typeof window.__fzEmbedUrl === 'string' && window.__fzEmbedUrl) ||
+      'https://violetz10032.github.io/fandazi/map-embed.html';
+  }
+  var MAP_EMBED_TIMEOUT = 10000;
   var MAP_LAYER_PREF_KEY = 'fandazi.mapLayer';
   var amapState = {
     map:null, loading:false, ready:false, err:'', timer:null,
-    progUntil:0, lastZ:null, lastC:null, quiet:false, gen:0
+    progUntil:0, lastZ:null, lastC:null, quiet:false, gen:0, cap:null,
+    embed:null, embedReady:false, embedOrigin:'', embedCb:null,
+    embedMsgBound:false, embedSig:'', embedTimer:null
   };
 
   /* WGS84（GPS / 记录里的原始坐标）→ GCJ-02（高德底图）标准偏移算法；反向不回写记录。 */
@@ -12491,7 +12508,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   /* 高德模式下的显示坐标：标记/拟合/我的位置统一走这里，记录里的 WGS84 原值不动 */
   function mapAmapActive(){
-    return MAP_LAYER_ID === 'amap' && !!amapState.map;
+    return MAP_LAYER_ID === 'amap' && (!!amapState.map || amapState.embedReady);
   }
   function mapDisplayLL(lat, lng){
     lat = num(lat); lng = num(lng);
@@ -12685,6 +12702,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       ctx.font = '11px -apple-system, "PingFang SC", sans-serif';
       ctx.fillText('坐标只来自记录手填或你点「定位我」取到的一次位置', size.w/2, size.h/2 + 14);
     }
+    mapEmbedSyncPts();
     mapAmapSyncCam();
     mapView.drawMs = nowMs() - t0;
     if(mapView.firstDrawMs == null) mapView.firstDrawMs = mapView.drawMs;
@@ -12862,7 +12880,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     renderMapLayerUI();
     /* 只有用户此前显式选择过高德、且本会话还没失败过，才在进入地图时按需加载 */
     if(mapView.active && mapView.mode === 'map' && mapLayerPref() === 'amap' &&
-       !amapState.map && !amapState.loading && !amapState.err){
+       !amapState.map && !amapState.embed && !amapState.loading && !amapState.err){
       mapSwitchLayer('amap', false);
     }
     return {
@@ -13163,6 +13181,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     try{ localStorage.setItem(MAP_LAYER_PREF_KEY, v === 'amap' ? 'amap' : 'blank'); }catch(e){}
   }
   function mapAmapSupport(){
+    if(mapEmbedWanted()) return '';
     var proto = String(location.protocol || '').toLowerCase();
     var host = String(location.hostname || '');
     if(proto === 'https:') return '';
@@ -13180,7 +13199,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return [mapView.cam.cx / cos, -mapView.cam.cy];
   }
   function mapAmapSyncCam(){
-    if(!amapState.map || !amapState.ready || amapState.quiet) return;
+    if(!mapAmapActive() || amapState.quiet) return;
     var z = mapAmapZoomOfCam(), c = mapAmapCenterOfCam();
     if(!isFinite(z) || !isFinite(c[0]) || !isFinite(c[1])) return;
     var same = amapState.lastZ === z && amapState.lastC &&
@@ -13188,11 +13207,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(same) return;
     amapState.lastZ = z; amapState.lastC = [c[0], c[1]];
     amapState.progUntil = Date.now() + 400;
+    if(amapState.embed){ mapAmapPost({ type:'fz:camera', center:c, zoom:z }); return; }
+    if(!amapState.map || !amapState.ready) return;
     try{ amapState.map.setZoomAndCenter(z, c); }catch(e){ logError('高德相机同步', e); }
   }
-  function mapAmapReadCam(){
-    if(!amapState.map || !amapState.map.getZoom || !amapState.map.getCenter) return;
-    var z = amapState.map.getZoom(), c = amapState.map.getCenter();
+  function mapAmapReadCam(view){
+    var z, c;
+    if(view && view.center && isFinite(view.zoom)){
+      z = view.zoom; c = { lng:view.center[0], lat:view.center[1] };
+    }else{
+      if(!amapState.map || !amapState.map.getZoom || !amapState.map.getCenter) return;
+      z = amapState.map.getZoom(); c = amapState.map.getCenter();
+    }
     var cos = mapView.cos || 1;
     if(!c || !isFinite(z) || !isFinite(c.lng) || !isFinite(c.lat)) return;
     mapView.cam.cx = c.lng * cos;
@@ -13207,22 +13233,131 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     amapState.quiet = false;
     renderMapStat();
   }
-  function mapAmapWarnings(){
-    var box = $('#amapLayer');
-    var txt = box ? String(box.innerText || '') : '';
-    var list = [
-      ['INVALID_USER_KEY', '高德 Key 无效或已被删除'],
-      ['USERKEY_PLAT_NOMATCH', '高德 Key 的平台类型不匹配（需要 Web 端 JS API）'],
-      ['INVALID_USER_SCODE', '高德安全密钥 securityJsCode 校验失败'],
-      ['INVALID_USER_DOMAIN', '当前域名不在高德 Key 的白名单里'],
-      ['DAILY_QUERY_OVER_LIMIT', '高德当日配额已用尽'],
-      ['OVER_QUERY_LIMIT', '高德调用量超限（配额或频率）'],
-      ['USER_ABROAD', '当前网络出口在境外，高德服务不可用']
-    ];
-    for(var i=0;i<list.length;i++){
-      if(txt.indexOf(list[i][0]) >= 0) return list[i][0] + '：' + list[i][1];
+  /* ---- 高德失败诊断：尽量拿到真实错误码，而不是笼统的「网络不通」 ---- */
+  var AMAP_KEY_HOST = 'violetz10032.github.io';
+  function mapAmapOrigin(){
+    try{ return String(location.origin || (location.protocol + '//' + location.host)); }catch(e){ return '当前页面'; }
+  }
+  function mapAmapIsLocal(){
+    var h = String(location.hostname || '');
+    return h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0';
+  }
+  function mapAmapTipFor(code){
+    var origin = mapAmapOrigin();
+    if(code === 'INVALID_USER_DOMAIN'){
+      return '高德返回 INVALID_USER_DOMAIN（10006）：域名校验未通过。当前页面源是 ' + origin +
+        '；网页版需要把 ' + AMAP_KEY_HOST + ' 加入该 Key 的域名白名单（localhost 不符合高德域名规范，加不进去）；' +
+        'APK 内已改为通过内嵌地图页（源 ' + AMAP_KEY_HOST + '）加载，若仍看到这条，说明内嵌页也没加载成功。';
     }
+    if(code === 'INVALID_USER_SCODE'){
+      return '高德返回 INVALID_USER_SCODE：securityJsCode 校验未通过。请在高德控制台核对 Web 端 Key 与安全密钥是否配对、是否绑定同一应用。';
+    }
+    if(code === 'USERKEY_PLAT_NOMATCH'){
+      return '高德返回 USERKEY_PLAT_NOMATCH：Key 的平台类型不匹配。请新建「Web 端（JS API）」Key，不要用 Android / Web 服务 Key。';
+    }
+    if(code === 'INVALID_USER_KEY'){ return '高德返回 INVALID_USER_KEY：Key 无效、拼写错误或已过期，请到控制台核对。'; }
+    if(code === 'USER_KEY_RECYCLED'){ return '高德返回 USER_KEY_RECYCLED：Key 已被删除，请到控制台重建。'; }
+    if(code === 'DAILY_QUERY_OVER_LIMIT'){ return '高德返回 DAILY_QUERY_OVER_LIMIT：当日配额已用尽，次日 0 点自动恢复；急需可先切回画布底图。'; }
+    if(code === 'OVER_QUERY_LIMIT'){ return '高德返回 OVER_QUERY_LIMIT：调用频率或配额超限，请降低切换频率或到控制台查看额度。'; }
+    if(code === 'USER_ABROAD'){ return '高德返回 USER_ABROAD：当前网络出口在境外，高德服务不可用；回国网络后再试。'; }
+    if(code === 'NOT_SUPPORT_HTTPS'){ return '高德返回 NOT_SUPPORT_HTTPS：该 Key 不支持 HTTPS 请求，请改用支持 HTTPS 的 Key 或网页版。'; }
+    if(code === 'INSUFFICIENT_PRIVILEGES'){ return '高德返回 INSUFFICIENT_PRIVILEGES：该 Key 没有此服务权限，请到控制台检查服务绑定。'; }
+    if(code === 'SERVICE_NOT_AVAILABLE'){ return '高德返回 SERVICE_NOT_AVAILABLE：服务暂不可用，请稍后重试。'; }
+    return '高德返回 ' + code + '：请到高德控制台检查 Key、域名白名单与安全密钥。';
+  }
+  function mapAmapHitIn(txt){
+    txt = String(txt || '');
+    var codes = ['INVALID_USER_DOMAIN','INVALID_USER_SCODE','USERKEY_PLAT_NOMATCH','INVALID_USER_KEY',
+      'USER_KEY_RECYCLED','DAILY_QUERY_OVER_LIMIT','OVER_QUERY_LIMIT','USER_ABROAD',
+      'NOT_SUPPORT_HTTPS','INSUFFICIENT_PRIVILEGES','SERVICE_NOT_AVAILABLE'];
+    for(var i=0;i<codes.length;i++){ if(txt.indexOf(codes[i]) >= 0) return mapAmapTipFor(codes[i]); }
     return '';
+  }
+  /* 加载期间临时接管 console.error / warn 与 window error，抓高德自己打印的错误码 */
+  function mapAmapCaptureStart(){
+    if(amapState.cap) return;
+    var cap = { logs:[], err:null, warn:null, onErr:null };
+    try{
+      cap.err = console.error; cap.warn = console.warn;
+      function wrap(level, orig){
+        return function(){
+          try{
+            if(cap.logs.length < 40){
+              var parts = [];
+              for(var i=0;i<arguments.length;i++){
+                try{ parts.push(typeof arguments[i] === 'string' ? arguments[i] : String(arguments[i])); }catch(e){ parts.push(''); }
+              }
+              cap.logs.push(level + ' ' + parts.join(' '));
+            }
+          }catch(e){}
+          try{ return orig.apply(console, arguments); }catch(e){}
+        };
+      }
+      console.error = wrap('error', cap.err);
+      console.warn = wrap('warn', cap.warn);
+      cap.onErr = function(e){
+        try{
+          var msg = String((e && (e.message || (e.error && e.error.message))) || '');
+          if(msg && cap.logs.length < 40) cap.logs.push('window ' + msg);
+        }catch(_e){}
+      };
+      window.addEventListener('error', cap.onErr, true);
+      amapState.cap = cap;
+    }catch(e){ amapState.cap = null; }
+  }
+  function mapAmapCaptureStop(){
+    var cap = amapState.cap;
+    if(!cap) return;
+    amapState.cap = null;
+    try{ if(cap.err) console.error = cap.err; if(cap.warn) console.warn = cap.warn; }catch(e){}
+    try{ if(cap.onErr) window.removeEventListener('error', cap.onErr, true); }catch(e){}
+  }
+  function mapAmapWarnings(){
+    var logs = amapState.cap ? amapState.cap.logs.join('\n') : '';
+    var box = $('#amapLayer');
+    var txt = logs + '\n' + (box ? String(box.innerText || '') : '');
+    return mapAmapHitIn(txt);
+  }
+  /* 脚本失败后再取一次同一地址：高德在域名/Key 校验失败时会返回 JSON（200 + application/json），
+     成功时才返回 JS。该接口带 ACAO:*，因此可以读出 info / infocode。 */
+  function mapAmapDiag(reason, cb){
+    var logs = amapState.cap ? amapState.cap.logs.join('\n') : '';
+    var hit = mapAmapHitIn(logs);
+    if(hit){ cb(hit); return; }
+    var done = false, timer = null, ctrl = null;
+    function end(msg){ if(done) return; done = true; if(timer){ clearTimeout(timer); timer = null; } cb(msg); }
+    try{ if(typeof AbortController === 'function') ctrl = new AbortController(); }catch(e){ ctrl = null; }
+    timer = setTimeout(function(){
+      try{ if(ctrl) ctrl.abort(); }catch(e){}
+      end((reason || '高德脚本加载失败') + '；诊断请求超时。' + mapAmapNetHint());
+    }, 6000);
+    try{
+      fetch(AMAP_SCRIPT_SRC, { credentials:'omit', cache:'no-store', signal: ctrl ? ctrl.signal : undefined })
+        .then(function(r){
+          return r.text().then(function(t){ return { status:r.status, ct:String(r.headers.get('content-type') || ''), t:t }; });
+        })
+        .then(function(o){
+          var code = '';
+          if(o.t && String(o.t).charAt(0) === '{'){
+            try{ var j = JSON.parse(o.t); code = String(j.info || j.infocode || ''); }catch(e){}
+          }
+          if(code){ end(mapAmapTipFor(code)); return; }
+          if(o.status !== 200){ end('高德脚本请求返回 HTTP ' + o.status + '。' + mapAmapNetHint()); return; }
+          if(/javascript|ecmascript/i.test(o.ct)){
+            end('高德脚本可下载但未注册 AMap，可能被 CSP / WebView 改写或执行被拦截。' + mapAmapNetHint()); return;
+          }
+          end('高德返回了非脚本内容（' + (o.ct || '未知类型') + '），加载被阻断。' + mapAmapNetHint());
+        })
+        .catch(function(e){
+          end((reason || '高德脚本加载失败') + '：请求 webapi.amap.com 失败（' +
+            ((e && e.message) || '网络不可达 / 混合内容 / CSP 拦截') + '）。' + mapAmapNetHint());
+        });
+    }catch(e){
+      end((reason || '高德脚本加载失败') + '；诊断请求无法发起。' + mapAmapNetHint());
+    }
+  }
+  function mapAmapNetHint(){
+    return '当前页面源 ' + mapAmapOrigin() + (mapAmapIsLocal() ? '（APK / 本机 WebView，需放行网络权限且域名通常不在高德白名单）' : '') + '。';
   }
   function mapShowFallback(msg, show){
     var box = $('#mapAmapErr');
@@ -13237,6 +13372,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     amapState.map = null; amapState.ready = false; amapState.loading = false;
     amapState.lastZ = null; amapState.lastC = null;
     if(amapState.timer){ clearTimeout(amapState.timer); amapState.timer = null; }
+    if(amapState.embedTimer){ clearTimeout(amapState.embedTimer); amapState.embedTimer = null; }
+    amapState.embedCb = null;
+    amapState.embedReady = false;
+    amapState.embedSig = '';
+    var f = amapState.embed;
+    amapState.embed = null;
+    try{ if(f && f.parentNode) f.parentNode.removeChild(f); }catch(e){}
+    if(amapState.embedMsgBound){
+      window.removeEventListener('message', mapEmbedOnMessage);
+      amapState.embedMsgBound = false;
+    }
+    mapAmapCaptureStop();
     if(map && map.destroy){ try{ map.destroy(); }catch(e){ logError('高德销毁', e); } }
     var layer = $('#amapLayer');
     if(layer){
@@ -13250,6 +13397,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function mapAmapFail(msg){
     msg = msg || '高德图层不可用';
     amapState.err = msg;
+    mapAmapErrSave(msg);
     mapAmapDestroy();
     MAP_LAYER_ID = 'blank';
     mapLayerPrefSet('blank');
@@ -13261,21 +13409,188 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       try{ mapDraw(); renderMapLegend(); renderMapStat(); }catch(e){ logError('地图降级重绘', e); }
     }
     renderMapLayerUI();
-    toast(msg + '，已自动回落画布底图');
+    toast('高德图层不可用，已回落画布底图（原因见地图页提示）');
+  }
+  /* 最近一次高德失败原因：写入本机，刷新后仍能在设置里看到，成功加载后清除 */
+  var AMAP_ERR_KEY = 'fandazi.mapAmapErr';
+  function mapAmapErrSave(msg){
+    try{
+      if(msg) localStorage.setItem(AMAP_ERR_KEY, String(msg).slice(0, 400));
+      else localStorage.removeItem(AMAP_ERR_KEY);
+    }catch(e){}
+  }
+  function mapAmapErrRead(){
+    if(amapState.err) return amapState.err;
+    try{ return localStorage.getItem(AMAP_ERR_KEY) || ''; }catch(e){ return ''; }
+  }
+  /* ================= APK 内嵌地图页 =================
+     APK 的页面源是 https://localhost，加不进高德 Web 端 Key 的白名单；
+     改为在 iframe 里加载 Pages 上的 map-embed.html（源 github.io），只传坐标与视野，不传备注 / 地址。 */
+  function mapEmbedWanted(){
+    try{
+      if(window.__fzForceEmbed === true) return true;
+      if(String(location.hostname || '') !== 'localhost') return false;
+      return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+    }catch(e){ return false; }
+  }
+  function mapEmbedOriginOf(url){
+    try{ return (new URL(url)).origin; }catch(e){ return 'https://violetz10032.github.io'; }
+  }
+  function mapAmapPost(data){
+    var f = amapState.embed;
+    if(!f || !f.contentWindow || !amapState.embedOrigin) return false;
+    try{ f.contentWindow.postMessage(data, amapState.embedOrigin); return true; }catch(e){ return false; }
+  }
+  function mapEmbedAbort(msg){
+    var cb = amapState.embedCb;
+    if(!cb && !amapState.embedReady) return;
+    amapState.embedCb = null;
+    amapState.loading = false;
+    amapState.embedReady = false;
+    if(amapState.embedTimer){ clearTimeout(amapState.embedTimer); amapState.embedTimer = null; }
+    var f = amapState.embed;
+    if(amapState.embed === f) amapState.embed = null;
+    try{ if(f && f.parentNode) f.parentNode.removeChild(f); }catch(e){}
+    if(cb) cb(msg);
+    else mapAmapFail(msg);
+  }
+  function mapEmbedReadyNow(){
+    if(amapState.embedReady) return;
+    var cb = amapState.embedCb;
+    amapState.embedCb = null;
+    amapState.embedReady = true;
+    amapState.loading = false;
+    if(amapState.embedTimer){ clearTimeout(amapState.embedTimer); amapState.embedTimer = null; }
+    if(cb) cb(null);
+  }
+  /* 内嵌页只回传视野与点击编号 */
+  function mapEmbedOnMessage(e){
+    if(!e || e.origin !== amapState.embedOrigin) return;
+    var f = amapState.embed;
+    if(!f || e.source !== f.contentWindow) return;
+    var d = e.data || {};
+    if(d.type === 'fz:script-ready'){ mapEmbedReadyNow(); return; }
+    if(d.type === 'fz:error'){
+      mapEmbedAbort('内嵌地图页加载失败：' + (d.message || d.code || '未知原因'));
+      return;
+    }
+    if(d.type === 'fz:view'){
+      if(!amapState.embedReady || Date.now() < amapState.progUntil) return;
+      mapAmapReadCam({ zoom:d.zoom, center:d.center });
+      return;
+    }
+    if(d.type === 'fz:pick' && d.id){ mapEmbedPick(String(d.id)); }
+  }
+  function mapEmbedPick(id){
+    var c = mapView.clusters.filter(function(x){ return x.id === id; })[0];
+    if(!c) return null;
+    mapView.selected = c.id;
+    if(c.count === 1) openMapStoreSheet(c.pts[0].key);
+    else openMapClusterSheet(c);
+    mapDraw();
+    return mapClusterInfo(c);
+  }
+  function mapEmbedSignature(pts){
+    return pts.map(function(p){ return p.id + ':' + p.lat.toFixed(5) + ':' + p.lng.toFixed(5) + ':' + p.n + ':' + p.col; }).join('|');
+  }
+  function mapEmbedPoints(){
+    var pal = MAP_PAL[mapView.measure] || MAP_PAL.visits;
+    return mapView.clusters.map(function(c){
+      var ll = mapUnproject(c.x, c.y);   /* cam 里已是 GCJ 显示坐标 */
+      return { id:c.id, lat:ll.lat, lng:ll.lng, n:c.count,
+        r:Math.max(4, Math.min(18, Math.round(c.r))), col:mapColorOf(c.norm, pal) };
+    });
+  }
+  function mapEmbedSyncPts(){
+    if(!amapState.embedReady || !amapState.embed) return;
+    var pts = mapEmbedPoints(), sig = mapEmbedSignature(pts);
+    if(sig === amapState.embedSig) return;
+    amapState.embedSig = sig;
+    mapAmapPost({ type:'fz:pts', pts:pts });
+  }
+  function mapEmbedStart(cb){
+    if(amapState.embedReady && amapState.embed){ cb(null); return; }
+    if(amapState.loading) return;
+    var layer = $('#amapLayer');
+    if(!layer){ cb('缺少地图容器'); return; }
+    amapState.loading = true;
+    amapState.err = '';
+    amapState.embedOrigin = mapEmbedOriginOf(mapEmbedUrl());
+    var old = $('#mapEmbedFrame');
+    if(old && old.parentNode) old.parentNode.removeChild(old);
+    layer.innerHTML = '';
+    var f = document.createElement('iframe');
+    f.id = 'mapEmbedFrame';
+    f.className = 'map-embed-frame';
+    f.title = '高德地图（内嵌页）';
+    f.setAttribute('loading', 'eager');
+    f.setAttribute('referrerpolicy', 'no-referrer');
+    f.src = mapEmbedUrl();
+    amapState.embed = f;
+    amapState.embedReady = false;
+    amapState.embedCb = cb;
+    if(!amapState.embedMsgBound){
+      window.addEventListener('message', mapEmbedOnMessage);
+      amapState.embedMsgBound = true;
+    }
+    amapState.embedTimer = setTimeout(function(){
+      mapEmbedAbort('内嵌地图页不可达（10 秒未加载完成）：请检查网络能否访问 ' + amapState.embedOrigin + '。');
+    }, MAP_EMBED_TIMEOUT);
+    f.onload = function(){
+      if(amapState.embedTimer){ clearTimeout(amapState.embedTimer); }
+      amapState.embedTimer = setTimeout(function(){
+        mapEmbedAbort('内嵌地图页已加载但高德脚本未就绪（6 秒无响应）：可能被网络拦截，或高德返回了错误码。');
+      }, 6000);
+    };
+    layer.classList.remove('hidden');
+    layer.setAttribute('aria-hidden', 'false');
+    layer.appendChild(f);
+  }
+  function mapEmbedSetup(){
+    var layer = $('#amapLayer');
+    if(!layer) return '缺少地图容器';
+    var z = mapAmapZoomOfCam(), c = mapAmapCenterOfCam();
+    if(!isFinite(z) || !isFinite(c[0]) || !isFinite(c[1])){ z = 12; c = [116.397428, 39.90923]; }
+    var pts = mapEmbedPoints();
+    amapState.embedSig = mapEmbedSignature(pts);
+    mapAmapPost({ type:'fz:init', center:c, zoom:clamp(z, 3, 19), pts:pts });
+    amapState.ready = true;
+    mapAmapErrSave('');
+    mapShowFallback('', false);
+    var note = $('#mapNote');
+    if(note) note.textContent = '高德底图（内嵌页）· WGS84 已转 GCJ-02';
+    var wrap = $('#mapCanvasWrap');
+    if(wrap) wrap.classList.add('amap-on');
+    layer.classList.remove('hidden');
+    layer.setAttribute('aria-hidden', 'false');
+    return '';
   }
   function mapAmapEnsureLoaded(cb){
+    if(mapEmbedWanted()){ mapEmbedStart(cb); return; }
     if(window.AMap && typeof window.AMap.Map === 'function'){ cb(null); return; }
     if(amapState.loading) return;
     amapState.loading = true;
     amapState.err = '';
+    /* JS API 2.0：securityJsCode 必须在 loader 脚本执行前写入，缺这个会报 INVALID_USER_SCODE */
     try{ window._AMapSecurityConfig = { securityJsCode: AMAP_SECURITY }; }catch(e){}
-    var done = false;
+    mapAmapCaptureStart();
+    var done = false, diagnosing = false;
     function finish(err){
       if(done) return;
       done = true;
       amapState.loading = false;
       if(amapState.timer){ clearTimeout(amapState.timer); amapState.timer = null; }
       cb(err || null);
+    }
+    /* 失败时先看高德自己打印的错误，再 fetch 同一地址读它返回的 JSON 错误码 */
+    function fail(reason){
+      if(done || diagnosing) return;
+      diagnosing = true;
+      if(amapState.timer){ clearTimeout(amapState.timer); amapState.timer = null; }
+      mapAmapDiag(reason, function(msg){
+        mapAmapCaptureStop();
+        finish(msg || reason);
+      });
     }
     var old = document.getElementById('amapScript');
     if(old && old.parentNode) old.parentNode.removeChild(old);
@@ -13285,13 +13600,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     s.src = AMAP_SCRIPT_SRC;
     s.onload = function(){
       if(window.AMap && typeof window.AMap.Map === 'function') finish(null);
-      else finish('高德脚本已加载但未注册 AMap，可能被网络代理或拦截规则改写');
+      else fail('高德脚本已加载但未注册 AMap（返回的不是可执行脚本）');
     };
-    s.onerror = function(){ finish('高德地图脚本加载失败（网络不通或被拦截）'); };
-    amapState.timer = setTimeout(function(){ finish('高德地图脚本加载超时（' + Math.round(AMAP_LOAD_TIMEOUT/1000) + ' 秒）'); }, AMAP_LOAD_TIMEOUT);
+    s.onerror = function(){ fail('高德地图脚本加载失败'); };
+    amapState.timer = setTimeout(function(){ fail('高德地图脚本加载超时（' + Math.round(AMAP_LOAD_TIMEOUT/1000) + ' 秒）'); }, AMAP_LOAD_TIMEOUT);
     (document.head || document.body).appendChild(s);
   }
   function mapAmapSetup(){
+    if(amapState.embed) return mapEmbedSetup();
     var layer = $('#amapLayer');
     if(!layer) return '缺少高德地图容器';
     var z = mapAmapZoomOfCam(), c = mapAmapCenterOfCam();
@@ -13308,6 +13624,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         amapState.ready = true;
         var warn = mapAmapWarnings();
         if(warn){ mapAmapFail(warn); return; }
+        mapAmapErrSave('');
         mapShowFallback('', false);
         var note = $('#mapNote');
         if(note) note.textContent = '高德底图 · WGS84 已转 GCJ-02';
@@ -13329,7 +13646,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       setTimeout(function(){
         if(!amapState.map || !amapState.map.getZoom) return;
         var warn = mapAmapWarnings();
-        if(warn) mapAmapFail(warn);
+        if(warn){ mapAmapFail(warn); return; }
+        /* 初始化完成后再等一小会儿，确保高德自己的告警都已打印，然后停止接管 console */
+        mapAmapCaptureStop();
       }, 1200);
       var wrap = $('#mapCanvasWrap');
       if(wrap) wrap.classList.add('amap-on');
@@ -13355,6 +13674,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(desc) desc.textContent = cur === 'amap'
       ? '当前使用高德底图：记录里的 WGS84 坐标在显示时转为 GCJ-02，标记位置不偏移；底图空白通常是离线或配额受限，可一键切回画布。'
       : '当前使用画布底图（默认）：不发任何外部请求，离线可用；切换到高德会按需动态加载官方 JS API。';
+    var env = $('#mapBaseEnv');
+    if(env){
+      var origin = mapAmapOrigin();
+      var nativeEmbed = mapEmbedWanted();
+      var lastErr = mapAmapErrRead();
+      env.innerHTML = '当前页面源：<b>' + esc(origin) + '</b>。' +
+        (nativeEmbed
+          ? 'APK 内通过内嵌地图页加载高德（源 <b>' + AMAP_KEY_HOST + '</b>，可通过域名校验）；内嵌页不可达时自动回落画布。'
+          : '该 Key 的域名白名单需包含 <b>' + AMAP_KEY_HOST + '</b>，否则高德会返回 INVALID_USER_DOMAIN。') +
+        (lastErr ? '<br>最近一次高德加载失败：<b>' + esc(lastErr) + '</b>' : '');
+    }
   }
   function mapSwitchLayer(id, explicit){
     id = id === 'amap' ? 'amap' : 'blank';
@@ -13375,7 +13705,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     var unsupported = mapAmapSupport();
     if(unsupported){ mapAmapFail(unsupported); return 'blank'; }
-    if(amapState.map && MAP_LAYER_ID === 'amap'){
+    if((amapState.map || amapState.embedReady) && MAP_LAYER_ID === 'amap'){
       renderMapLayerUI();
       return 'amap';
     }
@@ -20520,9 +20850,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       unproject: function(x, y){ return mapUnproject(num(x), num(y)); },
       layer: function(){
         return { id: MAP_LAYER_ID, amapOn: mapAmapActive(), pref: mapLayerPref(),
-          ready: amapState.ready, loading: amapState.loading, err: amapState.err };
+          ready: amapState.ready, loading: amapState.loading, err: amapState.err,
+          origin: mapAmapOrigin(), local: mapAmapIsLocal(), lastErr: mapAmapErrRead(),
+          env: $('#mapBaseEnv') ? $('#mapBaseEnv').textContent : '' };
       },
       setLayer: function(id){ return mapSwitchLayer(id, true); },
+      tip: function(code){ return mapAmapTipFor(String(code || '')); },
       fallback: function(){
         return { open: !$('#mapAmapErr').classList.contains('hidden'),
           text: $('#mapAmapErrMsg').textContent, note: $('#mapNote').textContent };

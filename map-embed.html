@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>i吃饭 · 地图内嵌页</title>
+<style>
+  html,body{height:100%;margin:0;background:#f7f3ec}
+  #map{position:absolute;inset:0}
+  .fz-dot{
+    display:flex;align-items:center;justify-content:center;border-radius:50%;
+    color:#fff;font:600 11px/1 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    border:1px solid rgba(255,255,255,.85);box-sizing:border-box;
+    box-shadow:0 1px 3px rgba(0,0,0,.18)
+  }
+</style>
+<script>
+/* JS API 2.0：安全密钥必须先于 loader 脚本写入，否则会报 INVALID_USER_SCODE */
+window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2' };
+</script>
+</head>
+<body>
+<div id="map"></div>
+<script>
+(function(){
+  'use strict';
+  var KEY = 'a536f4b84111b6d94c846aadcc24e24d';
+  var SRC = 'https://webapi.amap.com/maps?v=2.0&key=' + KEY;
+  /* 只接受这些宿主源：APK（https://localhost / capacitor://localhost）与本机调试（任意端口） */
+  function originAllowed(o){
+    o = String(o || '');
+    if(o === 'https://localhost' || o === 'capacitor://localhost') return true;
+    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o);
+  }
+  var parentOrigin = '';
+  var map = null;
+  var markers = [];
+  var pending = null;
+
+  function send(msg){
+    try{
+      /* 首次握手还不知道宿主源，只发就绪/错误这类无业务数据；收到第一条消息后锁定为宿主源 */
+      window.parent.postMessage(msg, parentOrigin || '*');
+    }catch(e){}
+  }
+  function tipFor(code){
+    if(code === 'INVALID_USER_DOMAIN'){
+      return 'INVALID_USER_DOMAIN（10006）：域名校验未通过。本页源应为 violetz10032.github.io；请确认该域名在高德 Key 白名单里。';
+    }
+    if(code === 'INVALID_USER_SCODE'){
+      return 'INVALID_USER_SCODE：securityJsCode 校验未通过，请核对 Key 与安全密钥是否配对。';
+    }
+    if(code === 'USERKEY_PLAT_NOMATCH'){
+      return 'USERKEY_PLAT_NOMATCH：Key 平台类型不匹配，应使用「Web 端（JS API）」Key。';
+    }
+    if(code === 'INVALID_USER_KEY'){ return 'INVALID_USER_KEY：Key 无效或已过期。'; }
+    if(code === 'DAILY_QUERY_OVER_LIMIT'){ return 'DAILY_QUERY_OVER_LIMIT：当日配额已用尽，次日恢复。'; }
+    if(code === 'OVER_QUERY_LIMIT'){ return 'OVER_QUERY_LIMIT：调用频率超限，请稍后重试。'; }
+    return code ? ('高德返回 ' + code) : '';
+  }
+  function fail(msg){
+    send({ type:'fz:error', message:String(msg || '高德地图加载失败') });
+  }
+  /* 失败时用同域 fetch 读高德返回的 JSON，拿到真实错误码（响应带 ACAO:*） */
+  function diag(reason){
+    var timer = setTimeout(function(){ fail(reason + '（诊断请求超时）'); }, 6000);
+    fetch(SRC, { credentials:'omit', cache:'no-store' })
+      .then(function(r){ return r.text().then(function(t){ return { status:r.status, ct:String(r.headers.get('content-type') || ''), t:t }; }); })
+      .then(function(o){
+        clearTimeout(timer);
+        var code = '';
+        if(o.t && o.t.charAt(0) === '{'){
+          try{ var j = JSON.parse(o.t); code = String(j.info || ''); }catch(e){}
+        }
+        if(code){ fail(tipFor(code)); return; }
+        if(o.status !== 200){ fail(reason + '：HTTP ' + o.status); return; }
+        if(/javascript|ecmascript/i.test(o.ct)){ fail(reason + '：脚本可下载但没有注册 AMap，可能被执行策略拦截'); return; }
+        fail(reason + '：返回非脚本内容（' + (o.ct || '未知类型') + '）');
+      })
+      .catch(function(e){
+        clearTimeout(timer);
+        fail(reason + '：请求 webapi.amap.com 失败（' + ((e && e.message) || '网络不可达或被拦截') + '）');
+      });
+  }
+  function ensure(cb){
+    if(window.AMap && typeof window.AMap.Map === 'function'){ cb(null); return; }
+    var s = document.createElement('script');
+    s.async = true;
+    s.src = SRC;
+    var settled = false;
+    var timer = setTimeout(function(){
+      if(settled) return;
+      settled = true;
+      diag('高德脚本加载超时（10 秒）');
+    }, 10000);
+    s.onload = function(){
+      if(settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if(window.AMap && typeof window.AMap.Map === 'function') cb(null);
+      else diag('高德脚本已加载但未注册 AMap');
+    };
+    s.onerror = function(){
+      if(settled) return;
+      settled = true;
+      clearTimeout(timer);
+      diag('高德地图脚本加载失败');
+    };
+    document.head.appendChild(s);
+  }
+  function safeColor(c){
+    c = String(c || '');
+    return /^[#a-zA-Z0-9(),.%\s-]+$/.test(c) ? c : '#e8590c';
+  }
+  function draw(pts){
+    if(!map) return;
+    markers.forEach(function(m){ try{ m.setMap(null); }catch(e){} });
+    markers = [];
+    (pts || []).forEach(function(p){
+      if(!p || !isFinite(p.lat) || !isFinite(p.lng)) return;
+      var r = Math.max(4, Math.min(18, Number(p.r) || 10));
+      var n = Number(p.n) || 1;
+      var content = '<div class="fz-dot" style="width:' + (r * 2) + 'px;height:' + (r * 2) + 'px;background:' + safeColor(p.col) + '">' + (n > 1 ? n : '') + '</div>';
+      var m = new window.AMap.Marker({
+        position:[Number(p.lng), Number(p.lat)], content:content,
+        offset:new window.AMap.Pixel(-r, -r), zIndex:200, title:''
+      });
+      m.on('click', function(){ send({ type:'fz:pick', id:String(p.id) }); });
+      markers.push(m);
+    });
+    try{ map.add(markers); }catch(e){}
+  }
+  function syncView(){
+    if(!map) return;
+    var c = map.getCenter();
+    if(!c) return;
+    send({ type:'fz:view', center:[c.lng, c.lat], zoom:map.getZoom() });
+  }
+  function init(d){
+    if(map) return;
+    var center = (d.center && isFinite(d.center[0]) && isFinite(d.center[1])) ? d.center : [116.397428, 39.90923];
+    var zoom = Math.max(3, Math.min(19, Number(d.zoom) || 12));
+    map = new window.AMap.Map('map', {
+      zoom:zoom, center:center, viewMode:'2D', resizeEnable:true, showLabel:true, zooms:[3, 19]
+    });
+    map.on('complete', function(){ syncView(); });
+    map.on('moveend', syncView);
+    map.on('zoomend', syncView);
+    draw(d.pts);
+  }
+  window.addEventListener('message', function(e){
+    if(!e || e.source !== window.parent) return;
+    if(!originAllowed(e.origin)) return;
+    parentOrigin = e.origin;
+    var d = e.data || {};
+    if(d.type === 'fz:init'){
+      pending = d;
+      ensure(function(err){
+        if(err){ fail(err); return; }
+        init(pending);
+        pending = null;
+      });
+    }else if(d.type === 'fz:pts' && map){
+      draw(d.pts);
+    }else if(d.type === 'fz:camera' && map){
+      if(d.center && isFinite(d.center[0]) && isFinite(d.center[1])){
+        try{ map.setZoomAndCenter(Math.max(3, Math.min(19, Number(d.zoom) || 12)), d.center); }catch(err){}
+      }
+    }
+  });
+  /* 脚本加载完即通知宿主（此时还没有业务数据，可以用 * 作为目标源） */
+  ensure(function(err){
+    if(err) return;   /* 失败已由 diag 发送 fz:error */
+    send({ type:'fz:script-ready' });
+  });
+})();
+</script>
+</body>
+</html>

@@ -27,7 +27,7 @@
 | 实现 | 原生 HTML + CSS + JavaScript，**全部内联在 `index.html`** 一个文件里 |
 | 数据 | 结构化数据存 `localStorage`（主库 `fandazi.v2` + 增量键 `fandazi.shopmeta` / `fandazi.trips` / `fandazi.feedback` 等），照片压缩后存 `IndexedDB`，均在本机 |
 | PWA | `manifest.webmanifest` + `sw.js`，仅缓存同源静态资源 |
-| 网络 | 默认只在你主动点击外链（美团 / 大众点评 / 高德 / 百度地图搜索）时新开窗口；唯一可选的外部脚本是「高德图层」，只有你在设置/地图页显式打开时才注入，失败自动回落画布 |
+| 网络 | 默认只在你主动点击外链（美团 / 大众点评 / 高德 / 百度地图搜索）时新开窗口；可选的外部请求只有「高德图层」：网页版按需注入官方 JS API，APK 内改为加载 Pages 上的 `map-embed.html`（iframe），失败自动回落画布 |
 | 定位 | 仅在用户点击「用当前位置」时取一次位置；有坐标的店按 Haversine 实算距离，无坐标仍用手填估算（见下文「定位与距离」） |
 | 地图 | 默认是 Canvas 2D 无底图散点（等距圆柱投影 + `cos(平均纬度)` 修正），不申请 Key、不发外部请求；可选「高德图层」使用官方 JS API 2.0 底图（见下文「可选高德底图」） |
 | 兼容 | v1/v2 旧数据自动迁移到当前数据版本（v3） |
@@ -88,6 +88,7 @@ python -m http.server 8765
 
 - **必须走 HTTPS**：Service Worker 只在安全上下文（`https://` 或 `localhost`）生效；`file://` 与 `http://` 下会自动降级，功能不受影响但无法安装/离线。
 - 全部资源用相对路径（`./`），因此放在任意子路径下都能正常工作。
+- **`map-embed.html` 必须随 Pages 一起发布**（当前约定地址是 `https://violetz10032.github.io/fandazi/map-embed.html`）；APK 内的「高德图层」通过这个独立页面加载地图，页面路径一旦变化需同步修改 `index.html` 里的 `mapEmbedUrl()`。该页自身也要把 `violetz10032.github.io` 列为高德 Key 白名单。
 - `manifest.webmanifest` 应以 `application/manifest+json` 或 `application/json` 返回，`sw.js` 应返回 200。
 - 换了域名或移动了图标目录后，若旧缓存未更新，可在「我的 → 诊断」或浏览器开发者工具里清除站点数据。
 
@@ -206,6 +207,7 @@ APK 内接了 `@capacitor/app`（6.0.3），Android 的物理/手势返回键不
 5. 「巡店」→ **复制/分享清单** → 出现系统分享面板而不是只提示“已复制”；
 6. 任意列表 → 导出弹层 → **分享给好友（.fanzi.json）** → 能调起分享；取消一次，应无报错提示。
 7. 打开任意弹层 → 按系统返回键 → **只关掉最上层**，不退出应用；在最外层再按一次才退出。
+8. 「地图」→ 右上角底图切到 **高德** → 应出现街道底图（走 Pages 上的 `map-embed.html`，需要联网）；拖动/缩放后标记位置不漂移，点标记能打开店铺卡片。断网或内嵌页不可达时应**回落画布**并在错误卡片 / 「我的 → 地图底图」显示真实原因（如「内嵌地图页不可达」或高德错误码），而不是笼统的「网络不通或被拦截」。
 
 任何一步失败，在「我的 → 诊断」里能看到对应的错误记录，把错误文案发回来即可定位。
 
@@ -575,7 +577,7 @@ APK 内接了 `@capacitor/app`（6.0.3），Android 的物理/手势返回键不
 - **筛选**：行程内可按区域、日期（含「未定日期」「行程日期内」）与状态筛选；无结果给出「清空筛选」引导。
 - **地图联动**：「在地图上看」复用现有地图引擎，按行程内 `shopId` 过滤标记、列表与图例（想去但无档案 / 无坐标的店如实不画点或显示暂无数据），可一键退出筛选；地图店铺详情也可把该店加入最近一份行程。
 - **空数据**：没有行程时给出「新建旅行计划」入口与说明；没有坐标 / 人均 / 评分的店显示「暂无数据」，距离仍按真实坐标才 Haversine、否则「手填」。
-- **备份**：完整备份 `schemaVersion` 升为 **5**，`payload.trips` 保存完整行程；恢复预览会报告「旅行计划：N 个行程 / M 个地点」。旧备份（v4 及更早）没有该段时保持本机行程不动、不报错；`trips` 段结构非法（如 `items` 非数组、stop 缺 `shopId`）整包拒绝，本机数据不变。恢复点同样包含行程，可回滚。
+- **备份**：旅行计划段自备份 `schemaVersion` **5** 引入，当前完整备份为 **6**；`payload.trips` 保存完整行程；恢复预览会报告「旅行计划：N 个行程 / M 个地点」。旧备份（v4 及更早）没有该段时保持本机行程不动、不报错；`trips` 段结构非法（如 `items` 非数组、stop 缺 `shopId`）整包拒绝，本机数据不变。恢复点同样包含行程，可回滚。
 - **界面上限**：最多 100 个行程、每个行程 200 个店铺；375×812 无横向滚动，操作按钮 / 输入命中 ≥44px。
 
 实测（375×812 headless Chrome，真实点击）：旅行计划 **24/24** 通过——空态、创建 / 编辑 / 删除、同店多行程与去重、四种状态不产生记录、区域 / 日期 / 状态筛选、一键带入字段为空、保存后 `checked` 且记录 +1、刷新持久化、连续保存不污染 `v2.shops`、备份 v6 往返与旧备份兼容、非法 trips 段整包拒绝、恢复预览、地图过滤与店铺详情加入、375 无横向溢出、console / exception 0。
@@ -1031,13 +1033,14 @@ var MAP_BASE_LAYER = {
 
 ### 可选高德底图（默认关闭）
 
-地图页图例与「我的 → 地图底图」里各有一个 **画布 / 高德** 切换。默认始终是画布；只有你点「高德」时才动态向 `document.head` 注入 `https://webapi.amap.com/maps?v=2.0&key=…`，**不写在 `index.html` 顶部的全局 script**，因此正常启动不会请求高德。选择结果存 `localStorage['fandazi.mapLayer']`，可随时一键切回画布。
+地图页图例与「我的 → 地图底图」里各有一个 **画布 / 高德** 切换。默认始终是画布；只有你点「高德」时才按需加载高德：网页版直接向 `document.head` 注入 `https://webapi.amap.com/maps?v=2.0&key=…`（**不写在 `index.html` 顶部的全局 script**，正常启动不会请求高德）；APK 内因为 `https://localhost` 无法通过域名校验，改为加载 Pages 上的 `map-embed.html`（见下）。选择结果存 `localStorage['fandazi.mapLayer']`，可随时一键切回画布。
 
 - **坐标**：记录里保存的始终是 WGS84（GPS / 手填的 `lat/lng`）；高德底图用 GCJ-02，因此显示前统一跑标准 `wgs2gcj` 偏移，**不回写、不改记录值**。缩放/拖动用高德相机的中心与 zoom 换算回本应用相机（中心纬度处两套投影的经纬像素比一一对应），标记、簇、我的位置全部复用原有绘制与命中逻辑。
 - **谁能看 / 谁能点**：高德模式下 `#amapLayer` 在前面承载底图，Canvas 变成透明覆盖层（`pointer-events:none`）只画点、簇、我的位置与名称；底图点击通过 `lngLatToContainer` 转成画布坐标后调用原来的 `mapOnClick`，所以店铺卡片、簇列表、外部导航、列表/地图切换、旅行计划里的地图行为都不变。
-- **失败降级**：脚本 `onerror`、12 秒超时、`window.AMap` 未注册、初始化抛错、页面里出现 `INVALID_USER_KEY / USERKEY_PLAT_NOMATCH / INVALID_USER_SCODE / INVALID_USER_DOMAIN / OVER_QUERY_LIMIT / DAILY_QUERY_OVER_LIMIT` 等错误码，以及非 HTTPS / `file://` 环境（`localhost`、APK 的 `https://localhost` 例外），都会自动回落画布：显示中文原因、保留「重试高德」和「改用画布」两个按钮，标记与交互照常可用，不会白屏或卡住地图页。
-- **凭据与合规**：Key 与 `securityJsCode` 以常量内联在 `index.html`（单文件应用无法隐藏），请在<https://console.amap.com/dev/key/app> 把域名白名单设为 **violetz10032.github.io**；需要时可随时撤销并重建。个人认证的「JS 图面」与搜索配额有限，超限时按上面的降级路径回落。按高德协议，本应用**不抓取、不缓存、不转存**服务端数据与底图图片，不做 POI 批量复制；离线或配额受限时底图只会是空白网格（标记仍在 Canvas 上）。
-- **实测**：CDP 脚本 `.tmp/amap-layer-test.js` **16/16 通过**，覆盖默认不注入脚本、WGS→GCJ 参考点误差（天安门 ±0.0002°）、境外不偏移、mock AMap 选层/拖动回读/点击开卡、切回画布恢复手势、拦截高德域名后的失败降级与重试入口；同一轮 `p0` 回归 **28/28**。真实高德底图瓦片与真机上的手势体验尚未在联网真机验证（见文末未验证项）。
+- **失败降级（可诊断）**：脚本 `onerror`、12 秒超时、`window.AMap` 未注册、初始化抛错、非 HTTPS / `file://` 环境，都会回落画布。回落前会先复现一次加载并读取高德真实返回：域名校验失败时高德给的是 **HTTP 200 + `application/json`**（`{"info":"INVALID_USER_DOMAIN","infocode":"10006",…}`，不是脚本，所以旧的「网络不通或被拦截」文案看不到真正原因）。现在会临时接管 `console.error/warn` 与 `window.onerror`，并在失败后 `fetch` 同一脚本地址解析 `info/infocode`，把 **错误码 + 一句话处理建议**写进地图页错误卡片；最近一次失败原因存 `localStorage['fandazi.mapAmapErr']`，刷新后仍能在「我的 → 地图底图」看到，成功加载后自动清除。已覆盖 `INVALID_USER_DOMAIN(10006)`、`INVALID_USER_SCODE`、`USERKEY_PLAT_NOMATCH`、`INVALID_USER_KEY`、`OVER_QUERY_LIMIT`、`DAILY_QUERY_OVER_LIMIT` 等。
+- **凭据与合规**：Key 与 `securityJsCode` 以常量内联（单文件应用无法隐藏）；`window._AMapSecurityConfig` 在 loader 脚本执行**之前**写入，避免 `INVALID_USER_SCODE`。请在<https://console.amap.com/dev/key/app> 把域名白名单设为 **violetz10032.github.io**（只保留这一条）。**`localhost` 加不进去**——高德控制台会直接拒绝并提示「域名不符合规范」，所以网页版/APK 都不要指望把 localhost 加白。按高德协议，本应用**不抓取、不缓存、不转存**服务端数据与底图图片，不做 POI 批量复制。
+- **APK 内嵌地图页**：APK 的页面源是 `https://localhost`，直连高德必然 `INVALID_USER_DOMAIN`。因此 APK 内改为在 `#amapLayer` 里加载 `https://violetz10032.github.io/fandazi/map-embed.html`（独立静态页，源是 `github.io`，可通过域名校验），高德脚本只在那个 iframe 里加载。该页**只做地图渲染、不含业务数据**：宿主只传店铺编号 / 显示坐标（GCJ-02）/ 聚合数量 / 点半径 / 颜色，以及中心点与缩放；**不传店名、备注、精确地址**。内嵌页回传三类消息：`fz:view`（拖动/缩放后的中心与 zoom）、`fz:pick`（点击的店铺编号）、`fz:error`（高德错误码）。双向都用 `postMessage` 显式指定目标源：宿主只接受 `https://violetz10032.github.io` 且校验 `event.source`，内嵌页只接受 `https://localhost` / `capacitor://localhost` 与本机调试源（含端口）。断网、iframe 10 秒不可达、页面已加载但 6 秒内高德未就绪、内嵌页回报错误码，都会回落画布并显示「内嵌地图页不可达 / 内嵌地图页加载失败：错误码」这类可诊断原因；画布地图的数据与交互完全不动。
+- **实测**：CDP 脚本 `.tmp/amap-layer-test.js` **23/23 通过**，覆盖默认不注入脚本、WGS→GCJ 参考点误差（天安门 ±0.0002°）、境外不偏移、mock AMap 选层/拖动回读/点击开卡、切回画布恢复手势、拦截高德域名后的失败降级与重试入口、**真实网络下 127.0.0.1 触发 `INVALID_USER_DOMAIN` 并显示 10006 与页面源**、`securityJsCode` 注入顺序、错误码持久化到设置页、常见错误码建议表、**内嵌页本地副本握手失败时回报真实错误码并回落画布**；同一轮 `p0` 回归 **28/28**、菜品 **28/28**。真实高德瓦片与 APK 内嵌页的实际手势/网络表现仍需联网真机验收（见文末未验证项）。
 
 ### 实测
 
