@@ -638,12 +638,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .map-legend .lg{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--ink3)}
   .map-legend .lg i{width:8px;height:8px;border-radius:50%;display:inline-block}
   .map-canvas-wrap{position:relative;height:clamp(300px,52vh,520px);background:var(--map-bg);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:10px}
-  #mapCanvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+  #amapLayer{position:absolute;inset:0;z-index:0;background:var(--map-bg)}
+  #mapCanvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab;position:relative;z-index:1}
   #mapCanvas.dragging{cursor:grabbing}
+  .map-canvas-wrap.amap-on #mapCanvas{pointer-events:none;cursor:default}
+  .map-canvas-wrap.amap-on .map-tools,.map-canvas-wrap.amap-on .map-note,.map-canvas-wrap.amap-on .map-fallback{z-index:6}
   .map-tools{position:absolute;right:9px;top:9px;display:flex;align-items:center;gap:5px;background:var(--glass);border:1px solid var(--line);border-radius:10px;padding:4px;box-shadow:var(--shadow)}
   .map-tools .icon-btn{width:30px;height:30px;border-radius:8px}
   .map-tools .btn{padding:5px 8px;font-size:11px}
   .map-note{position:absolute;left:9px;bottom:8px;font-size:10px;color:var(--ink3);background:var(--glass-2);padding:3px 9px;border-radius:999px}
+  .map-fallback{position:absolute;left:8px;right:8px;top:8px;padding:8px 10px;border-radius:10px;background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn-ink);font-size:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .map-fallback b{font-size:12px}
+  .map-fallback button{flex:none;padding:4px 9px;font-size:11px;border-radius:8px;border:1px solid var(--warn-line);background:var(--card);color:var(--warn-ink)}
   .map-list-row{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;cursor:pointer;box-shadow:var(--shadow)}
   .map-list-row .mm{flex:1;min-width:0}
   .map-list-row b{font-size:14px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1145,11 +1151,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           <div class="map-legend" id="mapLegend"></div>
         </div>
         <div class="map-canvas-wrap" id="mapCanvasWrap">
+          <div id="amapLayer" class="hidden" aria-hidden="true"></div>
           <canvas id="mapCanvas" aria-label="店铺散点地图"></canvas>
           <div class="map-tools">
             <button type="button" class="icon-btn" id="mapZoomIn" aria-label="放大"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="plus"></svg></button>
             <button type="button" class="icon-btn" id="mapZoomOut" aria-label="缩小"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="minus"></svg></button>
             <button type="button" class="btn" id="mapReset">复位</button>
+          </div>
+          <div class="map-fallback hidden" id="mapAmapErr">
+            <b>高德图层不可用</b><span id="mapAmapErrMsg">已自动回落画布</span>
+            <button type="button" id="mapAmapRetry">重试高德</button>
+            <button type="button" id="mapAmapToCanvas">改用画布</button>
           </div>
           <div class="map-note" id="mapNote">无底图 · 纯本地等距投影</div>
         </div>
@@ -1697,6 +1709,20 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           <h4>品牌标识</h4>
           界面内不内置任何第三方平台 Logo、图标或品牌视觉，仅以文字提及平台名称，用于说明跳转去向。
         </div>
+      </div>
+
+      <div class="card" id="mapBaseCard">
+        <div class="section-head" style="margin:0 0 10px">
+          <h2>地图底图</h2>
+          <span class="hint" id="mapBaseHint">画布底图</span>
+        </div>
+        <div class="stat-seg" id="mapLayerSeg" role="group" aria-label="地图底图">
+          <button type="button" data-map-layer="blank">画布（免 Key）</button>
+          <button type="button" data-map-layer="amap">高德图层</button>
+        </div>
+        <p class="muted" id="mapBaseDesc" style="margin-top:9px;line-height:1.65">当前使用画布底图（默认）：不发任何外部请求，离线可用；切换到高德会按需动态加载官方 JS API。</p>
+        <p class="muted" style="margin-top:6px;line-height:1.65">高德 Key 与 securityJsCode 随前端代码公开（单文件应用无法隐藏），请在控制台把域名白名单设为 <b>violetz10032.github.io</b>，需要时可撤销并重建。个人认证的 JS 图面配额有限，超限或加载失败会自动回落画布并给出重试入口。按高德协议，不得缓存、抓取服务端数据与底图图片；离线时底图只会是空白网格，标记仍可见。</p>
+        <p class="muted" style="margin-top:6px;line-height:1.65">坐标：记录里保留 WGS84（GPS），高德底图为 GCJ-02，仅显示时本地转换，不回写、不改记录值。</p>
       </div>
 
       <div class="card" id="themeCard">
@@ -9387,6 +9413,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return '<span class="chip-x">'+esc(t)+'<b data-act="delAvoid" data-tag="'+esc(t)+'">'+icon('close','ico-16')+'</b></span>';
     }).join('') || '<span class="muted">未设置</span>';
     if(typeof FZSync !== 'undefined' && FZSync) FZSync.renderCard();
+    renderMapLayerUI();
   }
 
   function renderPlaces(){
@@ -10680,6 +10707,56 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }catch(e){ return fallback; }
   }
   var MAP_LAYER_ID = 'blank';
+
+  /* ---- 可选高德底图：开关、凭据与坐标转换 ----
+   * 默认 blank（下面的免 Key 画布），不在启动时请求高德。
+   * 只有用户在地图页 / 设置里显式选择「高德图层」才动态注入官方 JS API。
+   * 凭据随单文件前端公开，域名白名单请在控制台设为 violetz10032.github.io，可按需撤销重建。
+   */
+  var AMAP_KEY = 'a536f4b84111b6d94c846aadcc24e24d';
+  var AMAP_SECURITY = '78f8691c16bcd9c0ea947e808157ccd2';
+  var AMAP_SCRIPT_SRC = 'https://webapi.amap.com/maps?v=2.0&key=' + AMAP_KEY;
+  var AMAP_LOAD_TIMEOUT = 12000;
+  var MAP_LAYER_PREF_KEY = 'fandazi.mapLayer';
+  var amapState = {
+    map:null, loading:false, ready:false, err:'', timer:null,
+    progUntil:0, lastZ:null, lastC:null, quiet:false, gen:0
+  };
+
+  /* WGS84（GPS / 记录里的原始坐标）→ GCJ-02（高德底图）标准偏移算法；反向不回写记录。 */
+  function mapOutOfChina(lat, lng){
+    return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271;
+  }
+  function mapGcjLat(x, y){
+    var r = -100 + 2*x + 3*y + 0.2*y*y + 0.1*x*y + 0.2*Math.sqrt(Math.abs(x));
+    r += (20*Math.sin(6*x*Math.PI) + 20*Math.sin(2*x*Math.PI)) * 2/3;
+    r += (20*Math.sin(y*Math.PI) + 40*Math.sin(y/3*Math.PI)) * 2/3;
+    r += (160*Math.sin(y/12*Math.PI) + 320*Math.sin(y*Math.PI/30)) * 2/3;
+    return r;
+  }
+  function mapGcjLng(x, y){
+    var r = 300 + x + 2*y + 0.1*x*x + 0.1*x*y + 0.1*Math.sqrt(Math.abs(x));
+    r += (20*Math.sin(6*x*Math.PI) + 20*Math.sin(2*x*Math.PI)) * 2/3;
+    r += (20*Math.sin(x*Math.PI) + 40*Math.sin(x/3*Math.PI)) * 2/3;
+    r += (150*Math.sin(x/12*Math.PI) + 300*Math.sin(x/30*Math.PI)) * 2/3;
+    return r;
+  }
+  function wgs2gcj(lat, lng){
+    lat = num(lat); lng = num(lng);
+    if(!isFinite(lat) || !isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return { lat:lat, lng:lng };
+    if(mapOutOfChina(lat, lng)) return { lat:lat, lng:lng };
+    var a = 6378245.0, ee = 0.00669342162296594323;
+    var dLat = mapGcjLat(lng - 105.0, lat - 35.0);
+    var dLng = mapGcjLng(lng - 105.0, lat - 35.0);
+    var radLat = lat / 180.0 * Math.PI;
+    var magic = Math.sin(radLat);
+    magic = 1 - ee * magic * magic;
+    var sqrtMagic = Math.sqrt(magic);
+    dLat = (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * Math.PI);
+    dLng = (dLng * 180.0) / (a / sqrtMagic * Math.cos(radLat) * Math.PI);
+    return { lat: lat + dLat, lng: lng + dLng };
+  }
+
   var MAP_BASE_LAYER = {
     blank: {
       id: 'blank',
@@ -10817,13 +10894,27 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       lng: (cam.cx + (x - w/2)/cam.scale)/c
     };
   }
+  /* 高德模式下的显示坐标：标记/拟合/我的位置统一走这里，记录里的 WGS84 原值不动 */
+  function mapAmapActive(){
+    return MAP_LAYER_ID === 'amap' && !!amapState.map;
+  }
+  function mapDisplayLL(lat, lng){
+    lat = num(lat); lng = num(lng);
+    if(!mapAmapActive()) return { lat:lat, lng:lng };
+    return wgs2gcj(lat, lng);
+  }
+  function mapProjectDisplay(lat, lng){
+    var d = mapDisplayLL(lat, lng);
+    return mapProject(d.lat, d.lng);
+  }
   function mapFit(){
     var t0 = nowMs();
     mapView.cos = mapCos();
     var pts = mapView.points;
     var box = null;
     pts.forEach(function(p){
-      var wx = p.lng * mapView.cos, wy = -p.lat;
+      var d = mapDisplayLL(p.lat, p.lng);
+      var wx = d.lng * mapView.cos, wy = -d.lat;
       if(!box) box = { minX:wx, maxX:wx, minY:wy, maxY:wy };
       else{
         box.minX = Math.min(box.minX, wx); box.maxX = Math.max(box.maxX, wx);
@@ -10834,7 +10925,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!box){
       var me = geoLast();
       if(me){
-        var mx = me.lng * mapView.cos, my = -me.lat;
+        var md = mapDisplayLL(me.lat, me.lng);
+        var mx = md.lng * mapView.cos, my = -md.lat;
         box = { minX:mx, maxX:mx, minY:my, maxY:my };
       }
     }
@@ -10872,7 +10964,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var th = MAP_CLUSTER_PX;
     var list = [];
     mapView.points.forEach(function(p){
-      var xy = mapProject(p.lat, p.lng);
+      var xy = mapProjectDisplay(p.lat, p.lng);
       var found = null;
       for(var i=0;i<list.length;i++){
         var c = list[i];
@@ -10904,7 +10996,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var t0 = nowMs();
     var cv = $('#mapCanvas');
     if(!cv) return mapView;
-    mapResize();
+    var resized = mapResize();
     if(!mapView.size.w || !mapView.size.h) return mapView;
     mapView.cos = mapCos();
     if(!mapView.cam.fitted) mapFit();
@@ -10918,13 +11010,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       project: mapProject, unproject: mapUnproject
     };
     ctx.clearRect(0, 0, size.w, size.h);
-    var layer = MAP_BASE_LAYER[MAP_LAYER_ID] || MAP_BASE_LAYER.blank;
-    try{ layer.draw(ctx, view); }catch(e){ logError('地图底图', e); }
+    if(amapState.map && resized && amapState.map.resize){
+      try{ amapState.map.resize(); }catch(e){ logError('高德尺寸同步', e); }
+    }
+    /* 高德模式下 Canvas 只画点，底图由 #amapLayer 承担 */
+    if(!mapAmapActive()){
+      var layer = MAP_BASE_LAYER[MAP_LAYER_ID] || MAP_BASE_LAYER.blank;
+      try{ layer.draw(ctx, view); }catch(e){ logError('地图底图', e); }
+    }
 
     /* 我的位置 + 1/3/5/10 km 同心圈（只在用户点过定位时才有） */
     var me = geoLast();
     if(me){
-      var mp = mapProject(me.lat, me.lng);
+      var mp = mapProjectDisplay(me.lat, me.lng);
       var pxPerKm = cam.scale / MAP_KM_PER_DEG;
       [1, 3, 5, 10].forEach(function(km){
         var r = km * pxPerKm;
@@ -10992,6 +11090,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       ctx.font = '11px -apple-system, "PingFang SC", sans-serif';
       ctx.fillText('坐标只来自记录手填或你点「定位我」取到的一次位置', size.w/2, size.h/2 + 14);
     }
+    mapAmapSyncCam();
     mapView.drawMs = nowMs() - t0;
     if(mapView.firstDrawMs == null) mapView.firstDrawMs = mapView.drawMs;
     return mapView;
@@ -11068,7 +11167,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function renderMapLegend(){
     var pal = MAP_PAL[mapView.measure] || MAP_PAL.visits;
     var mid = mapColorOf(0.5, pal);
+    var amapOn = mapAmapActive();
     var html =
+      '<span class="lg">底图</span>'+
+      '<button type="button" class="chip-toggle'+(amapOn ? '' : ' on')+'" data-map-layer="blank" aria-pressed="'+(amapOn ? 'false' : 'true')+'">画布</button>'+
+      '<button type="button" class="chip-toggle'+(amapOn ? ' on' : '')+'" data-map-layer="amap" aria-pressed="'+(amapOn ? 'true' : 'false')+'">高德</button>'+
       '<button type="button" class="chip-toggle'+(mapView.measure === 'visits' ? ' on' : '')+'" data-map-measure="visits">到访次数</button>'+
       '<button type="button" class="chip-toggle'+(mapView.measure === 'rating' ? ' on' : '')+'" data-map-measure="rating">综合评分</button>'+
       '<span class="lg">小<i style="background:'+mapColorOf(0, pal)+'"></i><i style="background:'+mid+'"></i><i style="background:'+mapColorOf(1, pal)+'"></i>大</span>'+
@@ -11159,6 +11262,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       renderMapStat();
     }
     mapView.lastRenderMs = nowMs() - t0;
+    renderMapLayerUI();
+    /* 只有用户此前显式选择过高德、且本会话还没失败过，才在进入地图时按需加载 */
+    if(mapView.active && mapView.mode === 'map' && mapLayerPref() === 'amap' &&
+       !amapState.map && !amapState.loading && !amapState.err){
+      mapSwitchLayer('amap', false);
+    }
     return {
       active: mapView.active, mode: mapView.mode, points: mapView.points.length,
       missing: mapView.missing.length, clusters: mapView.clusters.length,
@@ -11297,10 +11406,256 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     };
   }
   function mapSetBaseLayer(id){
+    if(id === 'amap' || id === 'blank'){
+      return mapSwitchLayer(id, true);
+    }
     if(!MAP_BASE_LAYER[id]) return false;
     MAP_LAYER_ID = id;
     if(mapView.active) mapDraw();
     return true;
+  }
+
+  /* ================= 高德图层的加载、同步与降级 ================= */
+  function mapLayerPref(){
+    try{ return localStorage.getItem(MAP_LAYER_PREF_KEY) === 'amap' ? 'amap' : 'blank'; }catch(e){ return 'blank'; }
+  }
+  function mapLayerPrefSet(v){
+    try{ localStorage.setItem(MAP_LAYER_PREF_KEY, v === 'amap' ? 'amap' : 'blank'); }catch(e){}
+  }
+  function mapAmapSupport(){
+    var proto = String(location.protocol || '').toLowerCase();
+    var host = String(location.hostname || '');
+    if(proto === 'https:') return '';
+    if(proto === 'http:' && (host === 'localhost' || host === '127.0.0.1')) return '';
+    if(proto === 'file:') return '当前是本地文件（file://）环境，浏览器不允许加载高德脚本；已用画布底图，可改用 https 或本地 http 服务再试';
+    return '当前环境不是 HTTPS，浏览器会拦截高德地图脚本；已用画布底图';
+  }
+  /* 高德相机 <-> 本应用相机：中心纬度处两套投影的经纬像素比一致 */
+  function mapAmapZoomOfCam(){
+    var cos = mapView.cos || 1;
+    return Math.log((mapView.cam.scale * cos * 360) / 256) / Math.LN2;
+  }
+  function mapAmapCenterOfCam(){
+    var cos = mapView.cos || 1;
+    return [mapView.cam.cx / cos, -mapView.cam.cy];
+  }
+  function mapAmapSyncCam(){
+    if(!amapState.map || !amapState.ready || amapState.quiet) return;
+    var z = mapAmapZoomOfCam(), c = mapAmapCenterOfCam();
+    if(!isFinite(z) || !isFinite(c[0]) || !isFinite(c[1])) return;
+    var same = amapState.lastZ === z && amapState.lastC &&
+      Math.abs(amapState.lastC[0] - c[0]) < 1e-9 && Math.abs(amapState.lastC[1] - c[1]) < 1e-9;
+    if(same) return;
+    amapState.lastZ = z; amapState.lastC = [c[0], c[1]];
+    amapState.progUntil = Date.now() + 400;
+    try{ amapState.map.setZoomAndCenter(z, c); }catch(e){ logError('高德相机同步', e); }
+  }
+  function mapAmapReadCam(){
+    if(!amapState.map || !amapState.map.getZoom || !amapState.map.getCenter) return;
+    var z = amapState.map.getZoom(), c = amapState.map.getCenter();
+    var cos = mapView.cos || 1;
+    if(!c || !isFinite(z) || !isFinite(c.lng) || !isFinite(c.lat)) return;
+    mapView.cam.cx = c.lng * cos;
+    mapView.cam.cy = -c.lat;
+    mapView.cam.scale = (256 * Math.pow(2, z)) / (360 * cos);
+    mapView.cam.baseScale = Math.max(mapView.cam.baseScale || 0, mapView.cam.scale);
+    mapView.cam.fitted = true;
+    amapState.lastZ = z;
+    amapState.lastC = [c.lng, c.lat];
+    amapState.quiet = true;
+    mapDraw();
+    amapState.quiet = false;
+    renderMapStat();
+  }
+  function mapAmapWarnings(){
+    var box = $('#amapLayer');
+    var txt = box ? String(box.innerText || '') : '';
+    var list = [
+      ['INVALID_USER_KEY', '高德 Key 无效或已被删除'],
+      ['USERKEY_PLAT_NOMATCH', '高德 Key 的平台类型不匹配（需要 Web 端 JS API）'],
+      ['INVALID_USER_SCODE', '高德安全密钥 securityJsCode 校验失败'],
+      ['INVALID_USER_DOMAIN', '当前域名不在高德 Key 的白名单里'],
+      ['DAILY_QUERY_OVER_LIMIT', '高德当日配额已用尽'],
+      ['OVER_QUERY_LIMIT', '高德调用量超限（配额或频率）'],
+      ['USER_ABROAD', '当前网络出口在境外，高德服务不可用']
+    ];
+    for(var i=0;i<list.length;i++){
+      if(txt.indexOf(list[i][0]) >= 0) return list[i][0] + '：' + list[i][1];
+    }
+    return '';
+  }
+  function mapShowFallback(msg, show){
+    var box = $('#mapAmapErr');
+    if(!box) return;
+    var m = $('#mapAmapErrMsg');
+    if(m) m.textContent = msg || '已自动回落画布';
+    box.classList.toggle('hidden', !show);
+  }
+  function mapAmapDestroy(){
+    var map = amapState.map;
+    amapState.gen++;
+    amapState.map = null; amapState.ready = false; amapState.loading = false;
+    amapState.lastZ = null; amapState.lastC = null;
+    if(amapState.timer){ clearTimeout(amapState.timer); amapState.timer = null; }
+    if(map && map.destroy){ try{ map.destroy(); }catch(e){ logError('高德销毁', e); } }
+    var layer = $('#amapLayer');
+    if(layer){
+      layer.innerHTML = '';
+      layer.classList.add('hidden');
+      layer.setAttribute('aria-hidden', 'true');
+    }
+    var wrap = $('#mapCanvasWrap');
+    if(wrap) wrap.classList.remove('amap-on');
+  }
+  function mapAmapFail(msg){
+    msg = msg || '高德图层不可用';
+    amapState.err = msg;
+    mapAmapDestroy();
+    MAP_LAYER_ID = 'blank';
+    mapLayerPrefSet('blank');
+    mapView.cam.fitted = false;
+    mapShowFallback(msg, true);
+    var note = $('#mapNote');
+    if(note) note.textContent = '无底图 · 纯本地等距投影';
+    if(mapView.active){
+      try{ mapDraw(); renderMapLegend(); renderMapStat(); }catch(e){ logError('地图降级重绘', e); }
+    }
+    renderMapLayerUI();
+    toast(msg + '，已自动回落画布底图');
+  }
+  function mapAmapEnsureLoaded(cb){
+    if(window.AMap && typeof window.AMap.Map === 'function'){ cb(null); return; }
+    if(amapState.loading) return;
+    amapState.loading = true;
+    amapState.err = '';
+    try{ window._AMapSecurityConfig = { securityJsCode: AMAP_SECURITY }; }catch(e){}
+    var done = false;
+    function finish(err){
+      if(done) return;
+      done = true;
+      amapState.loading = false;
+      if(amapState.timer){ clearTimeout(amapState.timer); amapState.timer = null; }
+      cb(err || null);
+    }
+    var old = document.getElementById('amapScript');
+    if(old && old.parentNode) old.parentNode.removeChild(old);
+    var s = document.createElement('script');
+    s.id = 'amapScript';
+    s.async = true;
+    s.src = AMAP_SCRIPT_SRC;
+    s.onload = function(){
+      if(window.AMap && typeof window.AMap.Map === 'function') finish(null);
+      else finish('高德脚本已加载但未注册 AMap，可能被网络代理或拦截规则改写');
+    };
+    s.onerror = function(){ finish('高德地图脚本加载失败（网络不通或被拦截）'); };
+    amapState.timer = setTimeout(function(){ finish('高德地图脚本加载超时（' + Math.round(AMAP_LOAD_TIMEOUT/1000) + ' 秒）'); }, AMAP_LOAD_TIMEOUT);
+    (document.head || document.body).appendChild(s);
+  }
+  function mapAmapSetup(){
+    var layer = $('#amapLayer');
+    if(!layer) return '缺少高德地图容器';
+    var z = mapAmapZoomOfCam(), c = mapAmapCenterOfCam();
+    if(!isFinite(z) || !isFinite(c[0]) || !isFinite(c[1])){ z = 12; c = [116.397428, 39.90923]; }
+    try{
+      var map = new window.AMap.Map(layer, {
+        zoom: clamp(z, 3, 19), center: c, viewMode: '2D',
+        resizeEnable: true, showLabel: true, zooms: [3, 19]
+      });
+      amapState.map = map;
+      amapState.ready = false;
+      map.on('complete', function(){
+        if(!amapState.map) return;
+        amapState.ready = true;
+        var warn = mapAmapWarnings();
+        if(warn){ mapAmapFail(warn); return; }
+        mapShowFallback('', false);
+        var note = $('#mapNote');
+        if(note) note.textContent = '高德底图 · WGS84 已转 GCJ-02';
+        mapAmapSyncCam();
+      });
+      var onMove = function(){
+        if(!amapState.map || Date.now() < amapState.progUntil) return;
+        mapAmapReadCam();
+      };
+      map.on('moveend', onMove);
+      map.on('zoomend', onMove);
+      map.on('click', function(e){
+        if(!e || !e.lnglat || !amapState.map) return;
+        var p = null;
+        try{ p = amapState.map.lngLatToContainer(e.lnglat); }catch(_e){}
+        if(!p || !isFinite(p.x) || !isFinite(p.y)) return;
+        mapOnClick(p.x, p.y);
+      });
+      setTimeout(function(){
+        if(!amapState.map || !amapState.map.getZoom) return;
+        var warn = mapAmapWarnings();
+        if(warn) mapAmapFail(warn);
+      }, 1200);
+      var wrap = $('#mapCanvasWrap');
+      if(wrap) wrap.classList.add('amap-on');
+      layer.classList.remove('hidden');
+      layer.setAttribute('aria-hidden', 'false');
+      return '';
+    }catch(e){
+      logError('高德初始化', e);
+      return '高德地图初始化失败：' + ((e && e.message) || '未知错误');
+    }
+  }
+  function renderMapLayerUI(){
+    var cur = mapAmapActive() ? 'amap' : 'blank';
+    $$('[data-map-layer]').forEach(function(b){
+      var v = b.getAttribute('data-map-layer') === 'amap' ? 'amap' : 'blank';
+      var on = v === cur;
+      b.classList.toggle('on', on);
+      try{ b.setAttribute('aria-pressed', on ? 'true' : 'false'); }catch(e){}
+    });
+    var hint = $('#mapBaseHint');
+    if(hint) hint.textContent = cur === 'amap' ? '高德底图' : '画布底图';
+    var desc = $('#mapBaseDesc');
+    if(desc) desc.textContent = cur === 'amap'
+      ? '当前使用高德底图：记录里的 WGS84 坐标在显示时转为 GCJ-02，标记位置不偏移；底图空白通常是离线或配额受限，可一键切回画布。'
+      : '当前使用画布底图（默认）：不发任何外部请求，离线可用；切换到高德会按需动态加载官方 JS API。';
+  }
+  function mapSwitchLayer(id, explicit){
+    id = id === 'amap' ? 'amap' : 'blank';
+    if(id === 'blank'){
+      var wasAmap = MAP_LAYER_ID === 'amap';
+      mapAmapDestroy();
+      MAP_LAYER_ID = 'blank';
+      if(wasAmap) mapView.cam.fitted = false;   /* 相机基准从 GCJ 换回 WGS，重新拟合 */
+      amapState.err = '';
+      mapShowFallback('', false);
+      var note = $('#mapNote');
+      if(note) note.textContent = '无底图 · 纯本地等距投影';
+      if(explicit) mapLayerPrefSet('blank');
+      if(mapView.active){ mapDraw(); renderMapLegend(); renderMapStat(); }
+      renderMapLayerUI();
+      if(explicit) toast('已切回画布底图（不发外部请求）');
+      return 'blank';
+    }
+    var unsupported = mapAmapSupport();
+    if(unsupported){ mapAmapFail(unsupported); return 'blank'; }
+    if(amapState.map && MAP_LAYER_ID === 'amap'){
+      renderMapLayerUI();
+      return 'amap';
+    }
+    amapState.err = '';
+    var gen = amapState.gen;
+    var noteEl = $('#mapNote');
+    if(noteEl) noteEl.textContent = '高德图层加载中…';
+    mapAmapEnsureLoaded(function(err){
+      if(gen !== amapState.gen) return;    /* 加载期间用户已切回画布 */
+      if(err){ mapAmapFail(err); return; }
+      var setupErr = mapAmapSetup();
+      if(setupErr){ mapAmapFail(setupErr); return; }
+      MAP_LAYER_ID = 'amap';
+      mapLayerPrefSet('amap');
+      mapView.cam.fitted = false;    /* 记录坐标统一按 GCJ 重新拟合 */
+      if(mapView.active){ mapDraw(); renderMapLegend(); renderMapStat(); }
+      renderMapLayerUI();
+      if(explicit) toast('已切换到高德图层（WGS84 已转 GCJ-02）');
+    });
+    return 'amap';
   }
 
   /* ---- 常用地点坐标 ---- */
@@ -15645,6 +16000,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     b.addEventListener('click', function(){ mapSetMode(b.getAttribute('data-map-mode')); });
   });
   $('#mapLegend').addEventListener('click', function(e){
+    var lay = e.target.closest ? e.target.closest('[data-map-layer]') : null;
+    if(lay){ mapSwitchLayer(lay.getAttribute('data-map-layer'), true); return; }
     var b = e.target.closest ? e.target.closest('[data-map-measure]') : null;
     if(!b) return;
     mapView.measure = b.getAttribute('data-map-measure') === 'rating' ? 'rating' : 'visits';
@@ -15652,6 +16009,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     renderMapLegend();
     renderMapStat();
   });
+  $('#mapAmapRetry').addEventListener('click', function(){ mapSwitchLayer('amap', true); });
+  $('#mapAmapToCanvas').addEventListener('click', function(){ mapSwitchLayer('blank', true); });
   $('#btnMapLocate').addEventListener('click', function(){
     var btn = this, bad = geoSupport();
     if(bad){ toast(geoMsg(bad)); return; }
@@ -15993,6 +16352,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   $('#launcherIconSeg').addEventListener('click', function(e){
     var b = e.target.closest ? e.target.closest('[data-launcher-set]') : null;
     if(b) setLauncherIcon(b.getAttribute('data-launcher-set'));
+  });
+  $('#mapLayerSeg').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-map-layer]') : null;
+    if(b) mapSwitchLayer(b.getAttribute('data-map-layer'), true);
   });
 
   /* B4 好友分享与导入 */
@@ -18192,7 +18555,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         return {
           active: mapView.active, mode: mapView.mode, measure: mapView.measure, sort: mapView.sort,
           scale: mapView.cam.scale, baseScale: mapView.cam.baseScale, cx: mapView.cam.cx, cy: mapView.cam.cy,
-          fitted: mapView.cam.fitted, selected: mapView.selected, size: mapView.size, layer: MAP_LAYER_ID
+          cos: mapView.cos, fitted: mapView.cam.fitted, selected: mapView.selected, size: mapView.size, layer: MAP_LAYER_ID
         };
       },
       size: function(){
@@ -18204,7 +18567,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         };
       },
       project: function(lat, lng){ return mapProject(num(lat), num(lng)); },
+      projectDisplay: function(lat, lng){ return mapProjectDisplay(num(lat), num(lng)); },
+      gcj: function(lat, lng){ return wgs2gcj(num(lat), num(lng)); },
       unproject: function(x, y){ return mapUnproject(num(x), num(y)); },
+      layer: function(){
+        return { id: MAP_LAYER_ID, amapOn: mapAmapActive(), pref: mapLayerPref(),
+          ready: amapState.ready, loading: amapState.loading, err: amapState.err };
+      },
+      setLayer: function(id){ return mapSwitchLayer(id, true); },
+      fallback: function(){
+        return { open: !$('#mapAmapErr').classList.contains('hidden'),
+          text: $('#mapAmapErrMsg').textContent, note: $('#mapNote').textContent };
+      },
       fit: function(){ mapView.cam.fitted = false; mapDraw(); return { scale:mapView.cam.scale, cx:mapView.cam.cx, cy:mapView.cam.cy }; },
       clusters: function(){ return mapView.clusters.map(mapClusterInfo); },
       labels: function(){ return mapView.labels.slice(); },
@@ -18232,7 +18606,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       },
       points: function(){
         return mapView.points.map(function(p){
-          var xy = mapProject(p.lat, p.lng);
+          var xy = mapProjectDisplay(p.lat, p.lng);
           return { key:p.key, name:p.name, lat:p.lat, lng:p.lng, x:Math.round(xy.x*10)/10, y:Math.round(xy.y*10)/10, visits:p.visits, rating:p.rating };
         });
       },
