@@ -210,11 +210,13 @@ APK 内接了 `@capacitor/app`（6.0.3），Android 的物理/手势返回键不
 | `http://localhost` / `127.0.0.1` | 可以 | 本地调试等同安全上下文 |
 | `http://` 局域网 IP | 不可以 | 中文提示「不是安全上下文」，回退手填，不白屏 |
 | 双击 `file://` 打开 | 不可以 | 提示当前环境无定位接口，回退手填 |
-| APK（Capacitor WebView） | **未真机验证** | WebView 可能无定位接口/权限；失败时提示并回退手填 |
+| APK（Capacitor WebView） | 清单已声明定位权限（v1.0.2+），**真机未验证** | 首次点击由 Capacitor 触发系统授权；拒绝/失败时中文提示并回退手填 |
 
-- 只在点击按钮时取一次位置（`enableHighAccuracy:false`、`timeout:10s`），**不后台持续定位、不做轨迹**。
+- **APK 定位根因（已修）**：`AndroidManifest.xml` 原先只声明了 `INTERNET`，没有 `ACCESS_COARSE_LOCATION` / `ACCESS_FINE_LOCATION`。Capacitor 的 `BridgeWebChromeClient.onGeolocationPermissionsShowPrompt` 会发起运行时授权，但未在清单声明的权限会被系统直接判为拒绝且**不弹窗**，于是 JS 收到 code 1，表现为「拿不到位置」。已在清单补两个权限，需重新构建 APK 才会生效。
+- 只在点击按钮时取一次位置（先 `enableHighAccuracy:true` / 12s，超时后自动降精度再试 6s），**不后台持续定位、不做轨迹**。
 - 位置缓存在 `localStorage` 的 `fandazi.geo.last`（`{lat,lng,acc,at}`，坐标保留 5 位小数），只存本机、不写入记录、不上传。
-- 拒绝授权（code 1）、超时（code 3）、定位不可用（code 2）、无定位接口都有对应中文提示，按钮会恢复可再次点击。
+- 拒绝授权（code 1）、超时（code 3）、定位不可用（code 2）、无定位接口都有对应中文提示，按钮会恢复可再次点击；失败时会**自动展开「手动填起点」**。
+- 「手动填起点」：在推荐页筛选区点开，填纬度 / 经度（-90~90 / -180~180，不能全 0）后保存，等同一次定位读数；记录表单里的「经纬度 lng / lat」仍可直接手填。
 - 距离全部在本机计算，**不引入地图 SDK、不调第三方 API**；「打开平台 / 导航」仍是你主动点击的外链。
 - 店铺坐标是记录的可选字段（`lat` / `lng`），旧数据不填也完全兼容，不需要迁移。
 

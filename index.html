@@ -1199,8 +1199,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           <div class="geo-row">
             <button type="button" class="btn btn-sm" id="btnGeoDaily">用当前位置</button>
             <button type="button" class="btn btn-sm hidden" id="btnGeoClear">清除定位</button>
+            <button type="button" class="btn btn-sm btn-soft" id="btnGeoManualToggle">手动填起点</button>
             <span class="geo-state" id="geoDailyState">未定位：距离按手填</span>
           </div>
+          <div class="geo-row hidden" id="geoManualRow" style="margin-top:6px">
+            <input class="input" id="geoManualLat" inputmode="decimal" placeholder="纬度 31.2304" style="max-width:128px">
+            <input class="input" id="geoManualLng" inputmode="decimal" placeholder="经度 121.4737" style="max-width:128px">
+            <button type="button" class="btn btn-sm" id="btnGeoManualSave">用这个点</button>
+          </div>
+          <p class="dist-note hidden" id="geoManualHint" style="margin-top:6px">手动填起点：在手机地图里长按当前位置可复制经纬度。</p>
           <div class="chips" style="margin-top:10px">
             <button type="button" class="chip-toggle" id="dayNearOnly">只看半径内</button>
             <button type="button" class="chip-toggle" id="daySortDist">按距离排序</button>
@@ -4096,32 +4103,55 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function geoMsg(reason){
     var map = {
-      insecure:'当前不是安全上下文（http:// 或 file://），浏览器禁用了定位。请用 https:// 打开，或继续手填距离。',
-      missing:'当前环境不提供定位接口（例如部分 WebView / file:// 打开）。已保留手填距离。',
-      denied:'定位权限被拒绝。可在浏览器地址栏的站点权限里允许定位，或继续手填距离。',
-      timeout:'定位超时（10 秒）。可能信号较弱，请重试或继续手填距离。',
-      unavailable:'系统定位不可用（定位服务关闭或没有定位能力）。已回退到手填距离。',
-      unknown:'定位失败。已回退到手填距离。'
+      insecure:'当前不是安全上下文（http:// 或 file://），浏览器禁用了定位。请用 https:// 打开，或手动填起点。',
+      missing:'当前环境不提供定位接口（部分 WebView / file://）。已保留手填，点「手动填起点」即可。',
+      denied:'定位权限被拒绝。网页版请在地址栏站点权限里允许定位；APK 请到「设置 → 应用 → 权限 → 位置」打开，或手动填起点。',
+      timeout:'定位超时（约 18 秒）。室内或信号弱时常见，可重试或在下方手动填起点。',
+      unavailable:'系统定位不可用（定位服务关闭、无定位服务或设备不支持）。请开启系统定位，或手动填起点。',
+      unknown:'定位失败。已回退到手填，可手动填起点。'
     };
     return map[reason] || map.unknown;
   }
   function locateMe(onOk, onFail){
     var bad = geoSupport();
     if(bad){ onFail(bad); return; }
-    var done = false;
+    var done = false, attempt = 0;
     function finish(fn, arg){ if(done) return; done = true; fn(arg); }
-    try{
-      navigator.geolocation.getCurrentPosition(function(pos){
-        var lat = num(pos.coords.latitude), lng = num(pos.coords.longitude);
-        if(!isFinite(lat) || !isFinite(lng)){ finish(onFail, 'unavailable'); return; }
-        finish(onOk, geoSet(lat, lng, pos.coords.accuracy));
-      }, function(err){
-        var code = err && err.code;
-        finish(onFail, code === 1 ? 'denied' : (code === 2 ? 'unavailable' : (code === 3 ? 'timeout' : 'unknown')));
-      }, { enableHighAccuracy:false, timeout:10000, maximumAge:0 });
-    }catch(e){
-      finish(onFail, 'unavailable');
+    function tryGet(){
+      attempt++;
+      var high = attempt === 1;
+      try{
+        navigator.geolocation.getCurrentPosition(function(pos){
+          var lat = num(pos.coords.latitude), lng = num(pos.coords.longitude);
+          if(!isFinite(lat) || !isFinite(lng)){ finish(onFail, 'unavailable'); return; }
+          finish(onOk, geoSet(lat, lng, pos.coords.accuracy));
+        }, function(err){
+          var code = err && err.code;
+          /* 首次高精度超时：降精度再用网络定位重试一次，避免室内直接失败 */
+          if(code === 3 && attempt === 1){ tryGet(); return; }
+          finish(onFail, code === 1 ? 'denied' : (code === 2 ? 'unavailable' : (code === 3 ? 'timeout' : 'unknown')));
+        }, { enableHighAccuracy:high, timeout:high ? 12000 : 6000, maximumAge:high ? 30000 : 300000 });
+      }catch(e){
+        finish(onFail, 'unavailable');
+      }
     }
+    tryGet();
+  }
+  function showGeoManual(hint){
+    var row = $('#geoManualRow'); if(row) row.classList.remove('hidden');
+    var h = $('#geoManualHint'); if(h && hint){ h.textContent = hint; h.classList.remove('hidden'); }
+  }
+  function geoUseManual(){
+    var lat = num($('#geoManualLat').value), lng = num($('#geoManualLng').value);
+    if(!isFinite(lat) || !isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180 || (lat === 0 && lng === 0)){
+      toast('经纬度不合法：纬度 -90~90，经度 -180~180，且不能都是 0');
+      return;
+    }
+    var g = geoSet(lat, lng, 0);
+    renderGeoState(); renderAll();
+    if(dailyState) runDecideNow(false);
+    if(patrolState && patrolState.mode === 'dist'){ patrolSortStops(); renderPatrol(); }
+    toast('已用起点 '+g.lat.toFixed(4)+', '+g.lng.toFixed(4)+'（手填）');
   }
   function renderGeoState(){
     var el = $('#geoDailyState'), clr = $('#btnGeoClear');
@@ -4135,7 +4165,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     var bad = geoSupport();
     el.textContent = bad === 'insecure' ? '当前环境不支持定位（非 HTTPS），距离按手填' :
-                     (bad === 'missing' ? '当前环境无定位接口，距离按手填' : '未定位：距离按手填');
+                     (bad === 'missing' ? '当前环境无定位接口，距离按手填' : '未定位：距离按手填，可点「手动填起点」');
     el.className = 'geo-state';
     if(clr) clr.classList.add('hidden');
   }
@@ -14572,7 +14602,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   /* 定位按钮：成功后只用本次读数重算距离，失败按原因提示并保留手填 */
   $('#btnGeoDaily').addEventListener('click', function(){
     var btn = this, bad = geoSupport();
-    if(bad){ toast(geoMsg(bad)); renderGeoState(); return; }
+    if(bad){ toast(geoMsg(bad)); renderGeoState(); showGeoManual(geoMsg(bad)); return; }
     btn.disabled = true; btn.textContent = '定位中…';
     locateMe(function(g){
       btn.disabled = false; btn.textContent = '用当前位置';
@@ -14584,6 +14614,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }, function(reason){
       btn.disabled = false; btn.textContent = '用当前位置';
       renderGeoState();
+      showGeoManual(geoMsg(reason));
       toast(geoMsg(reason));
     });
   });
@@ -14594,10 +14625,22 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(dailyState) runDecideNow(false);
     toast('已清除定位：距离回到手填值');
   });
+  $('#btnGeoManualToggle').addEventListener('click', function(){
+    var row = $('#geoManualRow'), hint = $('#geoManualHint');
+    var open = row.classList.contains('hidden');
+    row.classList.toggle('hidden', !open);
+    if(hint) hint.classList.toggle('hidden', !open);
+    if(open){
+      var g = geoLast();
+      if(g){ $('#geoManualLat').value = g.lat.toFixed(5); $('#geoManualLng').value = g.lng.toFixed(5); }
+      try{ $('#geoManualLat').focus(); }catch(e){}
+    }
+  });
+  $('#btnGeoManualSave').addEventListener('click', geoUseManual);
   /* 编辑页按钮只填「这家店的坐标」，不覆盖“我的位置”缓存，避免把距离基准变成店铺本身 */
   $('#btnGeoForm').addEventListener('click', function(){
     var btn = this, bad = geoSupport();
-    if(bad){ toast(geoMsg(bad)); return; }
+    if(bad){ toast(geoMsg(bad)+' 请在下方纬度/经度手动填写。'); return; }
     btn.disabled = true; btn.textContent = '定位中…';
     locateMe(function(g){
       btn.disabled = false; btn.textContent = '用当前位置填入店铺坐标';
@@ -14608,7 +14651,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       toast('已填入当前坐标；若你不在店里，请清空或手填');
     }, function(reason){
       btn.disabled = false; btn.textContent = '用当前位置填入店铺坐标';
-      toast(geoMsg(reason));
+      toast(geoMsg(reason)+' 请在下方纬度/经度手动填写。');
     });
   });
   $('#dayNearOnly').addEventListener('click', function(){
