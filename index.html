@@ -4545,6 +4545,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
      excludedOut（这次不抽）/ unknown（无评分·无营业时间·未填人均·无坐标）/
      reasons（排除原因计数）/ reason */
   function buildDrawPool(filters){
+    var fatigue = drawFatigue();
+    var res = buildDrawPoolPass(filters, fatigue, 0);
+    if(res.items.length || !res.fatigueBlocked) return res;
+    /* 空候选兜底：先放宽 48 小时冷却，再放宽同菜系削减，并在结果里明示忽略的规则 */
+    var r1 = buildDrawPoolPass(filters, fatigue, 1);
+    if(r1.items.length){ r1.notes = ['已忽略 48 小时冷却（48 小时内去过的店重新参与）']; return r1; }
+    var r2 = buildDrawPoolPass(filters, fatigue, 2);
+    r2.notes = r2.items.length
+      ? ['已忽略 48 小时冷却，并忽略同菜系 24 小时削减']
+      : ['已忽略 48 小时冷却与同菜系 24 小时削减，仍无候选'];
+    return r2;
+  }
+  function buildDrawPoolPass(filters, fatigue, relax){
     var f = drawFilterNorm(filters || {});
     var priceMin = Math.max(0, num(filters && filters.min));
     var priceMax = Math.max(priceMin, num(filters && filters.max));
@@ -4562,10 +4575,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '这次不抽':0, '不再推荐':0, '忌口命中':0, '菜系被拉黑':0, '超人均上限':0,
       '未填人均':0, '价格区间外':0, '距离未知或超 3 km':0, '耗时未知或超限':0,
       '无评分':0, '评分不足':0, '标签不匹配':0, '无营业时间':0, '已打烊':0,
-      '未到未去时长':0, '不在行程':0
+      '未到未去时长':0, '不在行程':0, '48 小时内去过':0
     };
+    var tcx = drawTimeCtx(), fatigueBlocked = false, cuisineCut = 0, ignoreCuisine = relax >= 2;
     if(priceMax <= 0){
-      return { items:[], total:total, filteredOut:0, excludedOut:0, unknown:unknown, reasons:reasons, reason:'bad-range' };
+      return { items:[], total:total, filteredOut:0, excludedOut:0, unknown:unknown, reasons:reasons, reason:'bad-range',
+        fatigueBlocked:false, cuisineCut:0, notes:[] };
     }
     all.forEach(function(s){
       var sid = drawShopId(s);
@@ -4613,13 +4628,27 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         if(!(day >= f.notVisitedDays)){ reasons['未到未去时长']++; return; }
       }
       if(f.tripOnly && (!tripSet || !tripSet[sid])){ reasons['不在行程']++; return; }
+      /* 疲劳冷却：48 小时内去过的店权重置 0（空候选时由外层放宽） */
+      if(relax < 1 && fatigue.exclude[String(s.key)]){
+        reasons['48 小时内去过']++; fatigueBlocked = true; return;
+      }
       var w = storeWeight(s);
       if(w <= 0 || !isFinite(w)) return;
-      items.push({ store:s, w:w, norm:0 });
+      /* 时段情境加权：只按菜系 / 标签 / 人均 / 距离推，不推断营业状态 */
+      var tm = drawTimeMult(s, tcx);
+      if(tm.mult !== 1) w = w * tm.mult;
+      /* 24 小时内吃过同一菜系：该品类全部 ×0.3 */
+      var cuisineHit = !ignoreCuisine && drawCuisineHit(s, fatigue);
+      if(cuisineHit){ w = w * 0.3; cuisineCut++; }
+      if(w <= 0 || !isFinite(w)) return;
+      items.push({ store:s, w:w, norm:0, ctx:tm.label, cuisineCut:cuisineHit });
     });
     var filteredOut = Math.max(0, total - excludedOut - items.length);
     var reason = !total ? 'no-source' : (items.length ? 'ok' : 'no-candidate');
-    return { items:items, total:total, filteredOut:filteredOut, excludedOut:excludedOut, unknown:unknown, reasons:reasons, reason:reason };
+    var notes = [];
+    if(items.length && cuisineCut) notes.push('同菜系 24 小时内吃过：' + cuisineCut + ' 家权重 ×0.3');
+    return { items:items, total:total, filteredOut:filteredOut, excludedOut:excludedOut, unknown:unknown, reasons:reasons, reason:reason,
+      fatigueBlocked:fatigueBlocked, cuisineCut:cuisineCut, notes:notes };
   }
 
   /* ---------- 旅行弹层事件（委托） ---------- */
@@ -6875,6 +6904,102 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var w = (1 + 1.5*rn + 1.0*rec) * feedbackMultiplier(feedbackKeyOf(store)) * profileMultiplier(store.key);
     return isFinite(w) ? w : 0;
   }
+  /* ========== 抽签情境：疲劳冷却 / 时段加权 / 15% 探索 ==========
+     足迹读 db.records（即 fandazi.v2.visits 的迁移视图），不读 fandazi.v2.trips（那是旅行计划）。
+     我们没有任何营业时间推断，只按菜系与标签加权，不会声称「正在营业」。 */
+  function drawVisitMs(r){
+    var d = String((r && r.visitDate) || '').slice(0, 10);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+    var t = new Date(d + 'T12:00:00').getTime();
+    return isFinite(t) ? t : null;
+  }
+  function drawFatigue(){
+    var now = Date.now(), out = { exclude:{}, cuisine:{}, n48:0, n24:0 };
+    (db.records || []).forEach(function(r){
+      var t = drawVisitMs(r);
+      if(t == null) return;
+      var h = (now - t) / 3600000;
+      if(h < -12 || h > 168) return;                 /* 只看最近 7 天 */
+      if(h <= 48){ out.exclude[keyOf(r)] = 1; out.n48++; }
+      if(h <= 24){
+        var cat = String(r.category || '').trim();
+        if(cat) out.cuisine[cat] = 1;
+        (r.tags || []).forEach(function(x){ var s = String(x || '').trim(); if(s) out.cuisine[s] = 1; });
+        out.n24++;
+      }
+    });
+    return out;
+  }
+  function drawCuisineHit(store, fatigue){
+    if(!store || !fatigue) return false;
+    var toks = [String(store.category || '')].concat(store.tags || []);
+    for(var i = 0; i < toks.length; i++){
+      var t = String(toks[i] || '').trim();
+      if(t && fatigue.cuisine[t]) return true;
+    }
+    return false;
+  }
+  function drawTimeCtx(d0){
+    var d = d0 || new Date(), wd = d.getDay(), min = d.getHours() * 60 + d.getMinutes();
+    var key = 'normal';
+    if(wd >= 1 && wd <= 5 && min >= 690 && min <= 810) key = 'workLunch';
+    else if(wd === 0 || wd === 6 || (wd === 5 && min >= 1050)) key = 'weekendDinner';
+    if(min >= 1290) key = 'lateNight';               /* 21:30 后优先夜宵 */
+    return { key:key, min:min, wd:wd };
+  }
+  var NIGHT_TOKENS = ['夜市','大排档','烧烤','夜宵','宵夜'];
+  var DRAW_EXPLORE_RATE = 0.15;
+  function drawTimeMult(store, tcx){
+    if(!store || !tcx) return { mult:1, label:'' };
+    var text = [String(store.category || '')].concat(store.tags || []).join(' ');
+    var km = storeRealKm(store);                     /* 无坐标返回 null：距离维度保持中性 */
+    if(tcx.key === 'workLunch'){
+      var m = 1, lab = [];
+      var p = num(store.perPrice);
+      if(p >= 20 && p <= 40){ m *= 1.35; lab.push('工作午餐人均 20–40 加分'); }
+      if(Array.isArray(store.fitMeals) && store.fitMeals.indexOf('lunch') >= 0){ m *= 1.1; lab.push('适合午餐'); }
+      if(km != null && km < 0.8){ m *= 1.15; lab.push('800m 内加分'); }
+      return { mult:m, label:lab.join(' · ') };
+    }
+    if(tcx.key === 'weekendDinner'){
+      var m2 = 1, lab2 = [];
+      if(num(store.rating) >= 4.3){ m2 *= 1.2; lab2.push('评分高加分'); }
+      if(/烧烤|火锅|聚餐|环境|大餐/.test(text)){ m2 *= 1.2; lab2.push('周末聚餐 / 烧烤火锅加分'); }
+      return { mult:m2, label:lab2.join(' · ') };
+    }
+    if(tcx.key === 'lateNight'){
+      var hit = NIGHT_TOKENS.some(function(t){ return text.indexOf(t) >= 0; });
+      return hit ? { mult:1.5, label:'夜宵时段加分' } : { mult:0.8, label:'' };
+    }
+    return { mult:1, label:'' };
+  }
+  /* 这条店在当前规则下被扣了哪些分：写进推荐理由，用户能看懂为什么是这家 */
+  function drawCtxLabels(store){
+    var arr = [], fc = drawFatigue(), sid = String((store && store.key) || '');
+    if(sid && fc.exclude[sid]) arr.push('48 小时内去过（正常抽签会跳过）');
+    else if(drawCuisineHit(store, fc)) arr.push('同菜系 24 小时内吃过：权重 ×0.3');
+    var tm = drawTimeMult(store, drawTimeCtx());
+    if(tm.label) arr.push(tm.label);
+    return arr;
+  }
+  function drawWishNeverVisited(){
+    var visited = {};
+    (db.records || []).forEach(function(r){ visited[keyOf(r)] = 1; });
+    return wishStores().filter(function(s){ return !visited[s.key] && !visited[drawShopId(s)]; });
+  }
+  /* 15% 探索池：想去但从未到店，仍遵守黑名单 / 忌口 / 菜系拉黑 / 预算 / 价格区间 */
+  function drawExplorePool(min, max, opts){
+    var out = [];
+    drawWishNeverVisited().forEach(function(s){
+      if(isBlack(s) || conflictOf(s, db.settings.restrictions) || profileBlockedCategory(s) || profileOverBudget(s)) return;
+      var p = num(s.perPrice);
+      if(p <= 0 || p < min || p > max) return;
+      if(opts && Array.isArray(opts.exclude) && opts.exclude.some(function(id){ return String(id) === drawShopId(s); })) return;
+      var w = storeWeight(s);
+      if(w > 0 && isFinite(w)) out.push({ store:s, w:w, norm:0 });
+    });
+    return out;
+  }
   function drawReasonNotes(res){
     var arr = [];
     if(!res || !res.reasons) return arr;
@@ -6895,7 +7020,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       notVisitedDays:f.notVisitedDays, source:f.source, tripOnly:f.tripOnly
     };
     var res = buildDrawPool(filters);
-    var notes = drawReasonNotes(res);
+    var notes = (res.notes || []).concat(drawReasonNotes(res));
     var pool = res.items.slice();
     if(max <= 0){
       return { pool:[], picked:null, totalW:0, notes:notes, reason:'bad-range', ms:nowMs()-t0,
@@ -6926,6 +7051,29 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     var totalW = 0;
     for(var i=0;i<candidates.length;i++) totalW += candidates[i].w;
+    /* Epsilon-Greedy：固定 15% 从「想去 / 收藏但从未到店」里抽，池空则照常加权 */
+    var explore = null;
+    if(!(opts && opts.noExplore) && Math.random() < DRAW_EXPLORE_RATE){
+      var expPool = drawExplorePool(min, max, opts);
+      var ew = 0;
+      for(var e=0;e<expPool.length;e++) ew += expPool[e].w;
+      if(expPool.length && ew > 0){
+        var er = Math.random()*ew, eacc = 0, ep = null;
+        for(var k2=0;k2<expPool.length;k2++){
+          eacc += expPool[k2].w;
+          expPool[k2].norm = expPool[k2].w/ew;
+          if(ep === null && er < eacc) ep = expPool[k2];
+        }
+        if(!ep) ep = expPool[expPool.length-1];
+        explore = { pool:expPool, picked:ep, totalW:ew, r:er };
+        notes.push('本次是 15% 探索：从「想去但从未到店」里抽中');
+      }
+    }
+    if(explore){
+      if(!(opts && opts.noLast)) lastDrawShopId = drawShopId(explore.picked.store);
+      return { pool:explore.pool, picked:explore.picked, totalW:explore.totalW, r:explore.r, notes:notes, reason:'', ms:nowMs()-t0,
+        explore:true, total:res.total, filteredOut:res.filteredOut, excludedOut:res.excludedOut, unknown:res.unknown, reasons:res.reasons, candidateCount:pool.length, participate:candidates.length, filters:f };
+    }
     if(!candidates.length || totalW <= 0){
       return { pool:candidates, picked:null, totalW:totalW, notes:notes, reason:'no-candidate', ms:nowMs()-t0,
         total:res.total, filteredOut:res.filteredOut, excludedOut:res.excludedOut, unknown:res.unknown, reasons:res.reasons, candidateCount:pool.length, participate:0, filters:f };
@@ -8568,10 +8716,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(res.unknown.price) unk.push('暂无参考价 '+res.unknown.price+' 家（沿用价格条件，已排除）');
     if(unk.length) lines.push(unk.join(' · '));
     var act = [];
-    [['无评分',f.minRating > 0],['无营业时间',f.openNow],['标签不匹配',f.tags.length > 0],['未到未去时长',f.notVisitedDays > 0],['不在行程',f.tripOnly]].forEach(function(pair){
+    [['无评分',f.minRating > 0],['无营业时间',f.openNow],['标签不匹配',f.tags.length > 0],['未到未去时长',f.notVisitedDays > 0],['不在行程',f.tripOnly],['48 小时内去过',true]].forEach(function(pair){
       if(pair[1] && res.reasons[pair[0]] > 0) act.push(pair[0]+' '+res.reasons[pair[0]]);
     });
     if(act.length) lines.push('本次已排除：'+act.join(' / ')+' 家');
+    if(res.notes && res.notes.length) lines.push(res.notes.join('；'));
     return lines;
   }
   function renderDrawPoolLine(){
@@ -8939,11 +9088,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var dist = km != null ? ('距我约 '+distText(km)+'（定位）') : '距离：暂无数据';
     var price = storePriceText(s);
     var geo = [s.city, s.area].filter(Boolean).join(' · ');
+    var ctxLab = drawCtxLabels(s);
+    var reasonText = blindReason(s, b);
+    if(ctxLab.length) reasonText += '（' + ctxLab.join(' · ') + '）';
     body.innerHTML =
       '<p class="blind-meta">'+esc([geo, price, dist].filter(Boolean).join(' · '))+'</p>'+
       '<p class="blind-meta">'+esc(storeRatingText(s)+' · '+storeFreshnessText(s))+'</p>'+
       (sig ? '<p class="blind-meta">'+esc(sig)+'</p>' : '')+
-      '<p class="blind-reason">'+esc(blindReason(s, b))+'</p>';
+      '<p class="blind-reason">'+esc(reasonText)+'</p>'+
+      (res.notes && res.notes.length ? '<p class="blind-meta">'+esc(res.notes.join('；'))+'</p>' : '');
     acts.innerHTML =
       '<button class="btn btn-soft" data-act="blindRollAgain">换一个</button>'+
       '<button class="btn" data-act="blindNav" data-key="'+esc(s.key)+'">导航前往</button>'+
@@ -21764,6 +21917,29 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         return { filters:drawFilters(), excluded:drawExcludedList() };
       };
       api.raw = function(){ try{ return localStorage.getItem(DRAW_KEY); }catch(e){ return null; } };
+      /* 探索概率：默认 15%，测试可置 0 / 1 以稳定断言 */
+      api.exploreRate = function(x){ if(x != null) DRAW_EXPLORE_RATE = clamp(num(x), 0, 1); return DRAW_EXPLORE_RATE; };
+      api.weights = function(o){
+        var ctx0 = drawCurrentContext();
+        Object.keys(o || {}).forEach(function(k){ ctx0[k] = o[k]; });
+        var r = buildDrawPool(ctx0);
+        return {
+          items: r.items.map(function(x){ return { name:x.store.name, w:Math.round(x.w * 1000) / 1000, ctx:x.ctx || '' }; }),
+          notes: r.notes || [], fatigueBlocked: !!r.fatigueBlocked, cuisineCut: r.cuisineCut || 0, reasons: r.reasons
+        };
+      };
+      api.rules = {
+        fatigue: drawFatigue,
+        time: function(iso){ return drawTimeCtx(iso ? new Date(iso) : new Date()); },
+        timeMult: function(key, name){
+          var st = getStores().filter(function(x){ return x.name === name; })[0];
+          return drawTimeMult(st, { key:key });
+        },
+        labels: function(name){
+          var st = getStores().filter(function(x){ return x.name === name; })[0];
+          return drawCtxLabels(st);
+        }
+      };
       api.excluded = function(){ return drawExcludedList(); };
       api.restore = function(){ drawRestoreAllNow(); return drawExcludedList(); };
       api.pool = function(o){
