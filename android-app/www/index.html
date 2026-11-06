@@ -2175,6 +2175,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     </div>
     <p class="form-hint" id="prefillHint" style="display:none"></p>
 
+    <button type="button" class="btn btn-sm btn-soft snap-hide" id="btnAA" style="margin-bottom:10px">AA 分账（只生成文案，不写入实付）</button>
     <div class="frow full-only">
       <div class="field">
         <label>品类 / 菜系</label>
@@ -2779,14 +2780,51 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="modal">
     <h3>分享图</h3>
     <p class="muted" id="imgHint">Canvas 本地绘制 1080×1350，不调用任何外部服务</p>
+    <div class="seg" id="imgTplSeg" role="group" aria-label="图片模板" style="margin-top:10px">
+      <button type="button" class="on" data-tpl="poster">推荐海报</button>
+      <button type="button" data-tpl="ticket">复古票根</button>
+    </div>
     <div class="canvas-wrap" id="imgWrap" style="margin-top:12px"></div>
     <div class="actions" style="margin-top:12px">
       <button class="btn btn-primary" id="btnImgSave">保存图片</button>
       <button class="btn btn-soft" id="btnImgShare">分享</button>
       <button class="btn" id="btnImgCopy">复制文字</button>
+      <button class="btn" id="btnImgCopyImage">复制图片</button>
       <button class="btn" id="btnImgClose" style="margin-left:auto">关闭</button>
     </div>
-    <p class="dist-note">分享图底部标注「数据来自本人记录，不代表平台评价」；不含任何平台 Logo。</p>
+    <p class="dist-note">分享图底部标注「数据来自本人记录，不代表平台评价」；不含任何平台 Logo。复制图片为附加项，浏览器不支持时请改用「保存图片」。</p>
+  </div>
+</div>
+
+<!-- AA 分账弹层 -->
+<div class="modal-mask hidden" id="aaMask">
+  <div class="modal" style="max-width:560px">
+    <h3>AA 分账</h3>
+    <div class="frow" style="margin-top:10px">
+      <div class="field"><label for="aaTotal">总额（元）</label>
+        <input class="input" id="aaTotal" type="number" min="0" step="0.01" inputmode="decimal" placeholder="例如 328"></div>
+      <div class="field"><label for="aaPeople">人数</label>
+        <input class="input" id="aaPeople" type="number" min="1" max="99" step="1" inputmode="numeric" value="4"></div>
+    </div>
+    <div class="frow">
+      <div class="field"><label for="aaExtra">其中酒水等额外费用（已含在总额）</label>
+        <input class="input" id="aaExtra" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0"></div>
+      <div class="field"><label for="aaNoExtra">几人不分摊酒水</label>
+        <input class="input" id="aaNoExtra" type="number" min="0" max="99" step="1" inputmode="numeric" value="0"></div>
+    </div>
+    <div class="frow" style="gap:18px;flex-wrap:wrap">
+      <label class="check"><input type="checkbox" id="aaRound" checked> 除不尽向上取整到角</label>
+      <label class="check"><input type="checkbox" id="aaWipe"> 抹零到元</label>
+    </div>
+    <div id="aaOut" style="margin-top:12px"></div>
+    <label class="muted" for="aaText" style="display:block;margin-top:10px">收款文案（可长按手动复制）</label>
+    <textarea class="input" id="aaText" rows="7" readonly style="margin-top:6px;font-size:13px"></textarea>
+    <p class="dist-note" style="margin-top:8px">金额只进这段文案，不会写入记录的实付；取整与抹零的差额都由发起人承担，明细见上。</p>
+    <div class="actions" style="margin-top:10px">
+      <button class="btn btn-primary" id="aaCopy">复制微信收款文案</button>
+      <button class="btn btn-soft" id="aaCloseBtn">关闭</button>
+    </div>
+    <p class="muted" id="aaMsg" style="margin-top:8px"></p>
   </div>
 </div>
 
@@ -8155,6 +8193,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         : (r.photo ? '<img class="thumb" src="'+esc(r.photo)+'" loading="lazy" decoding="async" alt="到访照片">' : ''))+
       '<div class="actions rec-actions">'+
         '<button class="btn btn-sm" data-act="edit" data-id="'+esc(r.id)+'">'+icon('edit')+'编辑</button>'+
+        '<button class="btn btn-sm btn-soft" data-act="aa" data-id="'+esc(r.id)+'">AA 分账</button>'+
         '<button class="btn btn-sm btn-danger" data-act="del" data-id="'+esc(r.id)+'">删除</button>'+
         '<button class="btn btn-sm btn-soft" data-act="map" data-id="'+esc(r.id)+'" title="点击在高德打开，长按可选高德/百度">'+icon('pin')+'地图</button>'+
         '<button class="btn btn-sm btn-soft" data-act="jump" data-id="'+esc(r.id)+'">'+icon('ext')+'打开平台</button>'+
@@ -15724,6 +15763,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         (hasKm(main.store) ? ' · '+kmLine(main.store) : ''),
       tag: (MEAL_LABEL[dailyState.ctx.meal]||'')+' · 适配分 '+main.score,
       place: [main.store.city, main.store.area].filter(Boolean).join(' · '),
+      store: main.store,
       lines: main.reasons.slice(0, 3)
     };
   }
@@ -15737,6 +15777,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       meta: storePriceText(p)+(p.category ? ' · '+p.category : ''),
       tag: '区间 ¥'+num($('#pk-min').value)+'–¥'+num($('#pk-max').value),
       place: [p.city, p.area].filter(Boolean).join(' · '),
+      store: p,
       lines: [
         '区间内共 '+drawState.pool.length+' 家候选，权重 '+drawState.picked.w.toFixed(2),
         '抽签结果为随机，不代表推荐排序',
@@ -15754,6 +15795,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       meta: storePriceText(x.store)+(x.store.category ? ' · '+x.store.category : ''),
       tag: friendState.ctx.people+' 人 · 参考人均 ¥'+friendState.ctx.budget+' 以内',
       place: [x.store.city, x.store.area].filter(Boolean).join(' · '),
+      store: x.store,
       lines: x.reasons.slice(0, 3)
     };
   }
@@ -15881,21 +15923,354 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       .concat(['数据来自本人记录，不代表平台评价', '由 i吃饭 生成'])
       .join('\n');
   }
-  function openShareImage(kind){
+  /* ---- 复古票根 / 拍立得打卡海报（纯 Canvas 2D） ---- */
+  function ticketSerial(dateStr, name){
+    var digits = String(dateStr || '').replace(/\D/g, '');
+    var h = 0, s = String(name || '');
+    for(var i=0;i<s.length;i++) h = (h * 31 + s.charCodeAt(i)) % 100000;
+    return (digits || '00000000') + String(h).padStart(5, '0');
+  }
+  function ticketSeed(str){
+    var h = 2166136261, s = String(str || '');
+    for(var i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = (h * 16777619) >>> 0; }
+    return function(){ h = (h * 1103515245 + 12345) >>> 0; return h / 4294967296; };
+  }
+  function ticketDateText(d){
+    var parts = String(d || todayStr()).split('-');
+    return parts.length === 3 ? (parts[0] + '.' + parts[1] + '.' + parts[2]) : String(d || todayStr());
+  }
+  function ticketPhotoUrl(data){
+    var st = data && data.store;
+    if(!st) return Promise.resolve(null);
+    var key = st.key || keyOf(st);
+    var recs = (db.records || []).filter(function(r){
+      if(keyOf(r) !== key) return false;
+      var ph = photosOfRecord(r);
+      if(ph.length) return true;
+      return typeof r.photo === 'string' && /^data:image\//.test(r.photo);
+    }).sort(function(a,b){ return String(b.visitDate || '').localeCompare(String(a.visitDate || '')); });
+    if(!recs.length) return Promise.resolve(null);
+    var r = recs[0], ph = photosOfRecord(r)[0];
+    if(ph && ph.id && typeof photoGet === 'function'){
+      return photoGet(ph.id).then(function(u){ return u || null; }).catch(function(){ return null; });
+    }
+    return Promise.resolve(typeof r.photo === 'string' && /^data:image\//.test(r.photo) ? r.photo : null);
+  }
+  function ticketLoadImage(url){
+    return new Promise(function(resolve){
+      if(!url) return resolve(null);
+      var im = new Image();
+      im.onload = function(){ resolve(im); };
+      im.onerror = function(){ resolve(null); };
+      im.src = url;
+    });
+  }
+  function ticketCover(ctx, img, x, y, w, h){
+    if(!img || !img.width || !img.height) return false;
+    var s = Math.max(w / img.width, h / img.height);
+    var sw = w / s, sh = h / s;
+    ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, x, y, w, h);
+    return true;
+  }
+  function ticketSeal(ctx, x, y, r, rotate, label, sub){
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(rotate);
+    ctx.globalAlpha = 0.78;
+    ctx.strokeStyle = '#b23a2e'; ctx.fillStyle = '#b23a2e';
+    ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.stroke();
+    ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, r - 12, 0, Math.PI*2); ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.font = '700 ' + Math.round(r * 0.42) + 'px ' + SHARE_FONT;
+    ctx.fillText(label, 0, Math.round(r * 0.10));
+    if(sub){
+      ctx.font = '600 ' + Math.round(r * 0.20) + 'px ' + SHARE_FONT;
+      ctx.fillText(sub, 0, Math.round(r * 0.46));
+    }
+    /* 盖章缺墨：随机小孔，透出底下的纸张/照片 */
+    ctx.globalCompositeOperation = 'destination-out';
+    var rnd = ticketSeed(label + String(x) + String(y));
+    for(var i=0;i<26;i++){
+      ctx.globalAlpha = 0.18 + rnd() * 0.35;
+      ctx.beginPath();
+      ctx.arc((rnd()*2-1) * r * 0.86, (rnd()*2-1) * r * 0.86, 0.6 + rnd() * 2.4, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  function ticketDimensionStamp(ctx, x, y, label, score, rotate){
+    var r = 84;
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(rotate);
+    ctx.globalAlpha = 0.82;
+    ctx.strokeStyle = '#b23a2e'; ctx.fillStyle = '#b23a2e';
+    ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.stroke();
+    ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, r - 10, 0, Math.PI*2); ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.font = '600 24px ' + SHARE_FONT;
+    ctx.fillText(label, 0, -34);
+    ctx.font = '800 42px ' + SHARE_FONT;
+    ctx.fillText(score, 0, 18);
+    ctx.font = '500 18px ' + SHARE_FONT;
+    ctx.fillText('分', 0, 48);
+    ctx.globalCompositeOperation = 'destination-out';
+    var rnd = ticketSeed(label);
+    for(var i=0;i<10;i++){
+      ctx.globalAlpha = 0.15 + rnd() * 0.25;
+      ctx.beginPath();
+      ctx.arc((rnd()*2-1) * r * 0.8, (rnd()*2-1) * r * 0.8, 0.5 + rnd() * 1.8, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  function ticketBarcode(ctx, text, x, y, w, h){
+    var rnd = ticketSeed('bar' + text);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.fillStyle = '#2a211a';
+    var cx = x + 8;
+    while(cx < x + w - 8){
+      var bw = 2 + Math.floor(rnd() * 8);
+      var gap = 2 + Math.floor(rnd() * 6);
+      ctx.fillRect(cx, y, bw, h);
+      cx += bw + gap;
+    }
+    /* 两端加粗定位条 */
+    ctx.fillRect(x + 2, y, 6, h);
+    ctx.fillRect(x + w - 8, y, 6, h);
+    ctx.restore();
+  }
+  function ticketZigzag(ctx, W, bodyH, toothH, toothW){
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(W, 0);
+    ctx.lineTo(W, bodyH);
+    var x = W;
+    while(x > 0){
+      ctx.lineTo(x - toothW / 2, bodyH + toothH);
+      ctx.lineTo(x - toothW, bodyH);
+      x -= toothW;
+    }
+    ctx.lineTo(0, 0);
+    ctx.closePath();
+  }
+  function renderTicketCanvas(data, img){
+    var W = 1080, H = 1620, bodyH = 1580, toothH = 30;
+    var c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    var ctx = c.getContext('2d');
+    if(!ctx) throw new Error('no-canvas');
+    var seed = ticketSeed('paper' + (data && data.name) + todayStr());
+
+    /* 桌面背景 */
+    ctx.fillStyle = '#e7d8bf'; ctx.fillRect(0, 0, W, H);
+
+    /* 票纸（底部锯齿撕边） */
+    ctx.save();
+    ctx.shadowColor = 'rgba(70,45,20,.22)';
+    ctx.shadowBlur = 26; ctx.shadowOffsetY = 12;
+    ticketZigzag(ctx, W, bodyH, toothH, 44);
+    var pg = ctx.createLinearGradient(0, 0, 0, bodyH);
+    pg.addColorStop(0, '#fdf7e9'); pg.addColorStop(1, '#f3e5cd');
+    ctx.fillStyle = pg; ctx.fill();
+    ctx.restore();
+
+    /* 纸张颗粒 */
+    ctx.save();
+    for(var i=0;i<420;i++){
+      ctx.globalAlpha = 0.03 + seed() * 0.05;
+      ctx.fillStyle = seed() < 0.5 ? '#8a6b46' : '#fffdf5';
+      ctx.beginPath();
+      ctx.arc(seed() * W, seed() * bodyH, 0.6 + seed() * 2.2, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    /* 双线边框 */
+    ctx.save();
+    ctx.strokeStyle = 'rgba(120,82,44,.42)'; ctx.lineWidth = 2;
+    roundRectPath(ctx, 34, 34, W - 68, bodyH - 68, 8); ctx.stroke();
+    ctx.strokeStyle = 'rgba(120,82,44,.20)'; ctx.lineWidth = 1;
+    roundRectPath(ctx, 44, 44, W - 88, bodyH - 88, 6); ctx.stroke();
+    ctx.restore();
+
+    /* 顶部小字 */
+    ctx.save();
+    ctx.fillStyle = '#8c6f4c';
+    ctx.font = '600 20px ' + SHARE_FONT;
+    ctx.textAlign = 'left'; ctx.fillText('ADMIT ONE · 美食打卡票', 70, 76);
+    ctx.textAlign = 'right'; ctx.fillText('i吃饭 · 本地生成', W - 70, 76);
+    ctx.restore();
+
+    /* 拍立得照片 */
+    var fx = 100, fy = 106, fw = 880, fh = 760;
+    ctx.save();
+    ctx.shadowColor = 'rgba(70,45,20,.20)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 10;
+    ctx.fillStyle = '#fffdf7';
+    ctx.fillRect(fx, fy, fw, fh);
+    ctx.restore();
+    var px = fx + 28, py = fy + 28, pw = fw - 56, ph = 600;
+    ctx.fillStyle = '#e8d7bd'; ctx.fillRect(px, py, pw, ph);
+    if(!ticketCover(ctx, img, px, py, pw, ph)){
+      ctx.save();
+      ctx.fillStyle = '#e3d0b3'; ctx.fillRect(px, py, pw, ph);
+      ctx.strokeStyle = 'rgba(120,90,60,.35)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(px + pw/2, py + ph/2 - 10, 96, 0.15*Math.PI, 0.85*Math.PI); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px + pw/2 - 128, py + ph/2 + 6); ctx.lineTo(px + pw/2 + 128, py + ph/2 + 6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px + pw/2 - 76, py + ph/2 - 66); ctx.lineTo(px + pw/2 + 64, py + ph/2 - 86); ctx.stroke();
+      ctx.fillStyle = 'rgba(120,90,60,.55)';
+      ctx.font = '500 26px ' + SHARE_FONT; ctx.textAlign = 'center';
+      ctx.fillText('还没有照片 · 下次记得拍一张', px + pw/2, py + ph/2 + 82);
+      ctx.restore();
+    }
+    ctx.strokeStyle = 'rgba(90,60,30,.18)'; ctx.lineWidth = 2;
+    ctx.strokeRect(px, py, pw, ph);
+
+    /* 拍立得底部手写感注释 */
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#6f5a40';
+    ctx.font = 'italic 400 30px ' + SHARE_FONT;
+    ctx.fillText('今日打卡 · ' + ticketDateText(todayStr()), px + 6, fy + fh - 52);
+    ctx.font = '400 22px ' + SHARE_FONT;
+    ctx.fillStyle = '#9a7f5c';
+    ctx.fillText('拍下这一顿，留住这条街的味道', px + 6, fy + fh - 20);
+    ctx.restore();
+
+    /* 胶带 */
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = '#e8dcc2';
+    ctx.translate(fx + 24, fy + 8); ctx.rotate(-0.18); ctx.fillRect(-52, -18, 104, 38);
+    ctx.translate(fw - 60, 0); ctx.rotate(0.36); ctx.fillRect(-48, -18, 96, 38);
+    ctx.restore();
+
+    /* 店名 / 位置 */
+    var name = String((data && data.name) || '这家店');
+    ctx.save();
+    ctx.fillStyle = '#2b2118';
+    ctx.font = '800 58px ' + SHARE_FONT;
+    ctx.textAlign = 'left';
+    var ny = drawWrapped(ctx, name, 100, 952, W - 300, 70, 1);
+    ctx.fillStyle = '#7a6148';
+    ctx.font = '400 26px ' + SHARE_FONT;
+    var metaBits = [];
+    if(data && data.store && data.store.category) metaBits.push(data.store.category);
+    if(data && data.place) metaBits.push(data.place);
+    if(data && data.store && num(data.store.perPrice) > 0) metaBits.push('参考人均 ¥' + num(data.store.perPrice));
+    ctx.fillText(metaBits.join(' · '), 100, Math.max(ny, 952) + 46);
+    ctx.restore();
+
+    /* 「必吃推荐」印章 */
+    var dims = (data && data.store && data.store.ratings) || {};
+    var vals = [num(dims.taste), num(dims.env), num(dims.service), num(dims.value)];
+    var rated = vals.filter(function(v){ return v > 0; });
+    var avg = rated.length ? rated.reduce(function(a,b){ return a+b; }, 0) / rated.length : 0;
+    var sealLabel = avg >= 4.5 ? '神级好吃' : (avg >= 4.0 ? '必吃推荐' : (avg >= 3.0 ? '值得一试' : '随便吃吃'));
+    ticketSeal(ctx, W - 246, 862, 118, -0.20, sealLabel, avg > 0 ? avg.toFixed(1) + ' 分' : '未评分');
+
+    /* 四维评分印章 */
+    ctx.save();
+    ctx.fillStyle = '#8c6f4c';
+    ctx.font = '600 22px ' + SHARE_FONT;
+    ctx.textAlign = 'left';
+    ctx.fillText('四维评分 · 手填记录', 100, 1048);
+    ctx.restore();
+    var labels = [
+      { k:'口味', v:num(dims.taste) },
+      { k:'环境', v:num(dims.env) },
+      { k:'服务', v:num(dims.service) },
+      { k:'性价比', v:num(dims.value) }
+    ];
+    labels.forEach(function(d, i){
+      var rot = [-0.13, 0.09, -0.07, 0.14][i];
+      ticketDimensionStamp(ctx, 185 + i * 237, 1170, d.k, d.v > 0 ? d.v.toFixed(1) : '—', rot);
+    });
+
+    /* 撕票虚线 */
+    ctx.save();
+    ctx.strokeStyle = 'rgba(110,78,44,.45)'; ctx.lineWidth = 3;
+    ctx.setLineDash([16, 10]);
+    ctx.beginPath(); ctx.moveTo(56, 1302); ctx.lineTo(W - 56, 1302); ctx.stroke();
+    ctx.setLineDash([]);
+    /* 撕口圆点 */
+    ctx.fillStyle = 'rgba(110,78,44,.40)';
+    ctx.beginPath(); ctx.arc(56, 1302, 9, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(W - 56, 1302, 9, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    /* 票号 / 日期 */
+    ctx.save();
+    ctx.fillStyle = '#4a3a28';
+    ctx.font = '600 24px ' + SHARE_FONT;
+    ctx.textAlign = 'left';
+    var serial = ticketSerial(todayStr(), name);
+    ctx.fillText('NO. ' + serial, 100, 1352);
+    ctx.textAlign = 'right';
+    ctx.fillText(ticketDateText(todayStr()), W - 100, 1352);
+    ctx.restore();
+
+    /* 装饰条形码（由日期生成） */
+    ticketBarcode(ctx, serial, 150, 1372, 780, 118);
+
+    /* 存根文字 */
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#7a6148';
+    ctx.font = '500 26px ' + SHARE_FONT;
+    ctx.fillText('凭此票 · 随时再来一顿', W / 2, 1532);
+    ctx.fillStyle = '#a08a6c';
+    ctx.font = '400 20px ' + SHARE_FONT;
+    ctx.fillText('本票为本地生成的手账纪念，不具任何消费效力', W / 2, 1564);
+    ctx.restore();
+
+    /* 锯齿边缘阴影强调 */
+    ctx.save();
+    ctx.strokeStyle = 'rgba(70,45,20,.16)'; ctx.lineWidth = 2;
+    ticketZigzag(ctx, W, bodyH, toothH, 44); ctx.stroke();
+    ctx.restore();
+
+    return c;
+  }
+
+  var shareTemplate = 'poster';
+  function openShareImage(kind, tpl){
     try{
       var data = shareDataOf(kind);
       if(!data){ toast('先得到一个推荐或抽签结果'); return; }
-      var canvas = renderShareCanvas(data);
-      shareImage = { canvas: canvas, data: data };
-      $('#imgHint').textContent = data.title+' · 1080×1350 · 本地绘制';
-      $('#imgWrap').innerHTML = '<img src="'+canvas.toDataURL('image/png')+'" alt="分享图预览">';
+      shareTemplate = tpl === 'ticket' ? 'ticket' : 'poster';
+      shareImage = { canvas:null, data: data, template: shareTemplate };
       $('#imgMask').classList.remove('hidden');
+      renderShareTemplate();
     }catch(e){
       logError('分享图绘制', e);
       var txt = shareImageText(kind);
       if(txt) copyText(txt);
       toast('绘图失败，已改为复制文字');
     }
+  }
+  function renderShareTemplate(){
+    if(!shareImage || !shareImage.data) return Promise.resolve(null);
+    var data = shareImage.data;
+    var tpl = shareImage.template || 'poster';
+    if($('#imgTplSeg')){
+      $$('#imgTplSeg button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-tpl') === tpl); });
+    }
+    if(tpl === 'ticket'){
+      return ticketPhotoUrl(data).then(function(url){
+        return ticketLoadImage(url).then(function(img){
+          var c = renderTicketCanvas(data, img);
+          shareImage.canvas = c;
+          if($('#imgHint')) $('#imgHint').textContent = '复古票根 · 1080×1620 · 本地绘制';
+          if($('#imgWrap')) $('#imgWrap').innerHTML = '<img src="'+c.toDataURL('image/png')+'" alt="复古票根预览">';
+          return c;
+        });
+      });
+    }
+    var c = renderShareCanvas(data);
+    shareImage.canvas = c;
+    if($('#imgHint')) $('#imgHint').textContent = data.title+' · 1080×1350 · 本地绘制';
+    if($('#imgWrap')) $('#imgWrap').innerHTML = '<img src="'+c.toDataURL('image/png')+'" alt="分享图预览">';
+    return Promise.resolve(c);
   }
   function closeShareImage(){ $('#imgMask').classList.add('hidden'); }
   function shareImageBlob(cb){
@@ -15905,7 +16280,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function saveShareImage(){
     var kind = shareImage && shareImage.data ? shareImage.data.kind : 'daily';
-    var imgName = 'i吃饭-'+todayStr()+'-'+(kind === 'draw' ? '抽签' : (kind === 'friend' ? '朋友推荐' : '推荐'))+'.png';
+    var kindName = shareImage && shareImage.template === 'ticket' ? '票根'
+      : (kind === 'draw' ? '抽签' : (kind === 'friend' ? '朋友推荐' : '推荐'));
+    var imgName = 'i吃饭-'+todayStr()+'-'+kindName+'.png';
     if(nativeFileBridge()){
       shareImageBlob(function(blob){
         if(!blob){
@@ -15957,6 +16334,143 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         saveShareImage();
       }
     });
+  }
+
+  /* 复制图片：附加项；环境不支持时明确提示改用「保存图片」，不抛异常 */
+  function copyShareImage(){
+    var cv = shareImage && shareImage.canvas;
+    if(!cv){ toast('图片还没生成好，请稍候或改用「保存图片」'); return; }
+    if(!navigator.clipboard || typeof navigator.clipboard.write !== 'function' || typeof ClipboardItem === 'undefined'){
+      toast('当前环境不支持复制图片，请改用「保存图片」');
+      return;
+    }
+    try{
+      cv.toBlob(function(blob){
+        if(!blob){ toast('图片生成失败，请改用「保存图片」'); return; }
+        try{
+          navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+            .then(function(){ toast('图片已复制到剪贴板'); })
+            .catch(function(){ toast('复制图片失败，请改用「保存图片」'); });
+        }catch(e){
+          toast('复制图片失败，请改用「保存图片」');
+        }
+      }, 'image/png');
+    }catch(e){
+      toast('当前环境不支持复制图片，请改用「保存图片」');
+    }
+  }
+
+  /* ================= AA 分账（只生成文案，绝不写入实付） ================= */
+  var aaEditingId = '';
+  function aaMoney(c){ return (Math.round(c) / 100).toFixed(2); }
+  function aaCeil10(c){ return Math.ceil(c / 10) * 10; }
+  function aaFloor100(c){ return Math.floor(c / 100) * 100; }
+  function openAA(id){
+    aaEditingId = id || '';
+    var total = 0, people = 4;
+    if(aaEditingId){
+      var r = recordById(aaEditingId);
+      if(r){
+        people = Math.max(1, Math.round(num(r.people) || 1));
+        total = num(r.totalPrice) > 0 ? num(r.totalPrice) : (num(r.perPrice) * people);
+      }
+    }else{
+      people = Math.max(1, Math.round(num($('#f-people').value) || 1));
+      total = num($('#f-total').value) > 0 ? num($('#f-total').value) : (num($('#f-per').value) * people);
+    }
+    $('#aaTotal').value = total > 0 ? total : '';
+    $('#aaPeople').value = people;
+    $('#aaExtra').value = '';
+    $('#aaNoExtra').value = '0';
+    $('#aaRound').checked = true;
+    $('#aaWipe').checked = false;
+    $('#aaMsg').textContent = '';
+    aaCalc();
+    $('#aaMask').classList.remove('hidden');
+    try{ $('#aaTotal').focus(); }catch(e){}
+  }
+  function closeAA(){ $('#aaMask').classList.add('hidden'); }
+  function aaCalc(){
+    var T = Math.round(num($('#aaTotal').value) * 100);
+    var N = Math.round(num($('#aaPeople').value));
+    var E = Math.round(num($('#aaExtra').value) * 100);
+    var K = Math.round(num($('#aaNoExtra').value));
+    var roundTo10 = $('#aaRound').checked;
+    var wipe = $('#aaWipe').checked;
+    var out = $('#aaOut'), msg = $('#aaMsg'), ta = $('#aaText');
+    if(!out || !ta) return null;
+    if(!(T > 0) || !(N > 0)){
+      out.innerHTML = '<p class="muted" style="margin:0">填总额和人数后显示结果。</p>';
+      ta.value = '';
+      if(msg) msg.textContent = '';
+      return null;
+    }
+    if(E < 0) E = 0;
+    if(K < 0) K = 0;
+    if(E > T){ out.innerHTML = ''; ta.value = ''; if(msg) msg.textContent = '酒水等费用不能超过总额。'; return null; }
+    if(K > N){ out.innerHTML = ''; ta.value = ''; if(msg) msg.textContent = '不分摊酒水的人数不能超过总人数。'; return null; }
+    var extras = N - K;                 /* 分摊酒水的人（含发起人） */
+    var baseEach = Math.floor((T - E) / N);
+    var extraEach = extras > 0 ? Math.floor(E / extras) : 0;
+    var aRaw = baseEach + extraEach;    /* 分摊酒水的人：未取整 */
+    var bRaw = baseEach;                /* 不分摊酒水的人：未取整 */
+    var a = roundTo10 ? aaCeil10(aRaw) : aRaw;
+    var b = roundTo10 ? aaCeil10(bRaw) : bRaw;
+    var othersPre = (extras > 0 ? (extras - 1) * a : 0) + K * b;
+    var wipeDiff = 0;
+    if(wipe){
+      a = aaFloor100(a); b = aaFloor100(b);
+      wipeDiff = othersPre - ((extras > 0 ? (extras - 1) * a : 0) + K * b);
+    }
+    var others = (extras > 0 ? (extras - 1) * a : 0) + K * b;
+    var initiator = T - others;
+    if(initiator < 0){
+      /* 兜底：不取整也不抹零，保证发起人金额非负且总额守恒 */
+      a = aRaw; b = bRaw; wipeDiff = 0;
+      others = (extras > 0 ? (extras - 1) * a : 0) + K * b;
+      initiator = T - others;
+    }
+    var ownRaw = extras > 0 ? aRaw : bRaw;
+    var diff = initiator - ownRaw;
+    var rows = [
+      { label:(extras > 0 ? '分摊酒水的人' : '所有人')+'（'+(extras > 0 ? extras : N)+' 人）', value:'¥'+aaMoney(extras > 0 ? a : b)+' / 人' }
+    ];
+    if(extras > 0) rows.push({ label:'不含酒水的人（'+K+' 人）', value:'¥'+aaMoney(b)+' / 人' });
+    rows.push({ label:'发起人（你）', value:'¥'+aaMoney(initiator) });
+    rows.push({ label:'合计', value:'¥'+aaMoney(others + initiator)+' = 总额 ¥'+aaMoney(T), strong:true });
+    var html = rows.map(function(x){
+      return '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px'+(x.strong?';font-weight:700':'')+'">' +
+        '<span>'+esc(x.label)+'</span><span style="font-variant-numeric:tabular-nums">'+esc(x.value)+'</span></div>';
+    }).join('');
+    var notes = [];
+    if(E > 0 && extras > 0) notes.push('酒水等 ¥'+aaMoney(E)+' 由 '+extras+' 人分摊，'+K+' 人不分摊。');
+    if(E > 0 && extras === 0) notes.push('所有人都不分摊酒水，酒水 ¥'+aaMoney(E)+' 由发起人承担。');
+    if(roundTo10) notes.push('除不尽已向上取整到角，差额计入发起人。');
+    if(wipe && wipeDiff > 0) notes.push('抹零到元，抹掉的 ¥'+aaMoney(wipeDiff)+' 由发起人承担。');
+    if(diff !== 0) notes.push('发起人该金额'+(diff > 0 ? '多承担' : '少付')+' ¥'+aaMoney(Math.abs(diff))+'（取整 / 除不尽的差额）。');
+    out.innerHTML = html + (notes.length ? '<p class="muted" style="margin-top:8px;line-height:1.7">'+esc(notes.join(' '))+'</p>' : '');
+    var lines = ['【AA 分账】总额 ¥'+aaMoney(T)+'，共 '+N+' 人'];
+    if(extras > 0){
+      lines.push('分摊酒水等（'+extras+' 人）：¥'+aaMoney(a)+' / 人');
+      lines.push('不含酒水（'+K+' 人）：¥'+aaMoney(b)+' / 人');
+    }else{
+      lines.push('所有人（'+N+' 人）：¥'+aaMoney(b)+' / 人');
+    }
+    lines.push('发起人（你）：¥'+aaMoney(initiator));
+    lines.push('合计 ¥'+aaMoney(others + initiator)+'，与总额一致');
+    if(E > 0) lines.push(extras > 0 ? '酒水等 ¥'+aaMoney(E)+' 由 '+extras+' 人分摊' : '酒水等 ¥'+aaMoney(E)+' 由发起人承担');
+    if(roundTo10) lines.push('除不尽已向上取整到角，差额计入发起人');
+    if(wipe && wipeDiff > 0) lines.push('抹零差额 ¥'+aaMoney(wipeDiff)+' 由发起人承担');
+    if(diff !== 0) lines.push('发起人'+(diff > 0 ? '多承担' : '少付')+' ¥'+aaMoney(Math.abs(diff)));
+    lines.push('（金额只用于收款文案，不写入记录的实付）');
+    ta.value = lines.join('\n');
+    if(msg) msg.textContent = '';
+    return { T:T, N:N, E:E, K:K, extras:extras, a:a, b:b, initiator:initiator, others:others, diff:diff, wipeDiff:wipeDiff, text:ta.value };
+  }
+  function aaCopyText(){
+    var text = $('#aaText') ? $('#aaText').value : '';
+    if(!text){ toast('先填总额和人数'); return; }
+    copyText(text);
   }
 
   /* ================= 首次使用引导 ================= */
@@ -19387,6 +19901,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     else if(act === 'importShare'){ openImport({}); }
     else if(act === 'edit'){ openForm(id); }
     else if(act === 'del'){ deleteRecord(id); }
+    else if(act === 'aa'){ openAA(id); }
     else if(act === 'again'){ haptic(10); eatAgain(id); }
     else if(act === 'black'){
       var rb = recordById(id);
@@ -19790,8 +20305,29 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   $('#btnImgCopy').addEventListener('click', function(){
     if(shareImage) copyText(shareImageText(shareImage.data.kind));
   });
+  $('#btnImgCopyImage').addEventListener('click', copyShareImage);
+  if($('#imgTplSeg')){
+    $('#imgTplSeg').addEventListener('click', function(e){
+      var b = e.target && e.target.closest ? e.target.closest('button[data-tpl]') : null;
+      if(!b || !shareImage) return;
+      shareImage.template = b.getAttribute('data-tpl');
+      renderShareTemplate();
+    });
+  }
   $('#btnImgClose').addEventListener('click', closeShareImage);
   $('#imgMask').addEventListener('click', function(e){ if(e.target === this) closeShareImage(); });
+  if($('#btnAA')) $('#btnAA').addEventListener('click', function(){ openAA(''); });
+  if($('#aaMask')){
+    ['#aaTotal','#aaPeople','#aaExtra','#aaNoExtra'].forEach(function(sel){
+      var el = $(sel);
+      if(el){ el.addEventListener('input', aaCalc); el.addEventListener('change', aaCalc); }
+    });
+    $('#aaRound').addEventListener('change', aaCalc);
+    $('#aaWipe').addEventListener('change', aaCalc);
+    $('#aaCopy').addEventListener('click', aaCopyText);
+    $('#aaCloseBtn').addEventListener('click', closeAA);
+    $('#aaMask').addEventListener('click', function(e){ if(e.target === this) closeAA(); });
+  }
   $$('#mealSeg button').forEach(function(b){
     b.addEventListener('click', function(){
       $('#mealSeg').setAttribute('data-meal', b.getAttribute('data-meal'));
@@ -20706,6 +21242,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     annualArchMask: closeAnnualArchivePreview,
     longMask: closeLongImages,
     imgMask: closeShareImage,
+    aaMask: closeAA,
     photoViewMask: closePhotoView,
     guideMask: closeGuide,
     tutMask: closeTutorial
@@ -22723,6 +23260,61 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           });
         });
       }
+    },
+    aa: {
+      open: openAA,
+      close: closeAA,
+      calc: aaCalc,
+      state: function(){
+        return {
+          total:$('#aaTotal') ? $('#aaTotal').value : '',
+          people:$('#aaPeople') ? $('#aaPeople').value : '',
+          extra:$('#aaExtra') ? $('#aaExtra').value : '',
+          noExtra:$('#aaNoExtra') ? $('#aaNoExtra').value : '',
+          round:$('#aaRound') ? $('#aaRound').checked : false,
+          wipe:$('#aaWipe') ? $('#aaWipe').checked : false,
+          text:$('#aaText') ? $('#aaText').value : '',
+          msg:$('#aaMsg') ? $('#aaMsg').textContent : '',
+          out:$('#aaOut') ? $('#aaOut').textContent : '',
+          open: $('#aaMask') ? !$('#aaMask').classList.contains('hidden') : false
+        };
+      },
+      set: function(o){
+        if(o.total != null) $('#aaTotal').value = o.total;
+        if(o.people != null) $('#aaPeople').value = o.people;
+        if(o.extra != null) $('#aaExtra').value = o.extra;
+        if(o.noExtra != null) $('#aaNoExtra').value = o.noExtra;
+        if(o.round != null) $('#aaRound').checked = !!o.round;
+        if(o.wipe != null) $('#aaWipe').checked = !!o.wipe;
+        return aaCalc();
+      },
+      fields: function(){ return { total:$('#f-total').value, per:$('#f-per').value, people:$('#f-people').value }; }
+    },
+    ticket: {
+      render: renderTicketCanvas,
+      photo: ticketPhotoUrl,
+      preview: function(data){
+        shareImage = { canvas:null, data:data, template:'ticket' };
+        $('#imgMask').classList.remove('hidden');
+        return renderShareTemplate().then(function(c){
+          return { w:c.width, h:c.height, template:shareImage.template, hint:$('#imgHint').textContent, img:!!$('#imgWrap img') };
+        });
+      },
+      state: function(){
+        return {
+          template: shareImage ? shareImage.template : '',
+          w: shareImage && shareImage.canvas ? shareImage.canvas.width : 0,
+          h: shareImage && shareImage.canvas ? shareImage.canvas.height : 0,
+          hint: $('#imgHint') ? $('#imgHint').textContent : '',
+          img: $('#imgWrap img') ? $('#imgWrap img').src.slice(0, 22) : '',
+          hasCanvas: !!(shareImage && shareImage.canvas),
+          open: $('#imgMask') ? !$('#imgMask').classList.contains('hidden') : false
+        };
+      },
+      copy: copyShareImage,
+      close: closeShareImage,
+      serial: ticketSerial,
+      dateText: ticketDateText
     },
     webdav: {
       cfg: webdavCfg,
