@@ -7,6 +7,7 @@
 <script>(function(){try{var v=localStorage.getItem('fandazi.theme');if(v!=='light'&&v!=='dark')v='auto';var d=v==='auto'?(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):v;document.documentElement.setAttribute('data-theme',d);
 var s=localStorage.getItem('fandazi.skin');if(s!=='p3'&&s!=='p4'&&s!=='p5')s='none';document.documentElement.setAttribute('data-skin',s);
 var tx=localStorage.getItem('fandazi.skinTexture');if(tx!=='on'&&tx!=='off')tx='on';document.documentElement.setAttribute('data-skin-texture',tx);
+var ic=localStorage.getItem('fandazi.iconStyle');document.documentElement.setAttribute('data-icon-style',ic==='b'?'b':'a');
 var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',d==='dark'?'#14110e':'#faf7f2');}catch(e){document.documentElement.setAttribute('data-theme','light');document.documentElement.setAttribute('data-skin','none');}})();</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -1724,6 +1725,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           <button type="button" class="chip-toggle" id="skinTextureBtn" aria-pressed="false">减少纹理</button>
           <span class="muted" id="skinTextureHint" style="margin-left:6px">网点 / 扫描线 / 噪点仅作背景纹理，可关闭。</span>
         </div>
+
+        <div class="section-head" style="margin:16px 0 8px">
+          <h2>图标风格</h2>
+          <span class="hint" id="iconStyleHint">A 定位碗</span>
+        </div>
+        <div class="stat-seg" id="iconStyleSeg" role="group" aria-label="应用内图标风格">
+          <button type="button" data-icon-set="a">A 定位碗</button>
+          <button type="button" data-icon-set="b">B 城市一碗</button>
+        </div>
+        <p class="muted" id="iconStyleDesc" style="margin-top:9px;line-height:1.65">只切换应用内图标（导航栏、按钮、空状态等），立即生效并记住选择；与明暗、风格皮肤互不影响。桌面 / PWA 图标固定为 A，系统不允许应用内切换启动图标。</p>
       </div>
 
       <div class="card" id="aboutCard">
@@ -5808,14 +5819,77 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
     phoneUp: '<rect x="6" y="3" width="12" height="18" rx="2.5"/><path d="M12 16V8M9 11l3-3 3 3"/>'
   };
-  function icon(name, cls){ return '<svg class="ico '+(cls||'ico-16')+'" viewBox="0 0 24 24" aria-hidden="true">'+(ICON[name]||'')+'</svg>'; }
-  /* 静态标记里的图标只写 data-ico 名，启动时统一灌入路径，避免同一图标到处复制。 */
-  function hydrateIcons(root){
+  /* 图标套件 B「城市一碗」：同一语义的实心 / 粗线版本，与 A（线性细描边）形成两套可切换风格。
+     几何仍是 24 网格；颜色同样只用 currentColor，因此与明暗、皮肤完全正交。 */
+  var ICON_B = {
+    home: '<g stroke="none"><path fill="currentColor" fill-rule="evenodd" d="M12 2.6 21.5 10.9h-2.6v9.5H5.1v-9.5H2.5zM7.3 10v7.3h3.1v-4.5h3.2v4.5h3.1V10z"/><rect x="10.4" y="13" width="3.2" height="4.3" fill="currentColor"/></g>',
+    decide: '<g stroke="none"><path fill="currentColor" fill-rule="evenodd" d="M12 3.1a8.9 8.9 0 1 0 0 17.8 8.9 8.9 0 0 0 0-17.8zm4.3 4.3-6.2 2.9-2.9 6.2 6.2-2.9z"/></g>',
+    idea: '<g stroke="none"><g fill="currentColor"><rect x="4" y="5.4" width="13" height="2.8" rx="1.4"/><rect x="7" y="10.6" width="13" height="2.8" rx="1.4"/><rect x="4" y="15.8" width="13" height="2.8" rx="1.4"/><circle cx="19" cy="6.8" r="2.5"/><circle cx="4" cy="12" r="2.5"/><circle cx="19" cy="17.2" r="2.5"/></g></g>',
+    random: '<g stroke="none"><path fill="currentColor" fill-rule="evenodd" d="M7.2 3.6h9.6a3.6 3.6 0 0 1 3.6 3.6v9.6a3.6 3.6 0 0 1-3.6 3.6H7.2a3.6 3.6 0 0 1-3.6-3.6V7.2a3.6 3.6 0 0 1 3.6-3.6zM8.9 8.9a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2zm6.2 0a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2zM8.9 15.1a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2zm6.2 0a2.1 2.1 0 1 0 0 4.2 2.1 2.1 0 0 0 0-4.2z"/></g>',
+    bowl: '<g stroke="none"><rect x="3" y="9.4" width="18" height="2.9" rx="1.45" fill="currentColor"/><path d="M3.6 12.9h16.8c0 4.9-3.7 8.2-8.4 8.2s-8.4-3.3-8.4-8.2z" fill="currentColor"/><path d="M13.6 9.2 19.9 3.4" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/></g>',
+    record: '<g stroke="none"><rect x="3" y="9.4" width="18" height="2.9" rx="1.45" fill="currentColor"/><path d="M3.6 12.9h16.8c0 4.9-3.7 8.2-8.4 8.2s-8.4-3.3-8.4-8.2z" fill="currentColor"/><path d="M13.6 9.2 19.9 3.4" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/></g>',
+    diary: '<g stroke="none"><rect x="4.6" y="3.5" width="15.4" height="17" rx="2.5" fill="currentColor" fill-opacity=".62"/><g fill="currentColor"><rect x="7.4" y="7.8" width="9.8" height="1.9" rx=".95"/><rect x="7.4" y="11.4" width="9.8" height="1.9" rx=".95"/><rect x="7.4" y="15" width="6.4" height="1.9" rx=".95"/></g><rect x="2" y="7.2" width="3.4" height="1.8" rx=".9" fill="currentColor"/><rect x="2" y="12.2" width="3.4" height="1.8" rx=".9" fill="currentColor"/></g>',
+    map: '<g stroke="none"><path d="M3.4 5.3 8.5 3.4v15.5l-5.1 1.9z" fill="currentColor"/><path d="M10 3.4 15 5.9v15.5l-5-2.5z" fill="currentColor" fill-opacity=".68"/><path d="M16.5 5.9 20.6 4.4v15.5l-4.1 1.5z" fill="currentColor"/></g>',
+    stats: '<g stroke="none"><rect x="4.2" y="17.4" width="15.6" height="2.2" rx="1.1" fill="currentColor"/><rect x="6.1" y="10.6" width="3.4" height="6.9" rx="1.2" fill="currentColor"/><rect x="10.3" y="5.9" width="3.4" height="11.6" rx="1.2" fill="currentColor" fill-opacity=".78"/><rect x="14.5" y="8.9" width="3.4" height="8.6" rx="1.2" fill="currentColor"/></g>',
+    user: '<g stroke="none"><circle cx="12" cy="7.7" r="3.9" fill="currentColor"/><path d="M4.3 20.3c0-4.1 3.5-6.7 7.7-6.7s7.7 2.6 7.7 6.7z" fill="currentColor"/></g>',
+    backup: '<g stroke="none"><path d="M12 3.4 6.8 8.6h3.4v5.6h3.6V8.6h3.4z" fill="currentColor"/><path d="M4.2 14.2h15.6v4.1a2.2 2.2 0 0 1-2.2 2.2H6.4a2.2 2.2 0 0 1-2.2-2.2z" fill="currentColor" fill-opacity=".75"/></g>',
+    settings: '<g stroke="none"><g fill="currentColor"><rect x="10.6" y="1.4" width="2.8" height="3.6" rx="1.4"/><rect x="10.6" y="19" width="2.8" height="3.6" rx="1.4"/><rect x="1.4" y="10.6" width="3.6" height="2.8" rx="1.4"/><rect x="19" y="10.6" width="3.6" height="2.8" rx="1.4"/></g><path fill="currentColor" fill-rule="evenodd" d="M12 4.8a7.2 7.2 0 1 0 0 14.4 7.2 7.2 0 0 0 0-14.4zm0 3.6a3.6 3.6 0 1 1 0 7.2 3.6 3.6 0 0 1 0-7.2z"/></g>',
+    share: '<g stroke="none"><g fill="currentColor"><circle cx="6" cy="12" r="2.7"/><circle cx="17.7" cy="6.3" r="2.7"/><circle cx="17.7" cy="17.7" r="2.7"/></g><path d="M8.4 10.7 15.3 7.6M8.4 13.3 15.3 16.4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></g>',
+    download: '<g stroke="none"><path d="M12 3.2 7.2 8.1h3.2v6.1h3.2V8.1h3.2z" fill="currentColor"/><path d="M4.4 14.4h15.2v4a2 2 0 0 1-2 2H6.4a2 2 0 0 1-2-2z" fill="currentColor" fill-opacity=".75"/></g>',
+    importData: '<g stroke="none"><path d="M12 3.2 16.8 8.1h-3.2v6.1h-3.2V8.1H7.2z" fill="currentColor"/><path d="M4.4 14.4h15.2v4a2 2 0 0 1-2 2H6.4a2 2 0 0 1-2-2z" fill="currentColor" fill-opacity=".75"/></g>',
+    trash: '<g stroke="none"><rect x="4" y="6.6" width="16" height="2.3" rx="1.15" fill="currentColor"/><rect x="8.8" y="3.4" width="6.4" height="2.2" rx="1.1" fill="currentColor"/><path d="M5.6 9.4h12.8l-.9 9.4a2 2 0 0 1-2 1.8h-7a2 2 0 0 1-2-1.8z" fill="currentColor"/></g>',
+    edit: '<g stroke="none"><path d="M4.2 19.8l1.1-4.2L15.9 5a2.4 2.4 0 0 1 3.4 3.4L8.4 18.7z" fill="currentColor"/></g>',
+    camera: '<g stroke="none"><path fill="currentColor" fill-rule="evenodd" d="M6.6 5.9h2.6l1.2-1.9h5.2l1.2 1.9h2.6a2.4 2.4 0 0 1 2.4 2.4v8.6a2.4 2.4 0 0 1-2.4 2.4H6.6a2.4 2.4 0 0 1-2.4-2.4V8.3a2.4 2.4 0 0 1 2.4-2.4zm5.4 3.2a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2z"/></g>',
+    locate: '<g stroke="none"><g fill="currentColor"><rect x="10.9" y="2.2" width="2.2" height="4" rx="1.1"/><rect x="10.9" y="17.8" width="2.2" height="4" rx="1.1"/><rect x="2.2" y="10.9" width="4" height="2.2" rx="1.1"/><rect x="17.8" y="10.9" width="4" height="2.2" rx="1.1"/></g><path fill="currentColor" fill-rule="evenodd" d="M12 6.1a5.9 5.9 0 1 0 0 11.8 5.9 5.9 0 0 0 0-11.8zm0 8.3a2.4 2.4 0 1 1 0-4.8 2.4 2.4 0 0 1 0 4.8z"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/></g>',
+    refresh: '<g stroke="none"><path d="M18.9 12a6.9 6.9 0 1 1-2.1-4.9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M19.2 3.3 19.4 8.1 14.6 7.7z" fill="currentColor"/></g>',
+    swap: '<g stroke="none"><path d="M3.6 7.1h4c4.6 0 5.4 9.8 10 9.8h3.4" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/><path d="M17.4 14.5l3.4 2.5-3.4 2.5z" fill="currentColor"/><path d="M3.6 17.9h4c1.8 0 3-1.5 4-3.4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" fill="none"/><path d="M17.4 3.5l3.4 2.5-3.4 2.5z" fill="currentColor"/><path d="M12 10.1c.9-1.6 2.5-2.9 4.6-2.9h3.4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" fill="none"/></g>',
+    close: '<g stroke="none"><path d="M6.8 6.8 17.2 17.2M17.2 6.8 6.8 17.2" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></g>',
+    chevronLeft: '<g stroke="none"><path d="M14.4 4.9 7.4 12l7 7.1" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></g>',
+    chevronRight: '<g stroke="none"><path d="M9.6 4.9 16.6 12l-7 7.1" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></g>',
+    chevronUp: '<g stroke="none"><path d="M4.9 14.4 12 7.4l7.1 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></g>',
+    chevronDown: '<g stroke="none"><path d="M4.9 9.6 12 16.6l7.1-7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></g>',
+    plus: '<g stroke="none"><g fill="currentColor"><rect x="10.8" y="4.4" width="2.4" height="15.2" rx="1.2"/><rect x="4.4" y="10.8" width="15.2" height="2.4" rx="1.2"/></g></g>',
+    minus: '<g stroke="none"><rect x="4.4" y="10.8" width="15.2" height="2.4" rx="1.2" fill="currentColor"/></g>',
+    moveUp: '<g stroke="none"><path d="M12 3.6 17.6 9.2h-4.1v10.9h-3V9.2H6.4z" fill="currentColor"/></g>',
+    moveDown: '<g stroke="none"><path d="M12 20.4 6.4 14.8h4.1V3.9h3v10.9h4.1z" fill="currentColor"/></g>',
+    star: '<g stroke="none"><path d="M12 3.1l2.8 5.7 6.3 1-4.6 4.4 1.1 6.3-5.6-3-5.6 3 1.1-6.3-4.6-4.4 6.3-1z" fill="currentColor"/></g>',
+    pin: '<g stroke="none"><path fill="currentColor" fill-rule="evenodd" d="M12 21.2s6.8-6.5 6.8-11a6.8 6.8 0 0 0-13.6 0c0 4.5 6.8 11 6.8 11zm0-13.9a2.7 2.7 0 1 0 0 5.4 2.7 2.7 0 0 0 0-5.4z"/></g>',
+    ext: '<g stroke="none"><path d="M13.2 3.8h7v7h-2.2V7.6l-7 7-1.6-1.6 7-7h-3.2z" fill="currentColor"/><path d="M17.6 13.4v5.2a2 2 0 0 1-2 2H5.9a2 2 0 0 1-2-2V8.9a2 2 0 0 1 2-2h5.2v2.2H6.1v10.3h10.3v-5.1z" fill="currentColor"/></g>',
+    eyeOff: '<g stroke="none"><path d="M2.4 13.2C3.4 11.1 7.2 6.6 12.2 6.6s8.8 4.5 9.8 6.6c-1 2.1-4.8 6.6-9.8 6.6s-8.8-4.5-9.8-6.6z" fill="currentColor" fill-opacity=".72"/><circle cx="12.2" cy="13.2" r="3.1" fill="currentColor"/><rect x="3" y="10.9" width="18.6" height="2.4" rx="1.2" transform="rotate(-42 12 12)" fill="currentColor"/></g>',
+    mic: '<g stroke="none"><rect x="8.8" y="2.6" width="6.4" height="10.8" rx="3.2" fill="currentColor"/><path d="M5.6 11.2a6.4 6.4 0 0 0 12.8 0" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M12 17.8v2.8M8.8 20.6h6.4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></g>',
+    repeat: '<g stroke="none"><path d="M4.2 10.8A7.8 7.8 0 0 1 17.5 5.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M19.4 3.2 18.9 8.5 13.6 7.4z" fill="currentColor"/><path d="M19.8 13.2A7.8 7.8 0 0 1 6.5 18.8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M4.6 20.8 5.1 15.5 10.4 16.6z" fill="currentColor"/></g>',
+    select: '<g stroke="none"><g fill="currentColor" fill-opacity=".62"><rect x="3.2" y="3.8" width="7.4" height="7.4" rx="2"/><rect x="3.2" y="13.8" width="7.4" height="7.4" rx="2"/></g><path d="M5 7.2l1.4 1.5 2.6-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><g fill="currentColor" fill-opacity=".62"><rect x="13" y="4.4" width="7.8" height="2.2" rx="1.1"/><rect x="13" y="7.6" width="5.6" height="2.2" rx="1.1"/><rect x="13" y="14.4" width="7.8" height="2.2" rx="1.1"/><rect x="13" y="17.6" width="5.6" height="2.2" rx="1.1"/></g></g>',
+    file: '<g stroke="none"><path d="M5.2 2.8h8.2l4.8 4.8v13.6H5.2z" fill="currentColor"/><path d="M13.4 2.8v5h5z" fill="currentColor" fill-opacity=".55"/></g>',
+    lock: '<g stroke="none"><path d="M12 3.3a5 5 0 0 1 5 5v1.6h-2.3V8.3a2.7 2.7 0 0 0-5.4 0v1.6H6.9V8.3a5 5 0 0 1 5.1-5z" fill="currentColor"/><path fill="currentColor" fill-rule="evenodd" d="M6.2 10.9h11.6a2 2 0 0 1 2 2v6.4a2 2 0 0 1-2 2H6.2a2 2 0 0 1-2-2v-6.4a2 2 0 0 1 2-2zm5.8 2.3a2.4 2.4 0 0 0-1.2 4.5v1.4a1.2 1.2 0 0 0 2.4 0v-1.4a2.4 2.4 0 0 0-1.2-4.5z"/></g>',
+    link: '<g stroke="none"><path d="M10 14a4.2 4.2 0 0 0 6 0l2.7-2.7a4.2 4.2 0 0 0-6-6l-1.4 1.4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/><path d="M14 10a4.2 4.2 0 0 0-6 0l-2.7 2.7a4.2 4.2 0 0 0 6 6l1.4-1.4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></g>',
+    preview: '<g stroke="none"><rect x="2.8" y="3.4" width="18.4" height="17.2" rx="3" fill="currentColor" fill-opacity=".55"/><g fill="currentColor"><rect x="6" y="8" width="8" height="2.2" rx="1.1"/><rect x="6" y="11.4" width="8" height="2.2" rx="1.1"/><rect x="6" y="14.8" width="4.4" height="2.2" rx="1.1"/></g><path d="M13.6 15.6l1.6 1.6 3-3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></g>',
+    undo: '<g stroke="none"><path d="M4.4 11a7.8 7.8 0 1 1 2.4 5.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M3.4 4.8 3.8 10.4 9.4 9.9z" fill="currentColor"/><path d="M8.9 14.4l2.2 2.2 4.2-4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></g>',
+    grid: '<g stroke="none"><g fill="currentColor"><rect x="3.6" y="3.6" width="7.2" height="7.2" rx="2"/><rect x="13.2" y="3.6" width="7.2" height="7.2" rx="2"/><rect x="3.6" y="13.2" width="7.2" height="7.2" rx="2"/><rect x="13.2" y="13.2" width="7.2" height="7.2" rx="2"/></g></g>',
+    phoneUp: '<g stroke="none"><rect x="6.2" y="2.8" width="11.6" height="18.4" rx="2.6" fill="currentColor" fill-opacity=".55"/><path d="M12 16.4V7.3" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M12 6.2 15 9.9h-6z" fill="currentColor"/><rect x="10.4" y="2.8" width="3.2" height="1.6" rx=".8" fill="currentColor"/></g>'
+  };
+  var ICON_STYLE_KEY = 'fandazi.iconStyle';
+  var ICON_STYLE_NAMES = { a:'A 定位碗', b:'B 城市一碗' };
+  function readIconStyle(){
+    try{
+      var v = localStorage.getItem(ICON_STYLE_KEY);
+      return v === 'b' ? 'b' : 'a';
+    }catch(e){ return 'a'; }
+  }
+  var iconStyle = readIconStyle();
+  function iconPath(name){
+    var set = iconStyle === 'b' ? ICON_B : ICON;
+    var d = set[name];
+    if(d == null) d = ICON[name];
+    return d || '';
+  }
+  function icon(name, cls){ return '<svg class="ico '+(cls||'ico-16')+'" viewBox="0 0 24 24" aria-hidden="true" data-ico="'+name+'">'+iconPath(name)+'</svg>'; }
+  /* 静态标记里的图标只写 data-ico 名，启动时统一灌入路径；切换风格时强制重灌全部已渲染图标。 */
+  function hydrateIcons(root, force){
     var list = (root || document).querySelectorAll('svg[data-ico]');
     for(var i=0;i<list.length;i++){
       var el = list[i];
-      if(el.getAttribute('data-ico-done') === '1') continue;
-      el.innerHTML = ICON[el.getAttribute('data-ico')] || '';
+      if(!force && el.getAttribute('data-ico-done') === '1') continue;
+      el.innerHTML = iconPath(el.getAttribute('data-ico'));
       el.setAttribute('data-ico-done','1');
     }
   }
@@ -9475,6 +9549,37 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       setTimeout(function(){ try{ toast('检测到低端设备，已自动关闭背景纹理'); }catch(e){} }, 340);
     }
   }
+  /* ---- 应用内图标风格（fandazi.iconStyle）：与皮肤 / 明暗正交，只换图形 ---- */
+  function iconStyleDescText(){
+    return iconStyle === 'b'
+      ? 'B 城市一碗：实心 / 粗线图标，与 A 共用同一语义、网格与尺寸档位；切换即时生效。'
+      : 'A 定位碗：线性细描边图标（默认）；切换即时生效。';
+  }
+  function applyIconStyle(){
+    document.documentElement.setAttribute('data-icon-style', iconStyle);
+    var btns = document.querySelectorAll('#iconStyleSeg button');
+    for(var i = 0; i < btns.length; i++){
+      var on = btns[i].getAttribute('data-icon-set') === iconStyle;
+      btns[i].classList.toggle('on', on);
+      btns[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    var hint = $('#iconStyleHint'); if(hint) hint.textContent = ICON_STYLE_NAMES[iconStyle];
+    var desc = $('#iconStyleDesc');
+    if(desc) desc.textContent = iconStyleDescText() + ' 桌面 / PWA 图标固定为 A，系统不允许应用内切换启动图标。';
+  }
+  function setIconStyle(v, silent){
+    iconStyle = v === 'b' ? 'b' : 'a';
+    try{ localStorage.setItem(ICON_STYLE_KEY, iconStyle); }catch(e){}
+    applyIconStyle();
+    hydrateIcons(document, true);
+    if(!silent) toast('应用内图标已切换为「' + ICON_STYLE_NAMES[iconStyle] + '」');
+  }
+  function initIconStyle(){
+    iconStyle = readIconStyle();
+    applyIconStyle();
+    hydrateIcons(document, true);
+  }
+
   function readThemeSetting(){
     try{
       var v = localStorage.getItem(THEME_KEY);
@@ -13625,8 +13730,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
 
   /* ---- 备份内容与体积估算 ---- */
-  /* 迁移不会带走的可迁移本机标记（引导/教程）；键名固定，便于跨版本恢复 */
-  var BACKUP_LOCAL_KEYS = ['fandazi.guide.done', 'fandazi.tut.hint'];
+  /* 迁移不会带走的可迁移本机标记（引导/教程/应用内图标风格）；键名固定，便于跨版本恢复 */
+  var BACKUP_LOCAL_KEYS = ['fandazi.guide.done', 'fandazi.tut.hint', 'fandazi.iconStyle'];
   function backupLocalConfig(){
     var out = {};
     BACKUP_LOCAL_KEYS.forEach(function(k){
@@ -13645,6 +13750,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         else if(replace) localStorage.removeItem(k);
       }catch(e){ logError('恢复本机标记', e); }
     });
+    /* 图标风格是本机显示偏好：恢复后立即按新值重绘，避免要刷新才生效 */
+    try{ if(typeof initIconStyle === 'function') initIconStyle(); }
+    catch(e){ logError('恢复图标风格', e); }
   }
   /* ---- 反馈段（fandazi.feedback）纳入备份 ---- */
   /* 反馈不参与记录去重：备份/恢复都按原样整段还原，不按「城市+店名+日期」判定。 */
@@ -15794,6 +15902,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(b) setSkin(b.getAttribute('data-skin-set'));
   });
   $('#skinTextureBtn').addEventListener('click', function(){ setSkinTexture(skinTexture); });
+  $('#iconStyleSeg').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-icon-set]') : null;
+    if(b) setIconStyle(b.getAttribute('data-icon-set'));
+  });
 
   /* B4 好友分享与导入 */
   $('#btnShareFanzi').addEventListener('click', function(){ openFanzi(); });
@@ -16244,6 +16356,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   renderTasteChips($('#friendTasteChips'), friendTastes);
   if(legacyData || recoveredBackup) save(true);
   initSkin();
+  initIconStyle();
   initTheme();
   renderAll();
   showView('record');

@@ -261,20 +261,21 @@ APK 内接了 `@capacitor/app`（6.0.3），Android 的物理/手势返回键不
 ### 图标规范
 
 - **全部自绘内联 SVG**，不引入任何图标字体、外部图片或 CDN：24×24 网格、1.6px 描边（小尺寸 14px 图标用 2px 保证清晰）、圆头端点、圆角矩形统一 R6。
-- 统一入口：样式类 `.ico`、`.ico-14`、`.ico-16`、`.ico-20`；JS 侧记录卡操作图标由 `ICON` 常量生成，新增图标加到 `ICON` 里即可复用同一描边。
-- 状态图标（关闭、上/下月、地图缩放）与标签栏图标已统一为同一线性风格；标签栏选中态是品牌色胶囊 + 加粗标签，不是换色块。
-- 空状态统一使用一枚轻量碗筷插画（CSS `mask-image` 内联 SVG），颜色取自 `--accent-text`，在明暗与三套皮肤下自动跟随。
+- 统一入口：样式类 `.ico`、`.ico-14`、`.ico-16`、`.ico-20`；JS 侧图标由 `ICON`（A 套）/ `ICON_B`（B 套）常量生成，静态标记只写 `data-ico` 名，启动与切换时统一水合。
+- **两套应用内图标可切换**：「我的 → 图标风格」选 A 定位碗（线性细描边，默认）或 B 城市一碗（实心 / 粗线）。切换即时重绘全部已渲染图标，写入 `fandazi.iconStyle`（`a` / `b`），刷新后保持，并纳入完整备份（`备份 → 完整备份` 的 `localConfig`；普通 JSON 导出只含记录，不含本机偏好）。与明暗主题、P3/P4/P5 皮肤正交，只换图形不改色板与布局。
+- 状态图标（关闭、上/下月、地图缩放）、标签栏、记录卡操作图标都走同一套映射，因此切换后不会出现「一半线一半面」。
+- 空状态统一使用一枚轻量碗筷插画（CSS `mask-image` 内联 SVG），颜色取自 `--accent-text`，在明暗与三套皮肤下自动跟随（该插画不随 A/B 图标风格切换）。
 
-### App 图标
+### App 图标（桌面 / PWA）
 
-| 文件 | 尺寸 | 用途 |
+| 方案 | 资产位置 | 现状 |
 | --- | --- | --- |
-| `icons/icon-192.png` / `icon-512.png` | 192 / 512 | manifest `purpose:"any"` |
-| `icons/icon-192-maskable.png` / `icon-512-maskable.png` | 192 / 512 | manifest `purpose:"maskable"`，主形缩到画布 79%，四周留 20% 安全边距 |
-| `icons/favicon-32.png` / `favicon-16.png` | 32 / 16 | 浏览器标签页（16px 用简化形：去掉热气、加粗筷子） |
-| `icons/apple-touch-icon-180.png` | 180 | iOS 添加到主屏幕 |
+| **A 定位碗**（默认） | `icons/`（7 个 PNG）+ `android-app/.../mipmap-{mdpi..xxxhdpi}/`（各密度 `ic_launcher` / `ic_launcher_round` / `ic_launcher_foreground` / `ic_launcher_background`）+ `mipmap-anydpi-v26/` 自适应 XML | 正在使用；PWA 与 APK 的启动图标都固定为它 |
+| **B 城市一碗**（可选） | `docs/icon-candidates/b/`：`icons/` 全套 7 个 PNG + 五档 `mipmap-*` 同四件套 + `mipmap-anydpi-v26/` 自适应 XML | 完整备用资产，可在仓库内替换；**桌面图标暂不随应用内开关切换**（PWA 无此能力，Android 需 activity-alias，尚未启用） |
 
-设计是单色底（品牌橙 `#E8590C`）+ 白色主形：一只碗、两缕热气、一双筷子；48px 下仍能看出「碗 + 筷」。**换图标只需替换 `icons/` 下的同名 PNG 并递增 `sw.js` 里的 `VERSION`**（当前 `fandazi-pwa-v7-20261106`），manifest 引用路径不变。重新生成图标的脚本在 `.tmp/gen-icons.js`（用本机 Chrome 光栅化 SVG，不提交到仓库）。
+两套都是「一碗」语义：A 用品牌橙渐变底 + 奶油白碗 / 筷 / 定位针；B 用奶油底 + 城市天际线 + 深橙碗。PWA `manifest.webmanifest` 固定引用 `icons/icon-192.png` 等 A 套，**系统层面无法在应用内切换启动图标**；应用内「图标风格」只影响导航栏、按钮、空状态等界面图标。
+
+**换桌面图标只需把 `docs/icon-candidates/b/icons/` 与 `mipmap-*`、`mipmap-anydpi-v26/` 覆盖到对应位置并递增 `sw.js` 里的 `VERSION`**（当前 `fandazi-pwa-v8-20261106`），manifest / AndroidManifest 的引用路径不变。重新生成图标的脚本在 `.tmp/gen-launcher-icons.js`（用本机 Chrome 光栅化 SVG，不提交到仓库）。
 
 ## 返回层级（浏览器返回 / Android 返回键 / 侧滑返回）
 
