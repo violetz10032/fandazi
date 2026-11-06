@@ -378,6 +378,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .rec-card h3{font-size:16px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .rec-card .top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
   .meta{font-size:12px;color:var(--ink3);margin-top:2px}
+  .meta .ico{vertical-align:-3px}
   .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
   .tag{font-size:12px;color:var(--ink2);background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:3px 9px}
   .tag.price{color:var(--price-ink);background:var(--soft);border-color:var(--accent-line)}
@@ -437,7 +438,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .chip-toggle{cursor:pointer;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 12px;font-size:12px;color:var(--ink2)}
   .chip-toggle.on{background:var(--soft);border-color:var(--accent-line);color:var(--soft-ink);font-weight:600}
   .chip-x{display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:5px 8px 5px 10px;color:var(--ink2)}
-  .chip-x b{cursor:pointer;color:var(--ink3);font-weight:400;padding:4px 5px;margin:-2px -3px -2px 0;position:relative}
+  .chip-x b{cursor:pointer;color:var(--ink3);font-weight:400;padding:4px 5px;margin:-2px -3px -2px 0;position:relative;display:inline-flex;align-items:center}
 
   .sheet-mask{position:fixed;inset:0;background:var(--mask);z-index:40;display:flex;align-items:flex-end;justify-content:center}
   .sheet{width:100%;max-width:640px;background:var(--card);border-radius:20px 20px 0 0;max-height:93vh;overflow:auto;padding:16px 16px calc(22px + env(safe-area-inset-bottom));animation:up .22s ease}
@@ -460,7 +461,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .ph-tile{position:relative;aspect-ratio:1/1;border-radius:10px;overflow:hidden;background:var(--bg-2);border:1px solid var(--line)}
   .ph-tile.sel{outline:2px solid var(--accent);outline-offset:-2px}
   .ph-tile img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
-  .ph-x{position:absolute;top:0;right:0;border:0;background:rgba(0,0,0,.55);color:#fff;width:28px;height:28px;font-size:14px;line-height:1;border-radius:0 0 0 10px;cursor:pointer;padding:0}
+  .ph-x{position:absolute;top:0;right:0;border:0;background:rgba(0,0,0,.55);color:#fff;width:28px;height:28px;line-height:1;border-radius:0 0 0 10px;cursor:pointer;padding:0;display:grid;place-items:center}
   .ph-cover{position:absolute;left:0;bottom:0;background:var(--accent);color:var(--accent-ink);font-size:10px;padding:1px 5px;border-radius:0 6px 0 0}
   .ph-chk{position:absolute;top:3px;left:3px;width:18px;height:18px;margin:0}
   .pgb-bar{display:flex;gap:8px;align-items:center;margin-top:8px}
@@ -596,7 +597,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .diary-filters>*{flex:1;min-width:0}
   .diary-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
   .diary-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;border:1px solid var(--line);background:var(--chip);border-radius:999px;padding:4px 9px;color:var(--ink2);cursor:pointer}
-  .diary-chip b{font-weight:400;color:var(--ink3)}
+  .diary-chip b{font-weight:400;color:var(--ink3);display:inline-flex;align-items:center}
   .diary-mhead{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:16px 2px 8px}
   .diary-mhead h3{font-size:15px}
   .diary-mhead .hint{text-align:right;line-height:1.5}
@@ -685,7 +686,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .guide-skip{border:0;background:none;color:var(--ink3);font-size:12px;padding:6px 4px;cursor:pointer}
   .guide-body{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:8px 18px 4px;-webkit-overflow-scrolling:touch}
   .guide-ico{width:52px;height:52px;border-radius:16px;background:linear-gradient(145deg,var(--guide-a),var(--guide-b));display:grid;place-items:center;color:var(--accent-text);margin:4px 0 12px}
-  .guide-ico svg{width:28px;height:28px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .guide-ico svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   .guide h2{font-size:20px;line-height:1.35;letter-spacing:.2px}
   .guide .lead{font-size:13.5px;color:var(--ink2);margin-top:8px;line-height:1.7}
   .guide-list{margin-top:10px;border-top:1px dashed var(--line)}
@@ -719,7 +720,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .tut-step h3{font-size:14px;margin:0 0 3px;line-height:1.4}
   .tut-step p{font-size:12.5px;color:var(--ink2);line-height:1.7;margin:0}
   .tut-fig{flex:none;width:56px;height:56px;border-radius:12px;background:var(--panel-2);border:1px solid var(--line);display:grid;place-items:center;color:var(--accent-text)}
-  .tut-fig svg{width:34px;height:34px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+  .tut-fig svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
   .tut-faq{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
   .tut-faq h3{font-size:13.5px;margin:0 0 2px}
   .tut-faq dt{font-size:12.5px;color:var(--ink);font-weight:600;margin-top:8px}
@@ -824,13 +825,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
      只覆盖样式与少量包裹元素，不改动布局骨架与四视图结构。
      ============================================================ */
   /* ---------- 图标规范：24 网格、1.6 描边、圆头、R6 ---------- */
-  .ico{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:var(--ico-stroke);stroke-linecap:round;stroke-linejoin:round}
-  .ico-14{width:14px;height:14px}
+  .ico{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:var(--ico-stroke);stroke-linecap:round;stroke-linejoin:round}
   .ico-16{width:16px;height:16px}
   .ico-20{width:20px;height:20px}
+  .ico-24{width:24px;height:24px}
   .btn svg,.icon-btn svg,.tabbar svg,.guide-ico svg,.tut-fig svg,.remind svg,
   .empty svg,.stat-sub svg,.annual-kv svg{stroke-width:var(--ico-stroke);stroke-linecap:round;stroke-linejoin:round}
-  .btn .ico-14,.icon-btn .ico-14{stroke-width:2}
+  .btn .ico-16,.icon-btn .ico-16{stroke-width:1.8}
   .logo-bowl{width:19px;height:19px;stroke:var(--logo-ink);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   .logo{box-shadow:0 2px 8px rgba(232,89,12,.22)}
 
@@ -883,7 +884,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .tabbar{padding-bottom:calc(env(safe-area-inset-bottom) + 3px);box-shadow:0 -1px 0 var(--line),0 -10px 28px rgba(80,55,30,.05)}
   html[data-theme="dark"] .tabbar{box-shadow:0 -1px 0 var(--line),0 -10px 28px rgba(0,0,0,.35)}
   .tabbar button{position:relative;min-height:56px;gap:4px;padding:8px 0 7px;font-size:11.5px;letter-spacing:.4px}
-  .tabbar button svg{width:22px;height:22px}
+  .tabbar button svg{width:20px;height:20px}
   .tabbar button.on::before{content:"";position:absolute;left:50%;top:5px;width:40px;height:29px;margin-left:-20px;
     border-radius:calc(var(--r-btn) + 2px);background:var(--soft)}
   .tabbar button.on{font-weight:700}
@@ -1001,7 +1002,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     </div>
     <div class="spacer"></div>
     <button class="btn btn-primary btn-sm" id="btnAddTop">
-      <svg class="ico ico-14" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>记一餐
+      <svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="plus"></svg>记一餐
     </button>
   </div>
 </header>
@@ -1013,14 +1014,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     <div class="remind hidden" id="remindBar">
       <div class="grow" id="remindText"></div>
       <button type="button" id="btnRemindGo">去记录</button>
-      <button type="button" id="btnRemindClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+      <button type="button" id="btnRemindClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
     </div>
 
     <!-- 备份提醒条（只在「我的」页显示，复用同一组件） -->
     <div class="remind hidden" id="backupRemindBar">
       <div class="grow" id="backupRemindText"></div>
       <button type="button" id="btnBackupGo">去备份</button>
-      <button type="button" id="btnBackupClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+      <button type="button" id="btnBackupClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
     </div>
 
     <!-- ================= 记录 ================= -->
@@ -1083,9 +1084,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <div id="panel-cal" class="hidden">
         <div class="card">
           <div class="cal-head">
-            <button class="icon-btn" id="calPrev" aria-label="上个月"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
+            <button class="icon-btn" id="calPrev" aria-label="上个月"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="chevronLeft"></svg></button>
             <h2 id="calTitle"></h2>
-            <button class="icon-btn" id="calNext" aria-label="下个月"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg></button>
+            <button class="icon-btn" id="calNext" aria-label="下个月"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="chevronRight"></svg></button>
           </div>
           <div class="cal-week">
             <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
@@ -1099,9 +1100,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <div class="notice hidden" id="diaryOldTip" style="margin-bottom:12px">当前为旧版数据，日记按旧记录的投影正常显示；可在「我的 → 数据」升级到新版数据结构。</div>
         <div class="card" style="padding:12px">
           <div class="diary-bar">
-            <button class="icon-btn" id="diaryPrev" aria-label="更早的月份"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
+            <button class="icon-btn" id="diaryPrev" aria-label="更早的月份"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="chevronLeft"></svg></button>
             <h2 id="diaryMonthTitle">全部月份</h2>
-            <button class="icon-btn" id="diaryNext" aria-label="更新的月份"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg></button>
+            <button class="icon-btn" id="diaryNext" aria-label="更新的月份"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="chevronRight"></svg></button>
           </div>
           <div class="diary-filters">
             <select class="input" id="diaryCat"><option value="">全部菜系</option></select>
@@ -1130,8 +1131,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <div class="map-canvas-wrap" id="mapCanvasWrap">
           <canvas id="mapCanvas" aria-label="店铺散点地图"></canvas>
           <div class="map-tools">
-            <button type="button" class="icon-btn" id="mapZoomIn" aria-label="放大"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.5v11M6.5 12h11"/></svg></button>
-            <button type="button" class="icon-btn" id="mapZoomOut" aria-label="缩小"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 12h11"/></svg></button>
+            <button type="button" class="icon-btn" id="mapZoomIn" aria-label="放大"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="plus"></svg></button>
+            <button type="button" class="icon-btn" id="mapZoomOut" aria-label="缩小"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="minus"></svg></button>
             <button type="button" class="btn" id="mapReset">复位</button>
           </div>
           <div class="map-note" id="mapNote">无底图 · 纯本地等距投影</div>
@@ -1716,7 +1717,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="sheet">
     <div class="sheet-head">
       <h2 id="diaryDetailTitle">到访详情</h2>
-      <button type="button" class="icon-btn" id="diaryClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+      <button type="button" class="icon-btn" id="diaryClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
     </div>
     <div id="diaryDetail"></div>
   </div>
@@ -1727,7 +1728,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="sheet">
     <div class="sheet-head">
       <h2 id="mapStoreTitle">店铺</h2>
-      <button type="button" class="icon-btn" id="mapStoreClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+      <button type="button" class="icon-btn" id="mapStoreClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
     </div>
     <div id="mapStoreBody"></div>
   </div>
@@ -1738,7 +1739,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="sheet">
     <div class="sheet-head">
       <h2 id="statDetailTitle">统计明细</h2>
-      <button type="button" class="icon-btn" id="statDetailClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+      <button type="button" class="icon-btn" id="statDetailClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
     </div>
     <div id="statDetailBody"></div>
   </div>
@@ -1747,16 +1748,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 <nav class="tabbar">
   <div class="tabbar-in">
     <button class="on" data-view="record" aria-label="记录">
-      <svg viewBox="0 0 24 24"><path d="M3.4 11.2h17.2c0 5.3-3.9 8.4-8.6 8.4S3.4 16.5 3.4 11.2z"/><path d="M12.9 10.5 19.2 3.8"/></svg><span>记录</span>
+      <svg viewBox="0 0 24 24" data-ico="record"></svg><span>记录</span>
     </button>
     <button data-view="recommend" aria-label="推荐">
-      <svg viewBox="0 0 24 24"><path d="M12 3.4l2.6 5.4 5.9.9-4.3 4.1 1 5.9L12 16.9l-5.2 2.8 1-5.9L3.5 9.7l5.9-.9z"/></svg><span>推荐</span>
+      <svg viewBox="0 0 24 24" data-ico="decide"></svg><span>推荐</span>
     </button>
     <button data-view="pick" aria-label="抽签">
-      <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3.2"/><circle cx="8.8" cy="8.8" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.2" cy="8.8" r="1.35" fill="currentColor" stroke="none"/><circle cx="8.8" cy="15.2" r="1.35" fill="currentColor" stroke="none"/><circle cx="15.2" cy="15.2" r="1.35" fill="currentColor" stroke="none"/></svg><span>抽签</span>
+      <svg viewBox="0 0 24 24" data-ico="random"></svg><span>抽签</span>
     </button>
     <button data-view="more" aria-label="我的">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M4.6 20c0-3.6 3.2-6 7.4-6s7.4 2.4 7.4 6"/></svg><span>我的</span>
+      <svg viewBox="0 0 24 24" data-ico="user"></svg><span>我的</span>
     </button>
   </div>
 </nav>
@@ -1766,7 +1767,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <form class="sheet" id="recordForm" autocomplete="off">
     <div class="sheet-head">
       <h2 id="formTitle">记一餐</h2>
-      <button type="button" class="icon-btn" id="btnCloseSheet" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+      <button type="button" class="icon-btn" id="btnCloseSheet" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
     </div>
 
     <div class="save-done hidden" id="saveDoneBox">
@@ -2020,7 +2021,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 <!-- 照片预览层（P1）：大图 / 上下一张 / 设封面 / 排序 / 替换 / 删除 / 看原图 -->
 <div class="modal-mask hidden" id="photoViewMask">
   <div class="modal" style="max-width:520px">
-    <div class="sheet-head"><h2 id="pvTitle">照片</h2><button type="button" class="icon-btn" id="pvClose" aria-label="关闭">✕</button></div>
+    <div class="sheet-head"><h2 id="pvTitle">照片</h2><button type="button" class="icon-btn" id="pvClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button></div>
     <div class="pv-stage"><img id="pvImg" alt="照片预览"></div>
     <p class="muted" id="pvMeta" style="margin-top:8px"></p>
     <div class="pv-actions">
@@ -2073,7 +2074,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="modal patrol-modal" role="dialog" aria-modal="true" aria-labelledby="patrolTitle">
     <div class="sheet-head" style="margin-bottom:8px">
       <h3 id="patrolTitle">巡店清单</h3>
-      <button type="button" class="icon-btn" id="btnPatrolClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+      <button type="button" class="icon-btn" id="btnPatrolClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
     </div>
     <p class="muted" id="patrolSub">按选中的记录生成，同一家店只保留一站。</p>
     <div class="patrol-tools">
@@ -2153,7 +2154,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="tut-hint-t"><b>第一次互导？</b><span id="tutHintText">三步看懂怎么发、怎么收。</span></div>
   <div class="tut-hint-a">
     <button type="button" class="tut-hint-go" id="btnTutHintGo">看教程</button>
-    <button type="button" class="tut-hint-close" id="btnTutHintClose" aria-label="关闭提示"><svg class="ico ico-14" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+    <button type="button" class="tut-hint-close" id="btnTutHintClose" aria-label="关闭提示"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
   </div>
 </div>
 
@@ -2186,7 +2187,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="fanziTitle">
     <div class="sheet-head" style="margin-bottom:10px">
       <h3 id="fanziTitle">分享给好友</h3>
-      <button type="button" class="icon-btn" id="btnFanziClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+      <button type="button" class="icon-btn" id="btnFanziClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
     </div>
     <p class="muted">生成 .fanzi.json 文件或 <code>#fanzi=</code> 链接；全程本机生成，不经过服务器。</p>
     <div class="field" style="margin-top:12px">
@@ -2226,7 +2227,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   <div class="modal import-modal" role="dialog" aria-modal="true" aria-labelledby="importTitle" style="padding-bottom:calc(18px + env(safe-area-inset-bottom))">
     <div class="sheet-head" style="margin-bottom:10px">
       <h3 id="importTitle">导入好友分享</h3>
-      <button type="button" class="icon-btn" id="btnImportClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+      <button type="button" class="icon-btn" id="btnImportClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
     </div>
     <div id="importStep1">
       <p class="muted" id="importLead">先预览再写入：重复默认跳过，冲突可逐条选择；导入前会保留快照，可一次性撤销。</p>
@@ -3614,7 +3615,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           '<img data-photo="'+esc(p.id)+'" data-thumb="1" alt="'+esc(c.label)+'" loading="lazy" decoding="async">'+
           (cover ? '<span class="ph-cover">封面</span>' : '')+
           (batch ? '<input type="checkbox" class="ph-chk" data-phchk="'+esc(p.id)+'"'+(on ? ' checked' : '')+' aria-label="选择照片">' : '')+
-          (batch ? '' : '<button type="button" class="ph-x" data-phx="'+esc(p.id)+'" aria-label="移除">✕</button>')+
+          (batch ? '' : '<button type="button" class="ph-x" data-phx="'+esc(p.id)+'" aria-label="移除">'+icon('close','ico-16')+'</button>')+
         '</div>';
       }).join('');
       return '<div class="pg" data-pg="'+c.k+'">'+
@@ -5645,16 +5646,69 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
 
   /* ================= 记录列表 ================= */
-  /* 统一图标：24 网格线性自绘，尺寸见 .ico / .ico-14 / .ico-16 / .ico-20 */
+  /* 统一图标库：24 网格、单色线性、按名取用；尺寸档位 .ico-16 / .ico-20 / .ico-24
+     同一语义全站共用一个名字；颜色始终走 currentColor（跟随主题与强调色）。 */
   var ICON = {
-    edit: '<path d="M4 20l4.2-1L18 9.2a2.1 2.1 0 0 0-3-3L5.2 16 4 20z"/><path d="M13.6 6.6l3.8 3.8"/>',
+    /* 主视图与决策 */
+    home: '<path d="M4.4 10.6 12 4.1l7.6 6.5"/><path d="M6.3 9.7v9.6h11.4V9.7"/><path d="M9.8 19.3v-4.9h4.4v4.9"/>',
+    decide: '<circle cx="12" cy="12" r="8"/><path d="M15.5 8.5 13.4 13.4 8.5 15.5 10.6 10.6z"/>',
+    idea: '<path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2.2"/><circle cx="15" cy="12" r="2.2"/><circle cx="11" cy="17" r="2.2"/>',
+    random: '<rect x="4.2" y="4.2" width="15.6" height="15.6" rx="3.2"/><circle cx="8.8" cy="8.8" r="1.25" fill="currentColor" stroke="none"/><circle cx="15.2" cy="8.8" r="1.25" fill="currentColor" stroke="none"/><circle cx="8.8" cy="15.2" r="1.25" fill="currentColor" stroke="none"/><circle cx="15.2" cy="15.2" r="1.25" fill="currentColor" stroke="none"/>',
+    bowl: '<path d="M4 11.4h16c0 4.9-3.6 8-8 8s-8-3.1-8-8z"/><path d="M13.2 10.6 19 3.9"/>',
+    record: '<path d="M4 11.4h16c0 4.9-3.6 8-8 8s-8-3.1-8-8z"/><path d="M13.2 10.6 19 3.9"/>',
+    diary: '<rect x="5" y="3.6" width="13.8" height="16.8" rx="2"/><path d="M5 8h-1.7M5 12h-1.7M5 16h-1.7"/><path d="M9 8.2h5.8M9 12.2h5.8M9 16.2h3.4"/>',
+    map: '<path d="M9 4.4 4.4 6.2v13.3L9 17.7l6 2.1 5.6-1.9V4.6L15 6.5l-6-2.1z"/><path d="M9 4.4v13.3M15 6.5v13.3"/>',
+    stats: '<path d="M4.5 20h15"/><path d="M7.2 16.4V11M12 16.4V6.9M16.8 16.4V9.6"/>',
+    user: '<circle cx="12" cy="8.1" r="3.5"/><path d="M4.9 20.1c0-3.7 3.2-6.1 7.1-6.1s7.1 2.4 7.1 6.1"/>',
+    /* 数据与操作 */
+    backup: '<rect x="3.6" y="6.6" width="16.8" height="13.8" rx="2"/><path d="M8 6.6V4.8h8v1.8"/><path d="M12 10v5.2M9.6 12.6 12 10.2l2.4 2.4"/>',
+    settings: '<circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4 5.5 18.5"/>',
+    share: '<circle cx="6.2" cy="12" r="2.2"/><circle cx="17.4" cy="6.6" r="2.2"/><circle cx="17.4" cy="17.4" r="2.2"/><path d="M8.2 10.9 15.4 7.5M8.2 13.1 15.4 16.5"/>',
+    download: '<path d="M12 4v9.4M8.4 10 12 13.6l3.6-3.6"/><path d="M4.6 14.4v3.8a1.8 1.8 0 0 0 1.8 1.8h11.2a1.8 1.8 0 0 0 1.8-1.8v-3.8"/>',
+    importData: '<path d="M12 4v9.4M8.4 10 12 13.6l3.6-3.6"/><path d="M4.6 14.4v3.8a1.8 1.8 0 0 0 1.8 1.8h11.2a1.8 1.8 0 0 0 1.8-1.8v-3.8"/>',
+    trash: '<path d="M4.8 7h14.4"/><path d="M9 7V5.4a1.3 1.3 0 0 1 1.3-1.3h3.4a1.3 1.3 0 0 1 1.3 1.3V7"/><path d="M6.4 7l.8 11a1.6 1.6 0 0 0 1.6 1.5h6.4a1.6 1.6 0 0 0 1.6-1.5l.8-11"/><path d="M10 10.6v5.6M14 10.6v5.6"/>',
+    edit: '<path d="M4.5 19.5l.9-3.8L15.8 5.3a2 2 0 0 1 2.9 2.9L8.3 18.6l-3.8.9z"/><path d="M14.2 6.9l2.9 2.9"/>',
+    camera: '<rect x="3" y="7.4" width="18" height="12.2" rx="2.2"/><path d="M8.2 7.4l1.3-2h5l1.3 2"/><circle cx="12" cy="13.5" r="3.2"/>',
+    locate: '<circle cx="12" cy="12" r="6.2"/><path d="M12 2.6v3.2M12 18.2v3.2M2.6 12h3.2M18.2 12h3.2"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>',
+    refresh: '<path d="M19 12a7 7 0 1 1-2.2-5.1"/><path d="M19.2 3.6v4.2h-4.2"/>',
+    swap: '<path d="M4 7.2h3.2c4.5 0 5.5 9.6 10 9.6h2.6"/><path d="M17.3 14.1 20 16.8l-2.7 2.7"/><path d="M4 16.8h3.2c1.7 0 2.9-1.4 3.8-3.2"/><path d="M17.3 3.3 20 6l-2.7 2.7"/><path d="M12.3 9.6c.9-1.4 2.3-2.4 4.3-2.4h3.4"/>',
+    /* 基础图形 */
+    close: '<path d="M6.4 6.4 17.6 17.6M17.6 6.4 6.4 17.6"/>',
+    chevronLeft: '<path d="M14.6 5.6 8 12l6.6 6.4"/>',
+    chevronRight: '<path d="M9.4 5.6 16 12l-6.6 6.4"/>',
+    chevronUp: '<path d="M5.6 14.6 12 8l6.4 6.6"/>',
+    chevronDown: '<path d="M5.6 9.4 12 16l6.4-6.6"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    minus: '<path d="M5 12h14"/>',
+    moveUp: '<path d="M12 19V5M7.4 9.6 12 5l4.6 4.6"/>',
+    moveDown: '<path d="M12 5v14M7.4 14.4 12 19l4.6-4.6"/>',
+    star: '<path d="M12 3.4l2.6 5.4 5.9.9-4.3 4.1 1 5.9L12 16.9l-5.2 2.8 1-5.9L3.5 9.7l5.9-.9z"/>',
     pin: '<path d="M12 21s6.5-6.2 6.5-10.6a6.5 6.5 0 0 0-13 0C5.5 14.8 12 21 12 21z"/><circle cx="12" cy="10.3" r="2.4"/>',
-    ext: '<path d="M14 4h6v6"/><path d="M20 4l-8.6 8.6"/><path d="M18 13.5V18a2 2 0 0 1-2 2H5.5A2 2 0 0 1 3.5 18V7.5a2 2 0 0 1 2-2H10"/>',
+    ext: '<path d="M13.4 4.4h6.2v6.2"/><path d="M19.6 4.4 11 13"/><path d="M17.4 13v5.2a1.7 1.7 0 0 1-1.7 1.7H5.7A1.7 1.7 0 0 1 4 18.2V8.3a1.7 1.7 0 0 1 1.7-1.7H11"/>',
     eyeOff: '<path d="M4 4l16 16"/><path d="M9.7 5.4A10 10 0 0 1 12.2 5c5 0 8.7 4.4 9.6 6.4a2 2 0 0 1 0 1.2 12.6 12.6 0 0 1-2.3 3"/><path d="M6.2 8.3A12.6 12.6 0 0 0 2.6 11.6a2 2 0 0 0 0 1.2C3.5 14.8 7.2 19 12.2 19a9.6 9.6 0 0 0 4-.9"/><path d="M9.8 9.9a3 3 0 0 0 4.2 4.2"/>',
     repeat: '<path d="M4.6 11A7.4 7.4 0 0 1 17.6 5.7"/><path d="M17.6 3.4v4.4h-4.4"/><path d="M19.4 13a7.4 7.4 0 0 1-13 5.3"/><path d="M6.4 20.6v-4.4h4.4"/>',
-    star: '<path d="M12 3.4l2.6 5.4 5.9.9-4.3 4.1 1 5.9L12 16.9l-5.2 2.8 1-5.9L3.5 9.7l5.9-.9z"/>'
+    /* 教程插画 */
+    select: '<rect x="3.5" y="4" width="6" height="6" rx="1.4"/><path d="m5 6.8 1.3 1.3L8.3 5.7"/><rect x="3.5" y="14" width="6" height="6" rx="1.4"/><path d="M13 5h7M13 8h5M13 15h7M13 18h5"/>',
+    file: '<path d="M5.5 3h8l4.5 4.5V21h-12.5z"/><path d="M13.5 3v5h5"/><rect x="14.5" y="13" width="5.5" height="5.5" rx="1.2"/><path d="M8 13h3M8 16h3"/>',
+    lock: '<rect x="4.5" y="10" width="15" height="10" rx="2"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10"/><circle cx="12" cy="15" r="1.3"/>',
+    link: '<path d="M10 14a4 4 0 0 0 5.7 0l2.6-2.6a4 4 0 0 0-5.7-5.7l-1.2 1.2"/><path d="M14 10a4 4 0 0 0-5.7 0l-2.6 2.6a4 4 0 0 0 5.7 5.7l1.2-1.2"/>',
+    preview: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 12.5h8M8 16h4.5"/><path d="M15 16.5l1.4 1.4 2.4-2.6"/>',
+    undo: '<path d="M4.5 11a8 8 0 1 1 2.3 5.6"/><path d="M4.5 5.8v5.2h5.2"/><path d="m9.5 15 2 2 4-4.2"/>',
+    grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
+    phoneUp: '<rect x="6" y="3" width="12" height="18" rx="2.5"/><path d="M12 16V8M9 11l3-3 3 3"/>'
   };
-  function icon(name, cls){ return '<svg class="ico '+(cls||'ico-14')+'" viewBox="0 0 24 24" aria-hidden="true">'+ICON[name]+'</svg>'; }
+  function icon(name, cls){ return '<svg class="ico '+(cls||'ico-16')+'" viewBox="0 0 24 24" aria-hidden="true">'+(ICON[name]||'')+'</svg>'; }
+  /* 静态标记里的图标只写 data-ico 名，启动时统一灌入路径，避免同一图标到处复制。 */
+  function hydrateIcons(root){
+    var list = (root || document).querySelectorAll('svg[data-ico]');
+    for(var i=0;i<list.length;i++){
+      var el = list[i];
+      if(el.getAttribute('data-ico-done') === '1') continue;
+      el.innerHTML = ICON[el.getAttribute('data-ico')] || '';
+      el.setAttribute('data-ico-done','1');
+    }
+  }
+  try{ hydrateIcons(); }catch(e){}
 
   function recordCard(r){
     var p = perPriceOf(r);
@@ -5937,7 +5991,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     '</article>';
   }
   function diaryChip(kind, label){
-    return '<button class="diary-chip" data-diary-clear="'+kind+'"><b>✕</b>'+esc(label)+'</button>';
+    return '<button class="diary-chip" data-diary-clear="'+kind+'"><b>'+icon('close','ico-16')+'</b>'+esc(label)+'</button>';
   }
   function diaryChips(){
     var parts = [];
@@ -5945,7 +5999,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(diaryState.day) parts.push(diaryChip('day', diaryState.day));
     if(diaryState.cat) parts.push(diaryChip('cat', diaryState.cat));
     if(diaryState.shop) parts.push(diaryChip('shop', diaryState.shop));
-    if(parts.length) parts.push('<button class="diary-chip" data-diary-clear="all"><b>✕</b>清除全部</button>');
+    if(parts.length) parts.push('<button class="diary-chip" data-diary-clear="all"><b>'+icon('close','ico-16')+'</b>清除全部</button>');
     return parts.join('') || '<span class="muted">全部到访，按月份分组</span>';
   }
   function fillDiarySelects(){
@@ -8717,7 +8771,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function renderSettings(){
     renderTasteChips($('#myTasteChips'), db.settings.tasteTags||[]);
     $('#myAvoidChips').innerHTML = (db.settings.restrictions||[]).map(function(t){
-      return '<span class="chip-x">'+esc(t)+'<b data-act="delAvoid" data-tag="'+esc(t)+'">✕</b></span>';
+      return '<span class="chip-x">'+esc(t)+'<b data-act="delAvoid" data-tag="'+esc(t)+'">'+icon('close','ico-16')+'</b></span>';
     }).join('') || '<span class="muted">未设置</span>';
     $('#myTasteChips').querySelectorAll('[data-taste]').forEach(function(b){
       b.setAttribute('data-act', 'delTaste');
@@ -9118,7 +9172,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function paintTags(){
     var box = $('#tagChips');
     box.innerHTML = formTags.map(function(t){
-      return '<span class="chip-x">'+esc(t)+'<b data-act="delFormTag" data-tag="'+esc(t)+'">✕</b></span>';
+      return '<span class="chip-x">'+esc(t)+'<b data-act="delFormTag" data-tag="'+esc(t)+'">'+icon('close','ico-16')+'</b></span>';
     }).join('') || '<span class="muted">还没有标签</span>';
   }
   function paintFitMeals(){
@@ -10659,8 +10713,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<div class="patrol-ops">'+
           '<a class="btn btn-sm btn-soft" href="'+esc(patrolUrl(s))+'" target="_blank" rel="noopener noreferrer">导航</a>'+
           (manual
-            ? '<button type="button" class="btn patrol-mini" data-patrol="up" data-idx="'+i+'" aria-label="上移">↑</button>'+
-              '<button type="button" class="btn patrol-mini" data-patrol="down" data-idx="'+i+'" aria-label="下移">↓</button>'
+            ? '<button type="button" class="btn patrol-mini" data-patrol="up" data-idx="'+i+'" aria-label="上移">'+icon('moveUp','ico-16')+'</button>'+
+              '<button type="button" class="btn patrol-mini" data-patrol="down" data-idx="'+i+'" aria-label="下移">'+icon('moveDown','ico-16')+'</button>'
             : '')+
         '</div>'+
       '</div>';
@@ -10919,7 +10973,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return sampleData().map(function(s){
       return '<div class="import-row" style="align-items:flex-start">'+
         '<div class="grow"><b>'+esc(s.name)+'</b> <span class="muted" style="font-size:12px">'+esc(s.city+' · '+s.area)+'</span>'+
-        '<p class="meta" style="margin:2px 0 0">'+esc(s.category)+' · ¥'+num(s.per)+'/人 · ★'+num(s.rating)+' · '+esc(s.meal)+'</p>'+
+        '<p class="meta" style="margin:2px 0 0">'+esc(s.category)+' · ¥'+num(s.per)+'/人 · '+icon('star','ico-16')+num(s.rating)+' · '+esc(s.meal)+'</p>'+
         '<p class="meta" style="margin:2px 0 0">'+esc(s.note)+'</p></div>'+
         '<span class="muted" style="flex:none;font-size:12px">示例</span></div>';
     }).join('');
@@ -11457,7 +11511,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function guideStepHTML(i){
     if(i === 0){
-      return '<div class="guide-ico"><svg viewBox="0 0 24 24"><path d="M4 11h16a8 8 0 0 1-8 8 8 8 0 0 1-8-8z"/><path d="M8 7c0-1.5 1-2 1-3M12 7c0-1.5 1-2 1-3M16 7c0-1.5 1-2 1-3"/></svg></div>'+
+      return '<div class="guide-ico">'+icon('bowl','ico-24')+'</div>'+
         '<h2 id="guideTitle">记下吃过的店，以后不用再纠结吃什么</h2>'+
         '<p class="lead">把人均、人数、适合时段和距离记一笔；下次打开「推荐」，按场景、时间和距离挑一家。</p>'+
         '<div class="guide-list">'+
@@ -11467,7 +11521,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '</div>';
     }
     if(i === 1){
-      return '<div class="guide-ico"><svg viewBox="0 0 24 24"><path d="M4 20l4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10z"/><path d="M13.5 6.5l4 4"/></svg></div>'+
+      return '<div class="guide-ico">'+icon('edit','ico-24')+'</div>'+
         '<h2 id="guideTitle">记录一餐，只要几个关键字段</h2>'+
         '<p class="lead">店名之外，人均和人数用于预算，适合时段用于「现在吃什么」。</p>'+
         '<div class="guide-list">'+
@@ -11479,7 +11533,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<button type="button" class="btn btn-soft btn-block" data-guide="tryRecord" style="margin-top:12px">试记一顿 →</button>';
     }
     if(i === 2){
-      return '<div class="guide-ico"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg></div>'+
+      return '<div class="guide-ico">'+icon('grid','ico-24')+'</div>'+
         '<h2 id="guideTitle">四种用法，点一下直接进入</h2>'+
         '<p class="lead">都在底部「推荐」标签里，随时可以切换。</p>'+
         '<div class="guide-usage">'+
@@ -11489,7 +11543,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           '<button type="button" data-guide="usage" data-panel="friend"><span class="t">帮朋友推荐<span class="s">填预算、忌口、口味，生成理由卡</span></span><span class="arrow">›</span></button>'+
         '</div>';
     }
-    return '<div class="guide-ico"><svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="2.5"/><path d="M12 16V8M9 11l3-3 3 3"/></svg></div>'+
+    return '<div class="guide-ico">'+icon('phoneUp','ico-24')+'</div>'+
       '<h2 id="guideTitle">装到桌面，打开更快</h2>'+
       '<p class="lead">装好后是独立窗口，断网也能打开；记录不会重复，仍只在这台设备。</p>'+
       guideInstallHTML();
@@ -11590,21 +11644,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function tutFig(kind){
     if(kind === 'select'){
-      return '<svg viewBox="0 0 24 24"><rect x="3.5" y="4" width="6" height="6" rx="1.4"/><path d="m5 6.8 1.3 1.3L8.3 5.7"/><rect x="3.5" y="14" width="6" height="6" rx="1.4"/><path d="M13 5h7M13 8h5M13 15h7M13 18h5"/></svg>';
+      return icon('select','ico-24');
     }
     if(kind === 'channel'){
-      return '<svg viewBox="0 0 24 24"><path d="M5.5 3h8l4.5 4.5V21h-12.5z"/><path d="M13.5 3v5h5"/><rect x="14.5" y="13" width="5.5" height="5.5" rx="1.2"/><path d="M8 13h3M8 16h3"/></svg>';
+      return icon('file','ico-24');
     }
     if(kind === 'privacy'){
-      return '<svg viewBox="0 0 24 24"><rect x="4.5" y="10" width="15" height="10" rx="2"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10"/><circle cx="12" cy="15" r="1.3"/></svg>';
+      return icon('lock','ico-24');
     }
     if(kind === 'link'){
-      return '<svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l2.6-2.6a4 4 0 0 0-5.7-5.7l-1.2 1.2"/><path d="M14 10a4 4 0 0 0-5.7 0l-2.6 2.6a4 4 0 0 0 5.7 5.7l1.2-1.2"/></svg>';
+      return icon('link','ico-24');
     }
     if(kind === 'preview'){
-      return '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 12.5h8M8 16h4.5"/><path d="M15 16.5l1.4 1.4 2.4-2.6"/></svg>';
+      return icon('preview','ico-24');
     }
-    return '<svg viewBox="0 0 24 24"><path d="M4.5 11a8 8 0 1 1 2.3 5.6"/><path d="M4.5 5.8v5.2h5.2"/><path d="m9.5 15 2 2 4-4.2"/></svg>';
+    return icon('undo','ico-24');
   }
   function tutHTML(role){
     var send = role !== 'recv';
@@ -13726,7 +13780,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function backupErrorModal(msg, title){
     openBackupModal(
       '<div class="sheet-head" style="margin-bottom:8px"><h3>' + esc(title || '无法恢复') + '</h3>' +
-        '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
+        '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
       '<p class="muted">' + esc(msg || '未知错误') + '</p>' +
       '<p class="dist-note">原数据没有被修改；可重新选择文件或先用「导出 JSON」确认本机数据。</p>' +
       '<div class="actions" style="margin-top:12px"><button class="btn btn-block" data-act="close">关闭</button></div>'
@@ -13738,7 +13792,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var last = backupLast();
       var html =
         '<div class="sheet-head" style="margin-bottom:8px"><h3>完整备份</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
         '<p class="muted">把所有记录、配置与照片打包成一个 <b>.fandazi-backup.json</b> 文件，只保存到你选择的位置，不上传服务器。</p>' +
         '<div class="stats" style="margin-top:10px">' +
           '<div class="stat"><b>' + est.records + '</b><span>条记录</span></div>' +
@@ -13763,7 +13817,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     generateBackupFile().then(function(res){
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>备份已生成</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
         '<p class="muted">' + esc(res.name) + ' · ' + fmtBytes(res.size) + ' · 用时 ' + fmtMs(res.ms) + '</p>' +
         '<p class="dist-note">记录 ' + res.records + ' 条、照片 ' + res.photos + ' 张（' + fmtBytes(res.photoBytes) + '）。浏览器下载到下载目录；APK 内会调起系统分享面板，选「保存到文件」即可。</p>' +
         '<p class="muted" style="margin-top:8px">上次备份时间已更新为：' + backupAgoText(backupLast()) + '</p>' +
@@ -13785,7 +13839,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       obj.photos.forEach(function(p){ totalPhotoBytes += p.dataUrl.length; });
       var html =
         '<div class="sheet-head" style="margin-bottom:8px"><h3>恢复完整备份</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
         '<p class="muted">备份时间 ' + esc(backupDateText(obj.exportedAt)) + ' · 数据结构 version ' + num(obj.schemaVersion) + '（当前 ' + db.version + '）</p>' +
         '<div class="stats" style="margin-top:10px">' +
           '<div class="stat"><b>' + norm.records.length + '</b><span>条记录</span></div>' +
@@ -13824,7 +13878,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       pendingRestore = null;
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>恢复完成</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
         '<p class="muted">' + (res.replaced ? '已完整替换为备份内容' : '合并完成') + '：写入 ' + res.added + ' 条，跳过 ' + res.skipped + ' 条，恢复照片 ' + res.photos + ' 张（' + fmtBytes(res.photoBytes) + '），用时 ' + fmtMs(res.ms) + '。</p>' +
         '<p class="dist-note">' + (res.feedbackApplied ? '推荐反馈已按备份还原（' + res.feedback + ' 条，不按记录去重）。' : '该备份不含反馈段（旧版本备份），本机反馈保持不变。') + '</p>' +
         '<p class="dist-note">' + (res.profileApplied ? '「我的口味」手动设置已还原（提升 ' + res.profileBoost + ' 项 / 拉黑 ' + res.profileBlock + ' 项 / 上限 ' + (res.profileBudget ? '¥' + res.profileBudget : '未设置') + '）。' : '该备份不含口味设置段（旧版本备份），本机口味设置保持不变。') + '</p>' +
@@ -13850,7 +13904,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return restoreSnapshotById(snap.id).then(function(res){
         openBackupModal(
           '<div class="sheet-head" style="margin-bottom:8px"><h3>已恢复</h3>' +
-            '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
+            '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
           '<p class="muted">已回到 ' + esc(backupDateText(res.at)) + ' 的恢复点：' + res.records + ' 条记录，照片引用 ' + res.photos + ' 张。</p>' +
           '<div class="actions" style="margin-top:12px"><button class="btn btn-block" data-act="close">完成</button></div>'
         );
@@ -13982,7 +14036,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var deltaText = (delta >= 0 ? '+' : '−') + fmtBytes(Math.abs(delta)) + (p.v1Bytes ? '（' + (delta >= 0 ? '+' : '−') + pct + '%）' : '');
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>升级到新版数据</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
         '<div class="stats">' +
           '<div class="stat"><b>' + p.records + '</b><span>条记录</span></div>' +
           '<div class="stat"><b>' + p.shops + '</b><span>家店铺</span></div>' +
@@ -14015,7 +14069,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         : '没有孤儿照片';
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>已升级到新版数据</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
         '<div class="stats">' +
           '<div class="stat"><b>' + res.addedVisits + '</b><span>新增到访</span></div>' +
           '<div class="stat"><b>' + res.skippedVisits + '</b><span>跳过重复</span></div>' +
@@ -14046,7 +14100,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     generateBackupFile().then(function(res){
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>备份已完成</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
         '<p class="muted">' + esc(res.name) + ' · ' + fmtBytes(res.size) + ' · 用时 ' + fmtMs(res.ms) + '</p>' +
         '<p class="dist-note">记录 ' + res.records + ' 条、照片 ' + res.photos + ' 张已打包；现在可以安全地继续升级。</p>' +
         '<div class="actions" style="margin-top:12px">' +
@@ -14083,7 +14137,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var p = v2RevertPlan(), c = p.config;
     openBackupModal(
       '<div class="sheet-head" style="margin-bottom:8px"><h3>回到旧版数据</h3>' +
-        '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
+        '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
       '<p class="muted">会删除新版数据（fandazi.v2）与迁移标记，回到迁移前的旧版数据。</p>' +
       '<div class="stats" style="margin-top:10px">' +
         '<div class="stat"><b>' + p.lostVisits + '</b><span>条迁移后新增会丢失</span></div>' +
@@ -14129,7 +14183,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     setTimeout(function(){
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>已回到旧版数据</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
         '<p class="muted">当前使用旧版数据：' + num(res.records) + ' 条记录。</p>' +
         '<p class="dist-note">迁移后新增的 ' + num(res.lostVisits) + ' 条到访已按预期移除；旧版数据 fandazi.v1 未被改动；照片仍在（IndexedDB 未删除）。</p>' +
         '<p class="dist-note">新版模式下改过的设置 / 黑名单 / 想去 / 投票 / 常用地点也回到迁移前的版本，这是设计。</p>' +
@@ -14159,7 +14213,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     v2LiveStatus().then(function(st){
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>重建新版数据</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
         '<p class="muted">按当前记录重新计算店铺聚合与照片引用，用于修复不一致（例如某张照片被误删）。</p>' +
         '<p class="dist-note">影响范围：只重写新版数据（fandazi.v2）；旧版数据 fandazi.v1 与 IndexedDB 照片都不动；不会删除记录，也不会补回已不存在的照片。</p>' +
         '<p class="dist-note">当前：' + st.shops + ' 家店 / ' + st.visits + ' 条到访 / 孤儿照片 ' + st.orphans + ' 张；预计耗时约 ' + v2EstimateMs(st.visits) + ' ms。</p>' +
@@ -14183,7 +14237,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         var after = v2Status();
         openBackupModal(
           '<div class="sheet-head" style="margin-bottom:8px"><h3>重建完成</h3>' +
-            '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
+            '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
           '<div class="stats">' +
             '<div class="stat"><b>' + before.shops + ' → ' + after.shops + '</b><span>店铺数</span></div>' +
             '<div class="stat"><b>' + before.visits + ' → ' + after.visits + '</b><span>到访数</span></div>' +
@@ -14248,7 +14302,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     restoreSnapshotById(id).then(function(res){
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>已恢复</h3>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button></div>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
         '<p class="muted">已回到 ' + esc(backupDateText(res.at)) + ' 的恢复点：' + res.records + ' 条记录，照片引用 ' + res.photos + ' 张。</p>' +
         '<div class="actions" style="margin-top:12px"><button class="btn btn-block" data-act="close">完成</button></div>'
       );
