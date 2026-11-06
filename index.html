@@ -3934,7 +3934,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return db.blacklist.some(function(b){ return b.key === store.key; });
   }
   function blackStore(store){
-    if(isBlack(store)){ toast('「'+store.name+'」已在不再推荐里，可在「我的 → 反馈」撤销'); return; }
+    if(isBlack(store)){ toast('「'+store.name+'」已在不再推荐里，可在「我的 → 不再推荐（黑名单）」移出'); return; }
     db.blacklist.push({ key:store.key, name:store.name, city:store.city||'', at:new Date().toISOString() });
     save();
     feedbackPersist('never', store);
@@ -8769,13 +8769,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
 
   function renderSettings(){
-    renderTasteChips($('#myTasteChips'), db.settings.tasteTags||[]);
+    $('#myTasteChips').innerHTML = (db.settings.tasteTags||[]).map(function(t){
+      return '<span class="chip-x">'+esc(t)+'<b data-act="delTaste" data-tag="'+esc(t)+'">'+icon('close','ico-16')+'</b></span>';
+    }).join('') || '<span class="muted">未设置</span>';
     $('#myAvoidChips').innerHTML = (db.settings.restrictions||[]).map(function(t){
       return '<span class="chip-x">'+esc(t)+'<b data-act="delAvoid" data-tag="'+esc(t)+'">'+icon('close','ico-16')+'</b></span>';
     }).join('') || '<span class="muted">未设置</span>';
-    $('#myTasteChips').querySelectorAll('[data-taste]').forEach(function(b){
-      b.setAttribute('data-act', 'delTaste');
-    });
   }
 
   function renderPlaces(){
