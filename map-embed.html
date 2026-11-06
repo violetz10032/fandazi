@@ -13,6 +13,13 @@
     border:1px solid rgba(255,255,255,.85);box-sizing:border-box;
     box-shadow:0 1px 3px rgba(0,0,0,.18)
   }
+  /* 单独用手机浏览器打开本页时，把阶段与真实请求结果显示出来，便于和 APK 内失败对照 */
+  .fz-dbg{
+    position:absolute;left:8px;right:8px;bottom:8px;margin:0;padding:8px 10px;
+    max-height:45%;overflow:auto;z-index:9;
+    background:rgba(255,253,246,.96);border:1px solid #f1e4cd;border-radius:8px;
+    font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#5a4a34;white-space:pre-wrap;word-break:break-all
+  }
 </style>
 <script>
 /* JS API 2.0：安全密钥必须先于 loader 脚本写入，否则会报 INVALID_USER_SCODE */
@@ -21,6 +28,7 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
 </head>
 <body>
 <div id="map"></div>
+<pre id="fzDbg" class="fz-dbg hidden"></pre>
 <script>
 (function(){
   'use strict';
@@ -40,6 +48,15 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
   var T0 = (window.performance && performance.now) ? performance.now() : Date.now();
   var tScriptStart = null, tScriptLoaded = null, tAmapReady = null;
   var traceSeq = 0;
+  /* 单独打开本页（不在 iframe 里）时才显示诊断面板，方便用户用手机浏览器对照 */
+  var standalone = (function(){ try{ return window.parent === window; }catch(e){ return true; } })();
+  function dbg(line){
+    if(!standalone) return;
+    var el = document.getElementById('fzDbg');
+    if(!el) return;
+    el.classList.remove('hidden');
+    el.textContent += (el.textContent ? '\n' : '') + line;
+  }
 
   function now(){
     return (window.performance && performance.now) ? performance.now() : Date.now();
@@ -66,36 +83,55 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
     if(code === 'OVER_QUERY_LIMIT'){ return 'OVER_QUERY_LIMIT：调用频率超限，请稍后重试。'; }
     return code ? ('高德返回 ' + code) : '';
   }
-  function fail(msg){
-    send({ type:'fz:error', message:String(msg || '高德地图加载失败') });
+  function fail(msg, info){
+    var m = { type:'fz:error', message:String(msg || '高德地图加载失败') };
+    if(info){ for(var k in info){ if(k !== 'type' && Object.prototype.hasOwnProperty.call(info, k)) m[k] = info[k]; } }
+    dbg('ERROR ' + m.message + (info && info.code ? ' [' + info.code + ']' : ''));
+    send(m);
   }
   /* 阶段打点回传宿主：只含阶段名与毫秒数，不含坐标或记录内容 */
   function trace(stage, extra){
     try{
       var m = { type:'fz:trace', stage:String(stage), elapsedMs:elapsedMs(), seq:++traceSeq };
       if(extra){ for(var k in extra){ if(Object.prototype.hasOwnProperty.call(extra, k)) m[k] = extra[k]; } }
+      dbg('trace ' + m.stage + ' @' + m.elapsedMs + ' ms' + (m.url ? ' ' + m.url : ''));
       send(m);
     }catch(e){}
   }
-  /* 失败时用同域 fetch 读高德返回的 JSON，拿到真实错误码（响应带 ACAO:*） */
+  /* 失败时用同域 fetch 读高德返回的 JSON，拿到真实错误码与 HTTP 状态/耗时（响应带 ACAO:*） */
   function diag(reason){
-    var timer = setTimeout(function(){ fail(reason + '（诊断请求超时）'); }, 6000);
+    var started = now();
+    function report(status, ct, ms, code, note){
+      var p = { type:'fz:diag', stage:'amap-script', url:SRC,
+        httpStatus:(status === null || status === undefined) ? null : Number(status),
+        contentType:String(ct || ''), ms:ms, code:String(code || '') };
+      dbg('diag HTTP ' + (p.httpStatus === null ? '-' : p.httpStatus) + ' ' + p.contentType +
+        ' ' + p.ms + ' ms' + (p.code ? ' code=' + p.code : '') + (note ? ' ' + note : ''));
+      send(p);
+      return p;
+    }
+    var timer = setTimeout(function(){
+      var p = report(null, '', Math.round(now() - started), '', 'timeout');
+      fail(reason + '（诊断请求超时 6 秒）', p);
+    }, 6000);
     fetch(SRC, { credentials:'omit', cache:'no-store' })
       .then(function(r){ return r.text().then(function(t){ return { status:r.status, ct:String(r.headers.get('content-type') || ''), t:t }; }); })
       .then(function(o){
         clearTimeout(timer);
         var code = '';
         if(o.t && o.t.charAt(0) === '{'){
-          try{ var j = JSON.parse(o.t); code = String(j.info || ''); }catch(e){}
+          try{ var j = JSON.parse(o.t); code = String(j.info || j.infocode || ''); }catch(e){}
         }
-        if(code){ fail(tipFor(code)); return; }
-        if(o.status !== 200){ fail(reason + '：HTTP ' + o.status); return; }
-        if(/javascript|ecmascript/i.test(o.ct)){ fail(reason + '：脚本可下载但没有注册 AMap，可能被执行策略拦截'); return; }
-        fail(reason + '：返回非脚本内容（' + (o.ct || '未知类型') + '）');
+        var p = report(o.status, o.ct, Math.round(now() - started), code, '');
+        if(code){ fail(tipFor(code), p); return; }
+        if(o.status !== 200){ fail(reason + '：HTTP ' + o.status, p); return; }
+        if(/javascript|ecmascript/i.test(o.ct)){ fail(reason + '：脚本可下载但没有注册 AMap，可能被执行策略拦截', p); return; }
+        fail(reason + '：返回非脚本内容（' + (o.ct || '未知类型') + '）', p);
       })
       .catch(function(e){
         clearTimeout(timer);
-        fail(reason + '：请求 webapi.amap.com 失败（' + ((e && e.message) || '网络不可达或被拦截') + '）');
+        var p = report(null, '', Math.round(now() - started), '', (e && e.message) || 'network blocked');
+        fail(reason + '：请求 webapi.amap.com 失败（' + ((e && e.message) || '网络不可达或被拦截') + '）', p);
       });
   }
   /* 脚本近 1 MB，移动网络下 5–20 秒都属正常；窗口放到 20 秒，期间每 1 秒回传一次进度 */
@@ -115,7 +151,7 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
     s.src = SRC;
     var settled = false, waited = 0;
     tScriptStart = elapsedMs();
-    trace('script-start', { scriptStartMs:tScriptStart });
+    trace('script-start', { scriptStartMs:tScriptStart, url:SRC });
     var hb = setInterval(function(){
       if(settled) return;
       waited += 1000;
@@ -125,7 +161,7 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
       if(settled) return;
       settled = true;
       clearTimeout(timer); clearInterval(hb);
-      trace('script-timeout', { waitedMs:waited });
+      trace('script-timeout', { waitedMs:waited, url:SRC });
       diag('高德脚本加载超时（' + Math.round(ENSURE_TIMEOUT/1000) + ' 秒）');
     }, ENSURE_TIMEOUT);
     s.onload = function(){
@@ -133,10 +169,10 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
       settled = true;
       clearTimeout(timer); clearInterval(hb);
       tScriptLoaded = elapsedMs();
-      trace('script-loaded', { scriptStartMs:tScriptStart, scriptLoadedMs:tScriptLoaded });
+      trace('script-loaded', { scriptStartMs:tScriptStart, scriptLoadedMs:tScriptLoaded, url:SRC });
       if(window.AMap && typeof window.AMap.Map === 'function'){
         tAmapReady = elapsedMs();
-        trace('amap-ready', { scriptStartMs:tScriptStart, scriptLoadedMs:tScriptLoaded, readyMs:tAmapReady });
+        trace('amap-ready', { scriptStartMs:tScriptStart, scriptLoadedMs:tScriptLoaded, readyMs:tAmapReady, url:SRC });
         cb(null);
       }
       else diag('高德脚本已加载但未注册 AMap');
@@ -146,7 +182,7 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
       settled = true;
       clearTimeout(timer); clearInterval(hb);
       tScriptLoaded = elapsedMs();
-      trace('script-error', { scriptStartMs:tScriptStart, waitedMs:waited });
+      trace('script-error', { scriptStartMs:tScriptStart, waitedMs:waited, url:SRC });
       diag('高德地图脚本加载失败');
     };
     document.head.appendChild(s);
@@ -196,6 +232,12 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
     if(!originAllowed(e.origin)) return;
     parentOrigin = e.origin;
     var d = e.data || {};
+    if(d.type === 'fz:ping'){
+      /* 宿主探测：回报本页实际来源与 Referer 策略，用于和 iframe 内外对照 */
+      send({ type:'fz:pong', href:location.href, host:location.host,
+        referrer:String(document.referrer || ''), policy:String(document.referrerPolicy || '') });
+      return;
+    }
     if(d.type === 'fz:init'){
       pending = d;
       ensure(function(err){
@@ -212,8 +254,16 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
     }
   });
   /* 脚本加载完即通知宿主（此时还没有业务数据，可以用 * 作为目标源） */
+  dbg('standalone=' + standalone + ' page=' + location.href);
+  dbg('script=' + SRC);
+  trace('page-start', { href:location.href });
   ensure(function(err){
     if(err) return;   /* 失败已由 diag 发送 fz:error */
+    if(standalone){
+      /* 单独打开时把默认视野画出来，用户能直接看到这张对照页是否正常 */
+      init({ center:[116.397428, 39.90923], zoom:10, pts:[] });
+      dbg('AMap 注册成功，对照地图已初始化');
+    }
     send({ type:'fz:script-ready' });
   });
 })();

@@ -1140,7 +1140,36 @@ var MAP_BASE_LAYER = {
 - **失败降级（可诊断）**：脚本 `onerror`、12 秒超时、`window.AMap` 未注册、初始化抛错、非 HTTPS / `file://` 环境，都会回落画布。回落前会先复现一次加载并读取高德真实返回：域名校验失败时高德给的是 **HTTP 200 + `application/json`**（`{"info":"INVALID_USER_DOMAIN","infocode":"10006",…}`，不是脚本，所以旧的「网络不通或被拦截」文案看不到真正原因）。现在会临时接管 `console.error/warn` 与 `window.onerror`，并在失败后 `fetch` 同一脚本地址解析 `info/infocode`，把 **错误码 + 一句话处理建议**写进地图页错误卡片；最近一次失败原因存 `localStorage['fandazi.mapAmapErr']`，刷新后仍能在「我的 → 地图底图」看到，成功加载后自动清除。已覆盖 `INVALID_USER_DOMAIN(10006)`、`INVALID_USER_SCODE`、`USERKEY_PLAT_NOMATCH`、`INVALID_USER_KEY`、`OVER_QUERY_LIMIT`、`DAILY_QUERY_OVER_LIMIT` 等。
 - **凭据与合规**：Key 与 `securityJsCode` 以常量内联（单文件应用无法隐藏）；`window._AMapSecurityConfig` 在 loader 脚本执行**之前**写入，避免 `INVALID_USER_SCODE`。请在<https://console.amap.com/dev/key/app> 把域名白名单设为 **violetz10032.github.io**（只保留这一条）。**`localhost` 加不进去**——高德控制台会直接拒绝并提示「域名不符合规范」，所以网页版/APK 都不要指望把 localhost 加白。按高德协议，本应用**不抓取、不缓存、不转存**服务端数据与底图图片，不做 POI 批量复制。
 - **APK 内嵌地图页**：APK 的页面源是 `https://localhost`，直连高德必然 `INVALID_USER_DOMAIN`。因此 APK 内改为在 `#amapLayer` 里加载 `https://violetz10032.github.io/fandazi/map-embed.html`（独立静态页，源是 `github.io`，可通过域名校验），高德脚本只在那个 iframe 里加载。该页**只做地图渲染、不含业务数据**：宿主只传店铺编号 / 显示坐标（GCJ-02）/ 聚合数量 / 点半径 / 颜色，以及中心点与缩放；**不传店名、备注、精确地址**。内嵌页回传四类消息：`fz:trace`（加载阶段打点：iframe 载入 / 脚本开始下载 / 脚本载入 / AMap 注册的毫秒数）、`fz:view`（拖动/缩放后的中心与 zoom）、`fz:pick`（点击的店铺编号）、`fz:error`（高德错误码）。双向都用 `postMessage` 显式指定目标源：宿主只接受 `https://violetz10032.github.io` 且校验 `event.source`，内嵌页只接受 `https://localhost` / `capacitor://localhost` 与本机调试源（含端口）。**等待窗口**：iframe 载入 15 秒、载入后等高德脚本注册 20 秒（脚本近 1 MB，移动网络慢时 5–20 秒属正常），期间地图页提示条持续显示「高德图层加载中… 已等 X 秒 · 当前阶段」；超时只重试一次（重建 iframe 并带一次性查询参数），重试仍失败才回落画布。回落文案区分两种原因：超时/未加载完写「已重试 1 次 / 仍未完成加载，并非高德返回错误码」，脚本确实失败写「内嵌地图页加载失败：+ 真实错误码/网络原因」；画布地图的数据与交互完全不动。
-- **实测**：CDP 脚本 `.tmp/amap-layer-test.js` **23/23 通过**，覆盖默认不注入脚本、WGS→GCJ 参考点误差（天安门 ±0.0002°）、境外不偏移、mock AMap 选层/拖动回读/点击开卡、切回画布恢复手势、拦截高德域名后的失败降级与重试入口、**真实网络下 127.0.0.1 触发 `INVALID_USER_DOMAIN` 并显示 10006 与页面源**、`securityJsCode` 注入顺序、错误码持久化到设置页、常见错误码建议表、**内嵌页本地副本握手失败时回报真实错误码并回落画布**。等待窗口专项 `.tmp/amap-embed-wait-test.js` **8/8 通过**：慢加载 9 秒不会被 6 秒误判、加载中显示已等待秒数与阶段、宿主忽略非 iframe 窗口伪造的 `fz:script-ready`、超时只重试一次且重试仍失败才回落、回落文案区分「未完成加载（已重试）」与「确实报错」、真实 `map-embed.html` 回传 `iframe-load / script-start / script-error` 打点。同一轮 `p0` 回归 **28/28**、菜品 **28/28**。真实高德瓦片与 APK 内嵌页的实际手势/网络表现仍需联网真机验收（见文末未验证项）。
+- **实测**：CDP 脚本 `.tmp/amap-layer-test.js` **23/23 通过**，覆盖默认不注入脚本、WGS→GCJ 参考点误差（天安门 ±0.0002°）、境外不偏移、mock AMap 选层/拖动回读/点击开卡、切回画布恢复手势、拦截高德域名后的失败降级与重试入口、**真实网络下 127.0.0.1 触发 `INVALID_USER_DOMAIN` 并显示 10006 与页面源**、`securityJsCode` 注入顺序、错误码持久化到设置页、常见错误码建议表、**内嵌页本地副本握手失败时回报真实错误码并回落画布**。等待窗口专项 `.tmp/amap-embed-wait-test.js` **8/8 通过**：慢加载 9 秒不会被 6 秒误判、加载中显示已等待秒数与阶段、宿主忽略非 iframe 窗口伪造的 `fz:script-ready`、超时只重试一次且重试仍失败才回落、回落文案区分「未完成加载（已重试）」与「确实报错」、真实 `map-embed.html` 回传 `iframe-load / script-start / script-error` 打点。诊断明细专项 `.tmp/amap-embed-diag-test.js` **5/5 通过**：三类失败各自落到网络层 / 脚本层 / 注册层，面板默认展开且含请求 URL、HTTP 状态、耗时、真实错误码与 `document.referrer` / `referrerPolicy`。同一轮 `p0` 回归 **28/28**、`amap-layer` **23/23**。真实高德瓦片与 APK 内嵌页的实际手势/网络表现仍需联网真机验收（见文末未验证项）。
+
+#### APK 内高德失败诊断（2026-11-07）
+
+内嵌页失败时不再只有一句笼统提示：地图页错误卡片下方会**自动展开「诊断明细（可直接截图）」**（`#mapDiag`），并带「复制明细」按钮。明细把失败分成三层，逐层给证据：
+
+| 层 | 判定依据 | 明细里能看到 |
+| --- | --- | --- |
+| 网络层：内嵌页 HTML 未到 | `iframe.onload` 未触发（15 秒 × 2 次） | 内嵌页完整 URL、每次耗时、`__fandaziTest.mapview.layer().embed.diag.html='timeout'`，以及原生 HTTP / 跨域探测的可达性结论 |
+| 脚本层：HTML 到但高德脚本未到 | 收到 `page-start`/`ensure-start`，但 20 秒内没有 `script-loaded` | 高德脚本完整 URL、脚本状态（未开始 / 下载中 / 超时）、阶段打点（内嵌页耗时 / 宿主耗时 / 第几次尝试） |
+| 注册层：脚本到但未注册 AMap | 收到 `script-loaded`，未收到 `amap-ready`，或 `fz:diag` 回传错误码 | 高德真实错误码（如 `INVALID_USER_DOMAIN`）、诊断请求的 HTTP 状态 / `content-type` / 耗时 |
+
+- **iframe 到底有没有跑到**：宿主在 `iframe.onload` 后向 `contentWindow` 发 `fz:ping`，内嵌页回 `fz:pong` 自带 `href / host / document.referrer / referrerPolicy`；再加内嵌页执行时的第一条 `fz:trace`（`page-start`）。三样都对不上就说明 HTML 都没到，而不是高德脚本报错。
+- **Referer 修正**：旧版 iframe 带 `referrerpolicy="no-referrer"`，会把内嵌页发往 `webapi.amap.com` 的 Referer 一并剥掉；高德按域名白名单校验时可能因此判失败。本版移除该属性，恢复默认策略（只发来源域名），明细里同时显示 `document.referrer` 与策略，便于和顶层打开对照。
+- **顶层对照入口**：错误卡片新增「直接打开地图页」按钮，用同一个 `map-embed.html` 在顶层打开（APK 内由 Capacitor 交给系统浏览器），绕过 iframe。若顶层能出图、iframe 不能，问题就在 iframe/WebView 这一层；内嵌页单独打开时右下角也会显示同样的阶段与真实请求结果。
+- **实测**：CDP `.tmp/amap-embed-diag-test.js` **5/5**（连接挂起 → 网络层；只有 `page-start` → 脚本层；回传 `INVALID_USER_DOMAIN` + HTTP 200 / 123 ms → 注册层）。注意：无真机时只能验证宿主与内嵌页的判定逻辑，WebView 的实际 Referer / DNS / 证书行为仍需真机截图确认。
+
+#### 若 APK 内 JS API 仍不可行：两条路径的成本对比
+
+前提结论：**网页版已正常**，说明 Key、`securityJsCode`、`violetz10032.github.io` 白名单都没问题；故障范围只剩 APK 的 WebView/网络层。若真机诊断明细最终显示「内嵌页 HTML 未到」或「注册层错误码」，按下面两条选：
+
+| 方案 | 前置条件 | 成本 / 改动 | 适合场景 |
+| --- | --- | --- | --- |
+| A. 把 `map-embed.html` 部署到国内可达的 HTTPS 托管（推荐） | 一个可访问的域名（大陆 CDN 需备案；香港/海外托管免备案但速度一般）+ 把该域名加进高德 Key 白名单 | 托管约几元～几十元/月；代码只改 `mapEmbedUrl()` 一处；现有 iframe / 降级 / 诊断全部复用 | 想保留高德底图，又不想接原生 SDK |
+| B. 接入高德 Android 原生地图 SDK | 控制台新建 **Android 平台 Key**，绑定包名 `com.fandazi.app` 与固定签名 SHA1；CI 改用固定 keystore（放 GitHub Secrets，构建时解码） | 固定签名证书 SHA1：`EA:43:76:8B:2A:90:7F:09:B2:2D:A7:10:FE:C0:1B:BE:F4:38:34:E7`（对应本地 `android-app/signing/fandazi-release.p12`，密钥不入库）；需新写原生插件桥接标记/相机/点击，APK 体积增加数 MB，保留画布兜底 | 必须离线/原生性能，或域名托管不可行 |
+| C. 主页面直接加载高德脚本（去掉 iframe） | 主页面源必须是白名单内域名；APK 主页源固定为 `https://localhost`，而高德不接受 `localhost` | 结论：**当前不可行**，除非把整个应用页面迁到白名单域名（等于方案 A 的代价） | 不推荐 |
+| D. APK 只用画布 + 手填坐标 | 无 | 已可用，零成本 | 地图只是辅助、能接受无底图 |
+
+> 选 B 时，用户只需在高德控制台填：**包名 `com.fandazi.app`**、**SHA1 `EA:43:76:…:34:E7`**；然后把这个 keystore 的 base64 放进 GitHub Secrets（`ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS=fandazi` / `ANDROID_KEY_PASSWORD`），CI 侧再加解码与 `signingConfig` 即可。以上“固定签名 + Secrets”尚未接线，属于选 B 后的第一步。
+
 
 ### 实测
 
