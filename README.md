@@ -84,7 +84,7 @@
 - 位置：**我的 → 本机数据 → WebDAV 云备份**（可折叠面板），填写服务器地址（指向网盘里的一个文件夹）、用户名、应用独立密码、备份文件名（默认 `fandazi_backup.json`）。
 - **网页版如实受限**：浏览器跨域（CORS）会拦截 WebDAV 的 `PROPFIND` / `PUT`，面板保留入口并明确提示「建议在 APK 内使用」，不绕行、不走代理。
 - **APK 内走原生 HTTP**：直接调用 CapacitorHttp（不启用它的全局 fetch 补丁，因此不影响高德 JS API 动态加载与 Gist 同步），不受浏览器跨域限制。
-- **复用现有完整备份**：上传就是把「完整备份」对象原样 `PUT`（`format` / `schemaVersion` 6 / SHA-256 校验值全部沿用），没有另造格式；上传成功会同步「上次备份」时间与体积。
+- **复用现有完整备份**：上传就是把「完整备份」对象原样 `PUT`（`format` / `schemaVersion` 7 / SHA-256 校验值全部沿用），没有另造格式；上传成功会同步「上次备份」时间与体积。
 - **拉取还原**：`GET` 回来后走现有 `parseBackupText` + SHA-256 校验，再进入现有的「合并 / 完整替换」恢复弹窗（含恢复前自动恢复点）。
 - **测试连接**：`PROPFIND` 只读探测目录，状态码翻成人话——401 密码或用户名错（坚果云需「应用独立密码」，不是登录密码）/ 403 权限或路径不对 / 404 目录或文件不存在 / 405 不是 WebDAV 地址 / 409 父目录缺失 / 507 空间不足 / 超时或 HTTP 0 多为跨域被拦。
 - **密码只存本机**：写在 `localStorage`（`fandazi.webdav`），界面明说「未加密，建议使用应用独立密码」，可一键「清除本机口令」。
@@ -196,7 +196,7 @@ cd android && ./gradlew assembleDebug
 
 ### 签名与分发限制
 
-- 当前是 **debug 签名**（Gradle 自动用 debug keystore 签名，`applicationId` = `com.fandazi.app`，`versionName` 1.0.2、`versionCode` 3）。
+- 当前是 **debug 签名**（Gradle 自动用 debug keystore 签名，`applicationId` = `com.fandazi.app`，`versionName` 1.0.4、`versionCode` 5）。
 - debug APK **只能自己装**：需要手动允许「未知来源」，也不能上传 Google Play / 国内应用商店，部分国产 ROM 会额外提示风险。
 - 真要正式发布，需要自己的 keystore + `release` 构建类型，并把 keystore 以 GitHub Secrets（base64）形式注入 CI，`./gradlew assembleRelease` 后再用 `apksigner` 校验；keystore 文件本身绝不能进仓库。
 
@@ -304,6 +304,25 @@ APK 内接了 `@capacitor/app`（6.0.3），Android 的物理/手势返回键不
 - 「手动填起点」：在推荐页筛选区点开，填纬度 / 经度（-90~90 / -180~180，不能全 0）后保存，等同一次定位读数；记录表单里的「经纬度 lng / lat」仍可直接手填。
 - 距离全部在本机计算，**不引入地图 SDK、不调第三方 API**；「打开平台 / 导航」仍是你主动点击的外链。
 - 店铺坐标是记录的可选字段（`lat` / `lng`），旧数据不填也完全兼容，不需要迁移。
+
+## 店铺定位：高德 POI 搜索 + 地图选点
+
+记一餐的「完整记录」表单里新增了三个**互相独立**的定位入口，任一可用即可完成定位，不把记录流程绑死在搜索上：
+
+| 入口 | 依赖 | 结果 |
+| --- | --- | --- |
+| 高德搜索 | 现有 Web 端 Key 的 JS API 插件（`AMap.PlaceSearch` / `AutoComplete` / `Geocoder`） | 候选列表 → 点「用这家」才回填店名 / 城市 / 商圈 / 地址 / 经纬度 |
+| 地图选点 | 高德 JS API 底图 | 点图放临时标记 → 「确认使用此位置」才写入；取消不改动原坐标 |
+| 手填经纬度 / 用当前位置 | 无 / 定位权限 | 始终可用，写入后来源记为「手动」或「当前定位」 |
+
+- **不另申请 Key**：搜索走 JS API 自带的 `PlaceSearch` / `AutoComplete`，与底图共用同一个 Web 端 Key 与 `securityJsCode`，插件只在点击搜索时按需加载，不改变启动路径。
+- **必须显式确认**：搜索候选只展示，不自动选第一条、不自动写字段；点「用这家」才回填。
+- **失败给真码**：`INVALID_USER_DOMAIN(10006)`、`INVALID_USER_SCODE`、`USERKEY_PLAT_NOMATCH`、`INVALID_USER_KEY`、`DAILY_QUERY_OVER_LIMIT`、`OVER_QUERY_LIMIT` 原样显示并附处理建议；`no_data` / `timeout` 单独区分，不吞成一句「搜索失败」。
+- **距离自动带出**：回填坐标后，若「起点」已设经纬度，按 Haversine 实算直线距离写入「与我距离 km」，并标注「已按起点实算，可手改」；你手填过的距离不会被覆盖。
+- **坐标来源**：店铺级定位写入 `fandazi.shopmeta` 条目的可选 `location`（`coordinateSystem:'GCJ02'`、`source`、`amapPoiId`、`formattedAddress`、`cityCode`、`verified`），记录里新增可选 `locationSource`。旧数据没有这两个字段时按空读取，不迁移、不改键名。
+- **同一家店**：定位元数据按现有 `shopIdOf(店名, 城市)` 归并，与平台链接 / 补充字段同一套店铺档案，不重复建档。
+- **已知限制（与地图同源）**：搜索与底图共用同一 Key 与同一套域名校验，因此**网页版可用；APK 内随「高德图层」状态而定**——APK 主页源是 `https://localhost`（不在白名单，且高德不接受 localhost），主页面拿不到 `AMap` 插件对象，此时搜索会明确提示不可用并引导手填坐标，不会假装在搜。APK 内地图选点同理，失败时保留手填与「用当前位置」。
+- **测试**：`.tmp/poi-pick-test.js` **17/17 通过**（mock AMap）：归一化 / 错误码 / 候选渲染 / 必须确认 / 手改来源 / 搜索失败清空 / 起点距离 / 手填不覆盖 / 选点确认与取消 / shopmeta 定位 / 备份 v6 兼容 / 保存落库。
 
 ## 教程与示例数据
 
@@ -683,12 +702,12 @@ outbox（`.tmp/sync-outbox-test.js`）**17/17 通过**：断网进入 30 秒退�
 3. 生成后记下 `fandazi.backup.last`（时间、记录条数、文件大小），「我的 → 数据」会显示「上次备份：X 天前（N 条 / M.B）」；
 4. 距上次备份超过 7 天，或自上次备份后新增/修改 ≥10 条记录，「我的」页顶部会出现一条备份提醒（复用应用内提醒条），点「去备份」直达面板。
 
-文件结构（`schemaVersion` 是「备份格式版本」，本版为 6；`payload.version` 是数据结构版本，仍为 3）：
+文件结构（`schemaVersion` 是「备份格式版本」，本版为 7；`payload.version` 是数据结构版本，仍为 3）：
 
 ```json
 {
   "format": "fandazi-backup",
-  "schemaVersion": 6,
+  "schemaVersion": 7,
   "exportedAt": "2026-11-05T...",
   "checksum": { "algo": "SHA-256", "scope": "canonical(payload+photos)", "value": "…64 位十六进制…" },
   "stats": { "records": 30, "photos": 5, "photoBytes": 29167, … },
@@ -1186,7 +1205,7 @@ var MAP_BASE_LAYER = {
 
 ### 已知限制
 
-- 默认没有真实底图与地名，只有点、网格、比例尺；勾选「高德」后才有街道底图（需要联网、受配额限制），但仍不能点图选地址、不能搜索地点。
+- 默认没有真实底图与地名，只有点、网格、比例尺；勾选「高德」后才有街道底图（需要联网、受配额限制）。地图页本身不提供搜索；店铺定位的搜索与选点在**记一餐表单**里（网页版可用，APK 内随高德图层状态而定，见「店铺定位」一节）。
 - 高德模式下底图由官方 JS API 渲染，Canvas 只叠加标记；若关闭浏览器对高德的网络访问，底图会是空白网格而标记仍可见（符合协议与降级设计）。
 - 高德与画布是两套投影，切层时会按当前点重新拟合视图，因此切换瞬间视野可能有轻微变化，但不会改变任何记录坐标。
 - 簇合并是**屏幕像素阈值**（26px），缩放越大越容易拆开；没有做服务端/网格索引级别的聚合。

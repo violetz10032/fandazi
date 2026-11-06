@@ -729,6 +729,22 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .map-diag summary{cursor:pointer;font-size:11px;font-weight:600;color:var(--warn-ink)}
   .map-diag pre{margin:6px 0 0;white-space:pre-wrap;word-break:break-all;font:11px/1.55 ui-monospace,Menlo,Consolas,monospace;color:var(--ink2)}
   .map-diag .btn{margin-top:6px;padding:3px 8px;font-size:11px;border-radius:8px}
+  /* 店铺定位：高德搜索候选 + 地图选点 */
+  .poi-row{display:flex;gap:8px;align-items:center}
+  .poi-row .input{flex:1;min-width:0}
+  .poi-list{margin-top:8px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel-2)}
+  .poi-list[hidden],.poi-list.hidden{display:none}
+  .poi-hit{display:flex;gap:8px;align-items:flex-start;padding:9px 10px;border-bottom:1px dashed var(--line)}
+  .poi-hit:last-child{border-bottom:none}
+  .poi-hit-main{flex:1;min-width:0}
+  .poi-hit b{display:block;font-size:13px;color:var(--ink);word-break:break-all}
+  .poi-hit .meta{display:block;margin-top:2px;font-size:11px;color:var(--ink3);word-break:break-all}
+  .poi-hit .btn{flex:none;padding:5px 9px;font-size:11.5px}
+  .poi-tag{display:inline-block;margin-left:6px;padding:0 5px;border-radius:6px;background:var(--soft);color:var(--soft-ink);font-size:10px;font-weight:600}
+  .pick-map-box{position:relative;height:clamp(220px,38vh,320px);border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--map-bg)}
+  #pickMapCanvas{position:absolute;inset:0}
+  .pick-map-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;font-size:12px;color:var(--ink2);line-height:1.7}
+  .pick-coord{margin:8px 0 0;font:12px/1.6 ui-monospace,Menlo,Consolas,monospace;color:var(--ink2)}
   /* 平台链接 / 补充信息（店铺详情内嵌） */
   .sm-row{display:flex;align-items:flex-start;gap:6px;padding:8px 0;border-bottom:1px dashed var(--line)}
   .sm-row:last-child{border-bottom:0}
@@ -2123,6 +2139,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     </div>
 
     <div class="full-only" id="formFullPlace">
+    <div class="field poi-search" id="poiSearchBox">
+      <label for="f-poi">高德搜索店铺位置（选填）</label>
+      <div class="poi-row">
+        <input class="input" id="f-poi" placeholder="输入店名后点搜索，也可直接用现有店名" autocomplete="off" maxlength="40">
+        <button type="button" class="btn btn-soft btn-sm" id="btnPoiSearch">搜索</button>
+      </div>
+      <p class="form-hint" id="poiState">用现有 Web 端 Key（JS API 插件）；搜索结果必须点「用这家」确认后才回填。</p>
+      <div class="poi-list hidden" id="poiList"></div>
+    </div>
     <div class="frow">
       <div class="field">
         <label>城市</label>
@@ -2159,8 +2184,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     <p class="dist-note">左右两个都要填或都留空。填了坐标后，距离会按坐标 + 你的当前位置计算；也可在店里点下面的按钮直接填入当前坐标。</p>
     <div class="geo-row" style="margin:-2px 0 10px">
       <button type="button" class="btn btn-sm" id="btnGeoForm">用当前位置填入店铺坐标</button>
+      <button type="button" class="btn btn-sm" id="btnMapPickForm">地图选点</button>
       <span class="geo-state" id="geoFormState">仅在店里记录时使用</span>
     </div>
+    <p class="form-hint" id="poiSourceState" style="display:none"></p>
     <div class="map-links" style="margin-bottom:12px">
       <a class="btn btn-sm" id="formMapAmap" href="https://uri.amap.com/" target="_blank" rel="noopener noreferrer">高德地图查看</a>
       <a class="btn btn-sm" id="formMapBaidu" href="https://map.baidu.com/" target="_blank" rel="noopener noreferrer">百度地图查看</a>
@@ -2401,6 +2428,24 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <button type="button" class="btn btn-soft" id="btnMapClose" style="margin-left:auto">关闭</button>
     </div>
     <p class="legal" style="margin-top:10px">手机点开一般会唤起已安装的高德/百度 App，未安装则留在网页版；桌面在新标签打开。本应用不会读取你的位置，也不会把记录发给地图厂商。</p>
+  </div>
+</div>
+
+<!-- 店铺定位：地图选点 -->
+<div class="modal-mask hidden" id="pickMapMask">
+  <div class="modal pick-map-modal" role="dialog" aria-modal="true" aria-labelledby="pickMapTitle">
+    <h3 id="pickMapTitle">地图选点</h3>
+    <p class="muted" id="pickMapHint">在地图上点一下放置临时标记，点「确认使用此位置」后才写入表单；取消不改动原坐标。</p>
+    <div class="pick-map-box">
+      <div id="pickMapCanvas"></div>
+      <div class="pick-map-empty hidden" id="pickMapEmpty"></div>
+    </div>
+    <p class="pick-coord" id="pickMapCoord">尚未选点</p>
+    <div class="actions" style="margin-top:10px">
+      <button type="button" class="btn btn-primary" id="btnPickConfirm" disabled>确认使用此位置</button>
+      <button type="button" class="btn btn-soft" id="btnPickCancel" style="margin-left:auto">取消</button>
+    </div>
+    <p class="legal" style="margin-top:10px">坐标按 GCJ-02 写入；逆地理编码失败不会清空你已填的地址。无网络或无高德 Key 时请直接手填经纬度。</p>
   </div>
 </div>
 
@@ -3330,9 +3375,43 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       checkedAt: String(l.checkedAt || '')
     };
   }
+  /* 店铺级定位元数据：只存“这家店在哪、来源是什么”，不替代记录里的 lat/lng。
+     字段白名单 + 长度限制 + 坐标范围校验；旧数据没有 location 时按无定位元数据读取。 */
+  var SHOP_LOCATION_SOURCES = { amap_poi:'高德 POI', manual:'手动选点', device:'当前定位', imported:'导入' };
+  function shopLocationNorm(loc){
+    if(!loc || typeof loc !== 'object') return null;
+    var lng = Number(loc.lng), lat = Number(loc.lat);
+    if(!isFinite(lng) || !isFinite(lat)) return null;
+    if(lng < -180 || lng > 180 || lat < -90 || lat > 90) return null;
+    if(lng === 0 && lat === 0) return null;
+    var src = Object.prototype.hasOwnProperty.call(SHOP_LOCATION_SOURCES, String(loc.source)) ? String(loc.source) : 'imported';
+    return {
+      coordinateSystem: 'GCJ02',
+      source: src,
+      amapPoiId: String(loc.amapPoiId == null ? '' : loc.amapPoiId).slice(0, 80),
+      formattedAddress: String(loc.formattedAddress == null ? '' : loc.formattedAddress).slice(0, 200),
+      cityCode: String(loc.cityCode == null ? '' : loc.cityCode).slice(0, 20),
+      verified: loc.verified === true,
+      updatedAt: String(loc.updatedAt || ''),
+      lng: Math.round(lng * 1000000) / 1000000,
+      lat: Math.round(lat * 1000000) / 1000000
+    };
+  }
+  function shopLocationOf(shopId){
+    return shopMetaGet(shopId).location || null;
+  }
+  function shopLocationSet(shopId, loc){
+    var n = shopLocationNorm(loc);
+    if(!n) return null;
+    n.updatedAt = new Date().toISOString();
+    var saved = shopMetaTouch(shopId, function(m){ m.location = n; });
+    return saved ? saved.location : null;
+  }
   function shopMetaNormEntry(m){
     if(!m || typeof m !== 'object') return null;
     var out = { updatedAt: String(m.updatedAt || ''), links: [], fields: {} };
+    var loc = shopLocationNorm(m.location);
+    if(loc) out.location = loc;
     (Array.isArray(m.links) ? m.links : []).forEach(function(l){
       var n = shopLinkNorm(l);
       if(n) out.links.push(n);
@@ -12787,6 +12866,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     pickTab = 'recent';
     $('#saveDoneBox').classList.add('hidden');
     $('#f-storeq').value = '';
+    /* 店铺定位：每次开表单清空搜索候选与来源，避免上一家的 POI 串到这一家 */
+    poiPicked = null; poiCoordSource = ''; distAuto = false;
+    poiState.items = []; poiState.loading = false; poiState.distNote = '';
+    poiState.seq++;
+    if($('#f-poi')) $('#f-poi').value = '';
+    poiStateRender();
+    poiStateMsg('用现有 Web 端 Key（JS API 插件）；搜索结果必须点「用这家」确认后才回填。');
+    if($('#poiSourceState')){ $('#poiSourceState').style.display = 'none'; $('#poiSourceState').textContent = ''; }
     if($('#smartPasteText')){
       $('#smartPasteText').value = '';
       $('#smartPasteTag').classList.add('hidden');
@@ -13471,8 +13558,23 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       kcal: num($('#f-kcal').value) > 0 ? Math.round(num($('#f-kcal').value)) : null,
       protein: num($('#f-protein').value) > 0 ? Math.round(num($('#f-protein').value)) : null,
       fitnessFriendly: $('#f-friendly').checked,
+      /* 可选新字段：坐标来源（amap_poi / manual / device），旧记录没有时按空读取 */
+      locationSource: (formLng === null || formLat === null) ? '' : (poiCoordSource || (poiPicked ? 'amap_poi' : '')),
       source: 'manual'
     };
+    /* 店铺级定位元数据写到 fandazi.shopmeta（不写 v2.shops，避免被记录重建覆盖）。
+       只在本次表单明确确认过来源时更新，编辑旧记录不会把老坐标改标成 POI。 */
+    if(formLng !== null && formLat !== null && rec.locationSource){
+      try{
+        shopLocationSet(shopIdOf(name, cityV), {
+          source: rec.locationSource, lng: formLng, lat: formLat,
+          amapPoiId: poiPicked ? poiPicked.id : '',
+          formattedAddress: poiPicked ? (poiPicked.address || addrV) : addrV,
+          cityCode: poiPicked ? poiPicked.citycode : '',
+          verified: rec.locationSource === 'amap_poi'
+        });
+      }catch(e){ logError('店铺定位保存', e); }
+    }
 
     formSaving = true;
     var savedNew = false;
@@ -15482,6 +15584,295 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return '高德地图初始化失败：' + ((e && e.message) || '未知错误');
     }
   }
+  /* ================= 店铺定位：高德 POI 搜索 + 地图选点 =================
+   * 只用现有 Web 端 Key 的 JS API 插件（AMap.PlaceSearch / AutoComplete / Geocoder），不另申请 Key。
+   * 搜索与地图共用同一 Key 与同一套域名校验：网页版可用；APK 内跟随高德图层状态（见 README 已知限制）。
+   * 搜索失败一律显示高德真实错误码，不吞成一句「搜索失败」。
+   * 手动填经纬度、「用当前位置」不依赖搜索，任何情况下都是可用路径。 */
+  var poiState = { seq:0, loading:false, items:[], picked:null, autoBound:false, distNote:'' };
+  var poiPicked = null;        /* 本次表单里用户确认过的 POI */
+  var poiCoordSource = '';     /* amap_poi | manual | device | '' */
+  var distAuto = false;        /* #f-dist 是否为自动实算值（用户手改后不再覆盖） */
+
+  function poiStateMsg(text, isErr){
+    var el = $('#poiState');
+    if(!el) return;
+    el.textContent = text;
+    el.style.color = isErr ? 'var(--danger)' : '';
+  }
+  function poiNorm(p){
+    if(!p || !p.location) return null;
+    var lng = Number(p.location.lng), lat = Number(p.location.lat);
+    if(!isFinite(lng) || !isFinite(lat) || (lng === 0 && lat === 0)) return null;
+    if(lng < -180 || lng > 180 || lat < -90 || lat > 90) return null;
+    var city = Array.isArray(p.cityname) ? p.cityname.join('') : String(p.cityname || '');
+    return {
+      id: String(p.id || ''), name: String(p.name || '').slice(0, 80),
+      address: String(p.address || '').slice(0, 120),
+      city: city.slice(0, 40), area: String(p.adname || '').slice(0, 40),
+      type: String(p.type || '').split(';')[0].slice(0, 40),
+      citycode: String(p.citycode || '').slice(0, 20),
+      lng: lng, lat: lat
+    };
+  }
+  function poiErrDetail(status, result){
+    var info = '';
+    try{ info = String((result && (result.info || result.infocode)) || '').trim(); }catch(e){}
+    if(info) return mapAmapTipFor(info) + '（高德 status=' + (status || 'unknown') + '）';
+    if(status === 'no_data') return '没有找到匹配的店铺：换个关键词，或补上城市后重搜。';
+    if(status === 'timeout') return '搜索超时（status=timeout）：网络较慢或被拦截，可重试，或直接手填经纬度。';
+    return '搜索失败：高德 status=' + (status || 'unknown') + '，未返回错误码。';
+  }
+  function poiEmbedBlocked(){
+    return mapEmbedWanted();
+  }
+  /* 确保主页面拿到 AMap 与插件；APK 内走内嵌页时主页面没有 AMap，明确告知而不是假装在搜 */
+  function poiEnsureAmap(cb, tries){
+    tries = tries || 0;
+    if(window.AMap && typeof window.AMap.plugin === 'function'){ cb(null); return; }
+    if(poiEmbedBlocked()){
+      cb('APK 内高德搜索不可用：主页面源为 ' + mapAmapOrigin() +
+        '（不在该 Key 的域名白名单），搜索插件只能在内嵌地图页里加载；请直接手填经纬度，或先用「用当前位置」。');
+      return;
+    }
+    if(amapState.loading){
+      if(tries > 40){ cb('高德 JS API 加载超时，请稍后重试或手填经纬度'); return; }
+      setTimeout(function(){ poiEnsureAmap(cb, tries + 1); }, 250);
+      return;
+    }
+    mapAmapEnsureLoaded(function(err){ cb(err || null); });
+  }
+  function poiBindAuto(){
+    if(poiState.autoBound) return;
+    if(!window.AMap || typeof window.AMap.AutoComplete !== 'function') return;
+    var el = $('#f-poi');
+    if(!el) return;
+    try{
+      var ac = new window.AMap.AutoComplete({ input: 'f-poi', citylimit: false });
+      ac.on('select', function(e){
+        var d = e && e.poi;
+        if(!d || !d.location) return;
+        var one = poiNorm({
+          id: d.id, name: d.name, address: d.address, adname: d.adname,
+          cityname: d.cityname, type: d.type, citycode: d.citycode, location: d.location
+        });
+        if(!one) return;
+        poiState.items = [one];
+        poiStateRender();
+        poiStateMsg('联想选中「' + (one.name || '') + '」：点「用这家」确认回填。');
+      });
+      poiState.autoBound = true;
+    }catch(e){ /* 联想不可用不影响手动搜索 */ }
+  }
+  function poiSearchDo(kw, seq){
+    var city = String(($('#f-city') && $('#f-city').value) || db.settings.city || '').trim();
+    var ps = null;
+    try{
+      ps = new window.AMap.PlaceSearch({
+        pageSize: 10, pageIndex: 1, extensions: 'base',
+        city: city || '', citylimit: !!city
+      });
+    }catch(e){
+      poiState.loading = false;
+      poiStateMsg('高德搜索插件初始化失败：' + ((e && e.message) || '未知错误'), true);
+      return;
+    }
+    poiStateMsg('正在搜索「' + kw + '」…');
+    ps.search(kw, function(status, result){
+      if(seq !== poiState.seq) return;      /* 过期结果直接丢弃 */
+      poiState.loading = false;
+      if(status === 'complete'){
+        var pois = (result && result.poiList && result.poiList.pois) || [];
+        poiState.items = pois.map(poiNorm).filter(Boolean).slice(0, 10);
+        if(poiState.items.length) poiStateMsg('找到 ' + poiState.items.length + ' 个候选：点「用这家」才会回填。');
+        else poiStateMsg('没有找到匹配的店铺：换个关键词，或补上城市后重搜。', true);
+      }else{
+        poiState.items = [];
+        poiStateMsg(poiErrDetail(status, result), true);
+      }
+      poiStateRender();
+    });
+  }
+  function runPoiSearch(){
+    if(poiState.loading) return;
+    var el = $('#f-poi');
+    var kw = String((el && el.value) || '').trim() || String($('#f-name').value || '').trim();
+    if(!kw){ poiStateMsg('先填店名或搜索关键词', true); return; }
+    var seq = ++poiState.seq;
+    poiState.loading = true;
+    poiState.items = [];
+    poiStateRender();
+    poiStateMsg('正在加载高德搜索插件…');
+    poiEnsureAmap(function(err){
+      if(seq !== poiState.seq) return;
+      if(err){ poiState.loading = false; poiStateMsg(err, true); return; }
+      window.AMap.plugin(['AMap.PlaceSearch', 'AMap.AutoComplete'], function(){
+        if(seq !== poiState.seq) return;
+        poiBindAuto();
+        poiSearchDo(kw, seq);
+      });
+    });
+  }
+  function poiStateRender(){
+    var box = $('#poiList');
+    if(!box) return;
+    if(!poiState.items.length){ box.classList.add('hidden'); box.innerHTML = ''; return; }
+    box.classList.remove('hidden');
+    box.innerHTML = poiState.items.map(function(p, i){
+      var sub = [p.city, p.area, p.type].filter(Boolean).join(' · ');
+      return '<div class="poi-hit">' +
+        '<div class="poi-hit-main"><b>' + esc(p.name) + (i === 0 ? '<span class="poi-tag">最匹配</span>' : '') + '</b>' +
+        '<span class="meta">' + esc(sub || '无地址信息') + (p.address ? ' · ' + esc(p.address) : '') + '</span></div>' +
+        '<button type="button" class="btn btn-soft" data-poi="' + i + '">用这家</button>' +
+      '</div>';
+    }).join('');
+  }
+  function poiSourceState(){
+    var el = $('#poiSourceState');
+    if(!el) return;
+    var has = mapCoord($('#f-lng').value, 180) !== null && mapCoord($('#f-lat').value, 90) !== null;
+    if(!has){ el.style.display = 'none'; el.textContent = ''; return; }
+    var src = poiCoordSource || 'manual';
+    var name = SHOP_LOCATION_SOURCES[src] || '手动';
+    el.style.display = '';
+    el.textContent = '坐标来源：' + name + '（GCJ-02）' +
+      (poiState.distNote ? '；' + poiState.distNote : '') +
+      '。可直接手改，改后记为「手动」。';
+  }
+  /* 按「出发地点」的坐标实算到店铺坐标的直线距离，自动带出到「与我距离 km」 */
+  function formAutoDist(){
+    poiState.distNote = '';
+    var p = mapOriginPlace($('#f-place') ? $('#f-place').value : '');
+    var lng = mapCoord($('#f-lng').value, 180), lat = mapCoord($('#f-lat').value, 90);
+    if(lng === null || lat === null) return '';
+    if(!p || !mapHasCoords(p)) return '';
+    var now = String($('#f-dist').value || '').trim();
+    if(now !== '' && !distAuto) return '';     /* 用户手填的距离不覆盖 */
+    var d = haversineKm(p.lat, p.lng, lat, lng);
+    if(!isFinite(d)) return '';
+    var km = Math.round(d * 10) / 10;
+    $('#f-dist').value = km;
+    distAuto = true;
+    poiState.distNote = '已按起点「' + p.name + '」实算 ' + distText(km) + '（直线距离，可手改）';
+    return poiState.distNote;
+  }
+  function poiApply(idx){
+    var p = poiState.items[idx];
+    if(!p) return;
+    $('#f-name').value = p.name || $('#f-name').value;
+    if(p.city) $('#f-city').value = p.city;
+    if(p.area) $('#f-area').value = p.area;
+    if(p.address) $('#f-address').value = p.address;
+    $('#f-lng').value = p.lng;
+    $('#f-lat').value = p.lat;
+    poiPicked = p;
+    poiCoordSource = 'amap_poi';
+    distAuto = false;
+    formAutoDist();
+    poiSourceState();
+    updateFormMapLinks();
+    poiStateMsg('已填入「' + p.name + '」：坐标来自高德 POI（GCJ-02），改坐标会自动记为手动。');
+    toast('已回填店铺位置，记得点保存');
+  }
+  /* ---- 地图选点（临时标记 + 确认/取消；取消不改动原坐标） ---- */
+  var pickState = { open:false, map:null, marker:null, lng:null, lat:null };
+  function pickPutMarker(lng, lat){
+    pickState.lng = lng; pickState.lat = lat;
+    if(pickState.marker && pickState.map){ pickState.map.remove(pickState.marker); pickState.marker = null; }
+    if(pickState.map && window.AMap && typeof window.AMap.Marker === 'function'){
+      pickState.marker = new window.AMap.Marker({ position: [lng, lat], map: pickState.map });
+    }
+    var el = $('#pickMapCoord');
+    if(el) el.textContent = '临时坐标：' + lng.toFixed(6) + ', ' + lat.toFixed(6) + '（尚未写入表单）';
+    var b = $('#btnPickConfirm');
+    if(b) b.disabled = false;
+  }
+  function closePickMap(){
+    pickState.open = false;
+    var box = $('#pickMapMask');
+    if(box) box.classList.add('hidden');
+    if(pickState.map){ try{ pickState.map.destroy(); }catch(e){} }
+    pickState.map = null; pickState.marker = null; pickState.lng = null; pickState.lat = null;
+    var c = $('#pickMapCanvas');
+    if(c) c.innerHTML = '';
+  }
+  function openPickMap(){
+    if(poiEmbedBlocked()){
+      toast('APK 内高德图层走内嵌页，主页面无法创建选点地图；请用「用当前位置」或直接手填经纬度');
+      return;
+    }
+    pickState.open = true;
+    var box = $('#pickMapMask');
+    if(box) box.classList.remove('hidden');
+    var empty = $('#pickMapEmpty');
+    if(empty) empty.classList.add('hidden');
+    var cd = $('#pickMapCoord');
+    if(cd) cd.textContent = '尚未选点';
+    var bc = $('#btnPickConfirm');
+    if(bc) bc.disabled = true;
+    var lng = mapCoord($('#f-lng').value, 180), lat = mapCoord($('#f-lat').value, 90);
+    var center = (lng !== null && lat !== null) ? [lng, lat] : [116.397428, 39.90923];
+    poiEnsureAmap(function(err){
+      if(!pickState.open) return;
+      if(err || !window.AMap || typeof window.AMap.Map !== 'function'){
+        if(empty){
+          empty.classList.remove('hidden');
+          empty.textContent = (err || '高德地图不可用') + '。可直接手填经纬度，或点「用当前位置」。';
+        }
+        return;
+      }
+      try{
+        var map = new window.AMap.Map('pickMapCanvas', {
+          zoom: (lng !== null && lat !== null) ? 16 : 11, center: center,
+          viewMode: '2D', resizeEnable: true
+        });
+        pickState.map = map;
+        if(lng !== null && lat !== null) pickPutMarker(lng, lat);
+        map.on('click', function(e){
+          if(!e || !e.lnglat) return;
+          pickPutMarker(Number(e.lnglat.getLng()), Number(e.lnglat.getLat()));
+        });
+        setTimeout(function(){ try{ map.resize(); }catch(e){} }, 80);
+      }catch(e){
+        if(empty){
+          empty.classList.remove('hidden');
+          empty.textContent = '高德地图初始化失败：' + ((e && e.message) || '未知错误') + '。可直接手填经纬度。';
+        }
+      }
+    });
+  }
+  function pickConfirm(){
+    if(pickState.lng === null || pickState.lat === null) return;
+    var lng = pickState.lng, lat = pickState.lat;
+    $('#f-lng').value = lng.toFixed(5);
+    $('#f-lat').value = lat.toFixed(5);
+    poiPicked = null;
+    poiCoordSource = 'manual';
+    distAuto = false;
+    formAutoDist();
+    poiSourceState();
+    updateFormMapLinks();
+    /* 逆地理编码只补空字段；失败不清空用户已填的地址 */
+    if(window.AMap && typeof window.AMap.plugin === 'function'){
+      window.AMap.plugin(['AMap.Geocoder'], function(){
+        try{
+          var g = new window.AMap.Geocoder({ radius: 500, extensions: 'base' });
+          g.getAddress([lng, lat], function(status, result){
+            if(status !== 'complete' || !result || !result.regeocode) return;
+            var r = result.regeocode, c = r.addressComponent || {};
+            if(!$('#f-address').value.trim() && r.formattedAddress) $('#f-address').value = r.formattedAddress;
+            if(!$('#f-city').value.trim()) $('#f-city').value = String(c.city || c.province || '');
+            if(!$('#f-area').value.trim()) $('#f-area').value = String(c.district || '');
+            poiSourceState();
+            updateFormMapLinks();
+          });
+        }catch(e){}
+      });
+    }
+    closePickMap();
+    toast('已用地图选点填入坐标，点保存才会写入记录');
+  }
+
   function renderMapLayerUI(){
     var cur = mapAmapActive() ? 'amap' : 'blank';
     $$('[data-map-layer]').forEach(function(b){
@@ -18428,8 +18819,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   /* 备份格式版本：4 = 增加 fandazi.shopmeta（平台链接 + 用户补充字段及来源）。
      5 = 增加 fandazi.trips（旅行计划，独立增量键）。
      6 = 增加 fandazi.dishes（菜品，独立增量键）。
-     旧备份缺少 trips / dishes 段时恢复保持本机现状，不清空。 */
-  var BACKUP_SCHEMA_VERSION = 6;
+     7 = shopmeta 条目增加可选 location（店铺级坐标 + 来源），记录增加可选 locationSource。
+     旧备份缺少 trips / dishes / location 段时恢复保持本机现状，不清空。 */
+  var BACKUP_SCHEMA_VERSION = 7;
   var BACKUP_LAST_KEY = 'fandazi.backup.last';
   var BACKUP_TMP_KEY = KEY + '.restore.tmp';
   var BACKUP_FILE_MAX = 200 * 1024 * 1024;
@@ -21338,6 +21730,32 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
   /* 表单 */
   $('#recordForm').addEventListener('submit', saveRecord);
+  /* 店铺定位：搜索 / 选点 / 来源标记 */
+  if($('#btnPoiSearch')) $('#btnPoiSearch').addEventListener('click', runPoiSearch);
+  if($('#f-poi')) $('#f-poi').addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ e.preventDefault(); runPoiSearch(); }
+  });
+  if($('#poiList')) $('#poiList').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-poi]') : null;
+    if(!b) return;
+    poiApply(Number(b.getAttribute('data-poi')));
+  });
+  if($('#btnMapPickForm')) $('#btnMapPickForm').addEventListener('click', openPickMap);
+  if($('#btnPickCancel')) $('#btnPickCancel').addEventListener('click', closePickMap);
+  if($('#btnPickConfirm')) $('#btnPickConfirm').addEventListener('click', pickConfirm);
+  if($('#pickMapMask')) $('#pickMapMask').addEventListener('click', function(e){ if(e.target === this) closePickMap(); });
+  ['f-lng','f-lat'].forEach(function(fid){
+    var el = $('#'+fid);
+    if(!el) return;
+    el.addEventListener('input', function(){
+      poiPicked = null; poiCoordSource = 'manual';
+      poiSourceState();
+    });
+  });
+  if($('#f-dist')) $('#f-dist').addEventListener('input', function(){ distAuto = false; });
+  if($('#f-place')) $('#f-place').addEventListener('change', function(){
+    distAuto = false; formAutoDist(); poiSourceState();
+  });
   $('#btnCloseSheet').addEventListener('click', closeForm);
   $('#btnCancelForm').addEventListener('click', closeForm);
   $('#btnDeleteInForm').addEventListener('click', function(){ if(editingId) deleteRecord(editingId); });
@@ -23318,6 +23736,35 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   })();
 
   window.__fandaziTest = {
+    poi: {
+      norm: poiNorm,
+      errText: poiErrDetail,
+      items: function(){ return poiState.items.map(function(p){ return { name:p.name, city:p.city, lng:p.lng, lat:p.lat }; }); },
+      setItems: function(list){ poiState.items = (list || []).map(poiNorm).filter(Boolean); poiStateRender(); return poiState.items.length; },
+      apply: function(i){
+        poiApply(i);
+        return { lng: $('#f-lng').value, lat: $('#f-lat').value, source: poiCoordSource, dist: $('#f-dist').value, note: poiState.distNote };
+      },
+      autoDist: function(){ distAuto = false; var note = formAutoDist(); poiSourceState(); return note; },
+      state: function(){
+        return {
+          source: poiCoordSource, picked: poiPicked ? poiPicked.name : null,
+          distAuto: distAuto, dist: $('#f-dist').value, note: poiState.distNote,
+          msg: $('#poiState') ? $('#poiState').textContent : ''
+        };
+      },
+      errorTip: function(code){ return mapAmapTipFor(code); },
+      locationNorm: shopLocationNorm,
+      locationSet: shopLocationSet,
+      locationOf: shopLocationOf
+    },
+    pick: {
+      open: openPickMap,
+      put: pickPutMarker,
+      confirm: pickConfirm,
+      close: closePickMap,
+      state: function(){ return { open: pickState.open, lng: pickState.lng, lat: pickState.lat }; }
+    },
     skin: {
       get: function(){
         return {
