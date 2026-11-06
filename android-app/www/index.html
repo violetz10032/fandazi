@@ -828,6 +828,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .g-pv .input{width:58px;height:32px;padding:4px 6px;font-size:12px;text-align:center;min-width:0}
   .g-vrow{font-size:11.5px;color:var(--ink2);line-height:1.7;overflow-wrap:anywhere}
   .g-empty .btn{margin-top:8px}
+  /* 跨设备投票：参与者只读页与回执 */
+  .pv-cand{border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--panel-2);min-width:0}
+  .pv-cand + .pv-cand{margin-top:8px}
+  .pv-cand .seg{margin-top:8px}
+  .pv-cand .seg button{flex:1}
+  .pv-out{width:100%;min-height:78px;margin-top:8px;font-size:12px;line-height:1.6;word-break:break-all}
 
   /* ============================================================
      视觉 2.0：统一图标 / 层级 / 节奏 / 动效
@@ -1362,7 +1368,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
       <div class="section-head">
         <h2>聚餐活动</h2>
-        <span class="hint">本机 · 手动回填票数</span>
+        <span class="hint">本机 / 链接回执</span>
       </div>
       <div id="gatherBox"></div>
 
@@ -2396,6 +2402,35 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 <!-- 多人聚餐活动编辑 / 详情 -->
 <div class="sheet-mask hidden" id="gatherMask">
   <div class="sheet" id="gatherModal" role="dialog" aria-modal="true" aria-label="多人聚餐活动"></div>
+</div>
+
+<!-- 跨设备投票：参与者只读页（#poll= 链接打开） -->
+<div class="modal-mask hidden" id="pollVoteMask" style="z-index:62">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pollVoteTitle">
+    <div class="sheet-head" style="margin-bottom:10px">
+      <h3 id="pollVoteTitle">聚餐候选投票</h3>
+      <button type="button" class="icon-btn" id="btnPollVoteClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
+    </div>
+    <div id="pollVoteBody"></div>
+  </div>
+</div>
+
+<!-- 跨设备投票：发起人查看链接与二维码 -->
+<div class="modal-mask hidden" id="pollLinkMask" style="z-index:61">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pollLinkTitle">
+    <div class="sheet-head" style="margin-bottom:10px">
+      <h3 id="pollLinkTitle">投票链接</h3>
+      <button type="button" class="icon-btn" id="btnPollLinkClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
+    </div>
+    <p class="muted" style="font-size:12px;line-height:1.7">链接只包含候选店名、城市、商圈、人均与编号；不含备注、精确地址、记录 ID 或设备信息。朋友局，无签名校验，不承诺防刷。</p>
+    <div class="kw" id="pollLinkText" style="margin-top:10px;word-break:break-all"></div>
+    <div class="actions" style="margin-top:10px">
+      <button type="button" class="btn btn-primary btn-sm" id="btnPollLinkCopy">复制链接</button>
+      <button type="button" class="btn btn-sm" id="btnPollListCopy">复制候选清单</button>
+    </div>
+    <canvas id="pollLinkQr" class="fanzi-qr" width="740" height="740" aria-label="投票链接二维码"></canvas>
+    <p class="dist-note" id="pollLinkHint"></p>
+  </div>
 </div>
 
 <!-- 年度美食报告 -->
@@ -6694,6 +6729,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       }).filter(function(r){ return r.label; }) : [],
       votesMode: x.votesMode === 'person' ? 'person' : 'total',
       votesByPerson: byPerson,
+      votesSource: x.votesSource === 'receipt' ? 'receipt' : 'manual',
+      receiptCount: Math.max(0, Math.round(Number(x.receiptCount) || 0)),
+      receipts: Array.isArray(x.receipts) ? x.receipts.slice(0, 50).map(function(r){
+        if(!r || typeof r !== 'object' || !String(r.voterId || '')) return null;
+        return {
+          voterId: st(r.voterId, 12),
+          at: st(r.at, 40),
+          votes: Array.isArray(r.votes) ? r.votes.slice(0, 20).map(function(v){ return [-1,0,1].indexOf(v) >= 0 ? v : 0; }) : []
+        };
+      }).filter(Boolean) : [],
       status: x.status === 'done' ? 'done' : 'open',
       archived: x.archived === true,
       winner: win,
@@ -6709,6 +6754,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       budgetMode: 'per', budgetMin: null, budgetMax: 150, area: '', radiusKm: null,
       participants: [], candidateCount: 5,
       candidates: [], excluded: [], relax: [], votesMode: 'total', votesByPerson: {},
+      votesSource: 'manual', receiptCount: 0, receipts: [],
       status: 'open', archived: false, winner: null, recordId: '',
       createdAt: '', updatedAt: ''
     };
@@ -7116,8 +7162,22 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           ' <input class="input" type="number" min="0" data-gv="' + esc(c.key) + '" value="' + c.votes + '" aria-label="' + esc(c.name) + '的票数"></label>';
       }).join('') + '</div>';
     }
-    return '<div class="section-head" style="margin-top:16px"><h2 style="font-size:14px">投票回填</h2><span class="hint">只有本机</span></div>' +
+    return '<div class="section-head" style="margin-top:16px"><h2 style="font-size:14px">投票回填</h2><span class="hint">本机 / 回执</span></div>' +
       mode + total + body;
+  }
+  function gatherCrossHtml(g){
+    if(!(g.candidates || []).length) return '';
+    var applied = g.votesSource === 'receipt';
+    return '<div class="section-head" style="margin-top:16px"><h2 style="font-size:14px">跨设备投票</h2><span class="hint">链接 + 回执</span></div>' +
+      '<p class="dist-note">生成链接发到群里，参与者不用安装应用、不用 GitHub 账号；把回执粘贴回来即可汇总。朋友局，无签名校验，不承诺防刷。</p>' +
+      (applied ? '<div class="notice" style="margin-top:8px">当前票数来自 <b>' + g.receiptCount + '</b> 条回执，手动票数已忽略。</div>' : '') +
+      '<div class="g-actions">' +
+        '<button class="btn btn-sm btn-primary" data-gact="gPollLink">生成投票链接</button>' +
+        (applied ? '<button class="btn btn-sm btn-soft" data-gact="gPollManual">改回手动票数</button>' : '') +
+      '</div>' +
+      '<div class="field" style="margin-top:10px"><label>粘贴回执（可多条，一行一条）</label>' +
+        '<textarea class="input" id="g-pollReceipts" style="min-height:76px" placeholder="支持 #votereceipt= 链接或 VR1| 文本；同一人多条自动取最新"></textarea></div>' +
+      '<button class="btn btn-sm btn-soft btn-block" data-gact="gPollApply">汇总回执</button>';
   }
   function gatherRankHtml(g){
     if(!(g.candidates || []).length) return '';
@@ -7150,6 +7210,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       ? '<p class="g-meta">参与者：' + esc(g.participants.map(function(p){ return p.name + (p.spicy === 'no' ? '(不吃辣)' : '') + ((p.avoid || []).length ? '[' + p.avoid.join('，') + ']' : ''); }).join('、')) + '</p>'
       : '<p class="g-meta">未填参与者，按 ' + g.people + ' 人估算（无法做忌口过滤）</p>';
     var votes = isOpen ? gatherVoteHtml(g) : '';
+    var cross = isOpen ? gatherCrossHtml(g) : '';
     var rank = (g.candidates || []).length ? gatherRanking(g) : null;
     var winBlock = '';
     if(isDone){
@@ -7192,7 +7253,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '<div class="section-head" style="margin-top:14px"><h2 style="font-size:14px">候选 ' + g.candidates.length + ' 家</h2>' +
         '<span class="hint">' + (isDone ? '已结算' : '按匹配分排序') + '</span></div>' +
       candList + emptyBlock + (isDone ? winBlock : '') +
-      (g.candidates.length ? (isDone ? '' : votes + gatherRankHtml(g) + actions) : '') +
+      (g.candidates.length ? (isDone ? '' : votes + cross + gatherRankHtml(g) + actions) : '') +
       exBlock +
       '<button class="btn btn-block" data-gact="gClose" style="margin-top:14px">关闭</button>';
   }
@@ -7262,6 +7323,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     g.relax = res.relax;
     g.votesByPerson = {};
     g.votesMode = 'total';
+    g.votesSource = 'manual';
+    g.receiptCount = 0;
+    g.receipts = [];
     g.status = 'open';
     g.archived = false;
     g.winner = null;
@@ -7289,6 +7353,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     g.relax = res.relax;
     g.votesByPerson = {};
     g.votesMode = 'total';
+    g.votesSource = 'manual';
+    g.receiptCount = 0;
+    g.receipts = [];
     g.status = 'open';
     g.archived = false;
     g.winner = null;
@@ -7456,6 +7523,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         toast('已记为聚餐 · 人数 ' + res.people + (res.total == null ? ' · 金额未填' : ' · 总价 ' + money(res.total)));
         return;
       }
+      if(act === 'gPollLink'){ voteOpenLink(gatherDraft); return; }
+      if(act === 'gPollApply'){ voteApplyFromText(gatherDraft); return; }
+      if(act === 'gPollManual'){
+        if(!gatherDraft) return;
+        gatherDraft.votesSource = 'manual';
+        gatherDraft.receipts = [];
+        gatherDraft.receiptCount = 0;
+        gatherUpsert(gatherDraft);
+        renderGatherModal();
+        toast('已改用手动票数，回执汇总不再生效');
+        return;
+      }
       if(act === 'gArchive'){
         gatherArchive(b.getAttribute('data-gid'));
         return;
@@ -7524,12 +7603,358 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         return;
       }
       if(t && (t.getAttribute('data-gv') || t.getAttribute('data-gvp'))){
+        if(gatherDraft.votesSource === 'receipt'){
+          gatherDraft.votesSource = 'manual';
+          gatherDraft.receipts = [];
+          gatherDraft.receiptCount = 0;
+          gatherUpsert(gatherDraft);
+          toast('已改用手动票数，回执汇总不再生效');
+        }
         renderGatherModal();
       }
     });
     mask.addEventListener('click', function(e){
       if(e.target === mask) closeGather();
     });
+  })();
+
+  /* ================= 跨设备投票（路线 A：链接 + 回执 + 手动回填） =================
+     零后端：发起人生成 #poll=pv1.<base64url(gzip(JSON))> 链接；参与者只读页选择后生成
+     #votereceipt=vr1.<...> 或 VR1| 短文本；发起人粘贴回执，按 voterId 去重取最新后汇总。
+     链接只带店名 / 城市 / 商圈 / 人均 / 编号，不含备注、精确地址、记录 ID 或设备信息。
+     朋友局，无签名校验，不承诺防刷。 */
+  var VOTE_VID_KEY = 'fandazi.vote.vid';
+  var VOTE_MAX_RECEIPTS = 50;
+  var pollVoteState = null;
+  var voteLinkState = null;
+
+  function voteVid(){
+    try{
+      var old = localStorage.getItem(VOTE_VID_KEY);
+      if(old && /^[a-z0-9]{6,8}$/i.test(old)) return old;
+      var chars = 'abcdefghjkmnpqrstuvwxyz23456789', s = '';
+      for(var i = 0; i < 7; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
+      localStorage.setItem(VOTE_VID_KEY, s);
+      return s;
+    }catch(e){ return 'u' + Math.random().toString(36).slice(2, 8); }
+  }
+  function voteBytesToB64u(bytes){
+    var arr = new Uint8Array(bytes), bin = '';
+    for(var i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
+    return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+  function voteB64uToBytes(str){
+    var s = String(str).replace(/-/g,'+').replace(/_/g,'/');
+    while(s.length % 4) s += '=';
+    var bin = atob(s), out = new Uint8Array(bin.length);
+    for(var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  function voteGzip(str){
+    if(typeof CompressionStream === 'undefined') return Promise.resolve(null);
+    try{
+      var stream = new Blob([new TextEncoder().encode(str)]).stream().pipeThrough(new CompressionStream('gzip'));
+      return new Response(stream).arrayBuffer().then(function(buf){ return voteBytesToB64u(buf); });
+    }catch(e){ return Promise.resolve(null); }
+  }
+  function voteGunzip(b64){
+    if(typeof DecompressionStream === 'undefined') return Promise.reject(new Error('no-gunzip'));
+    var stream = new Blob([voteB64uToBytes(b64)]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return new Response(stream).arrayBuffer().then(function(buf){ return new TextDecoder().decode(buf); });
+  }
+  function votePack(obj){
+    var json = JSON.stringify(obj);
+    return voteGzip(json).then(function(gz){ return gz || b64urlEncode(json); });
+  }
+  function voteUnpack(raw){
+    return voteGunzip(raw).then(function(text){ return JSON.parse(text); }, function(){
+      return JSON.parse(b64urlDecode(raw));
+    });
+  }
+  function voteDeadlineOf(g){
+    var d = (g && /^\d{4}-\d{2}-\d{2}$/.test(String(g.date || ''))) ? String(g.date) : todayStr();
+    return d + 'T23:59:59';
+  }
+  function votePollPayload(g){
+    return {
+      pv: 1,
+      pollId: String(g.id || ''),
+      createdAt: String(g.createdAt || new Date().toISOString()),
+      deadline: voteDeadlineOf(g),
+      mode: 'like',
+      candidates: (g.candidates || []).map(function(c, i){
+        return { i: i + 1, name: String(c.name || ''), city: String(c.city || ''), area: String(c.area || ''), perPrice: Math.max(0, Math.round(num(c.perPrice) || 0)) };
+      })
+    };
+  }
+  function voteBaseUrl(){
+    try{
+      var C = window.Capacitor;
+      if(C && typeof C.isNativePlatform === 'function' && C.isNativePlatform()) return 'https://violetz10032.github.io/fandazi/';
+    }catch(e){}
+    return location.href.split('#')[0];
+  }
+  function voteBuildLink(g){
+    var payload = votePollPayload(g);
+    var base = voteBaseUrl();
+    return votePack(payload).then(function(data){
+      var url = base + '#poll=pv1.' + data;
+      var remote = /^https?:\/\//.test(base);
+      return { ok: url.length <= 4096 && remote, remote: remote, url: url, length: url.length, payload: payload };
+    });
+  }
+  function voteListText(g){
+    return (g && g.candidates ? g.candidates : []).map(function(c, i){
+      return (i + 1) + '. ' + c.name + (num(c.perPrice) ? ' · 人均 ' + num(c.perPrice) + ' 元' : '');
+    }).join('\n');
+  }
+  function voteReadHash(){
+    var m = String(location.hash || '').match(/#poll=pv1\.([A-Za-z0-9\-_]+)/);
+    if(!m) return Promise.resolve(null);
+    return voteUnpack(m[1]).then(function(p){
+      if(!p || p.pv !== 1 || !String(p.pollId || '').trim() || !Array.isArray(p.candidates)) return { error: 'format' };
+      var cs = p.candidates.slice(0, 12).map(function(c, i){
+        return {
+          i: i + 1,
+          name: String(c && c.name || '').slice(0, 60),
+          city: String(c && c.city || '').slice(0, 40),
+          area: String(c && c.area || '').slice(0, 40),
+          perPrice: Math.max(0, Math.round(Number(c && c.perPrice) || 0))
+        };
+      }).filter(function(c){ return c.name; });
+      if(!cs.length) return { error: 'format' };
+      return {
+        pv: 1, pollId: String(p.pollId).slice(0, 60), createdAt: String(p.createdAt || '').slice(0, 40),
+        deadline: String(p.deadline || '').slice(0, 40), mode: 'like', candidates: cs
+      };
+    }, function(){ return { error: 'decode' }; });
+  }
+  function voteBuildReceipt(poll, votes){
+    var r = {
+      vr: 1, pollId: String(poll.pollId || ''), voterId: voteVid(),
+      at: new Date().toISOString(), votes: votes.slice()
+    };
+    return votePack(r).then(function(data){
+      return {
+        receipt: r,
+        short: 'VR1|' + r.pollId + '|' + r.voterId + '|' + r.at + '|' + votes.join(','),
+        link: voteBaseUrl() + '#votereceipt=vr1.' + data
+      };
+    });
+  }
+  function voteParseReceipts(text){
+    var s = String(text || '');
+    var list = [], bad = 0, scanned = [];
+    function add(raw){
+      return voteUnpack(raw).then(function(r){
+        if(r && r.vr === 1 && String(r.pollId || '') && Array.isArray(r.votes)) list.push(r);
+        else bad++;
+      }, function(){ bad++; });
+    }
+    var jobs = [];
+    var linkRe = /#votereceipt=vr1\.([A-Za-z0-9\-_]+)/g, m;
+    while((m = linkRe.exec(s))){ scanned.push(m[1]); jobs.push(add(m[1])); }
+    var rawRe = /(?:^|\s)vr1\.([A-Za-z0-9\-_]+)/g;
+    while((m = rawRe.exec(s))){
+      if(scanned.indexOf(m[1]) >= 0) continue;
+      jobs.push(add(m[1]));
+    }
+    s.split(/[\r\n]+/).forEach(function(line){
+      var t = line.trim();
+      var mm = t.match(/^VR1\|([^|]{1,60})\|([^|]{1,12})\|([^|]{1,40})\|([\d,\-]+)$/);
+      if(!mm) return;
+      var votes = mm[4].split(',').map(function(x){ return Number(x); });
+      if(votes.some(function(v){ return v !== -1 && v !== 0 && v !== 1; })){ bad++; return; }
+      list.push({ vr: 1, pollId: mm[1], voterId: mm[2], at: mm[3], votes: votes });
+    });
+    return Promise.all(jobs).then(function(){ return { list: list, bad: bad }; });
+  }
+  function voteApplyReceipts(g, text){
+    if(!g || !(g.candidates || []).length) return Promise.resolve({ ok: false, error: '还没有候选' });
+    return voteParseReceipts(text).then(function(parsed){
+      var n = g.candidates.length, byVoter = {};
+      parsed.list.forEach(function(r){
+        if(!r || String(r.pollId) !== String(g.id)) return;
+        if(!Array.isArray(r.votes) || r.votes.length !== n) return;
+        if(r.votes.some(function(v){ return v !== -1 && v !== 0 && v !== 1; })) return;
+        var vid = String(r.voterId || '').slice(0, 12);
+        if(!vid) return;
+        var prev = byVoter[vid];
+        if(!prev || String(r.at || '') > String(prev.at || '')) byVoter[vid] = r;
+      });
+      var receipts = Object.keys(byVoter).map(function(k){ return byVoter[k]; });
+      if(!receipts.length) return { ok: false, error: '没有可用的回执：可能不是本活动，或复制不完整', bad: parsed.bad };
+      if(receipts.length > VOTE_MAX_RECEIPTS) return { ok: false, error: '回执超过 ' + VOTE_MAX_RECEIPTS + ' 条，请分批汇总', bad: parsed.bad };
+      var counts = g.candidates.map(function(_, i){
+        var c = 0;
+        receipts.forEach(function(r){ if(r.votes[i] > 0) c++; });
+        return c;
+      });
+      g.candidates.forEach(function(c, i){ c.votes = counts[i]; });
+      g.votesSource = 'receipt';
+      g.receiptCount = receipts.length;
+      g.receipts = receipts.map(function(r){
+        return { voterId: String(r.voterId).slice(0, 12), at: String(r.at || '').slice(0, 40), votes: r.votes.slice() };
+      });
+      gatherUpsert(g);
+      return { ok: true, count: receipts.length, bad: parsed.bad, counts: counts };
+    });
+  }
+  function voteApplyFromText(g){
+    if(!g) return;
+    var box = $('#g-pollReceipts');
+    if(!box || !String(box.value || '').trim()){ toast('先粘贴回执再汇总'); return; }
+    voteApplyReceipts(g, box.value).then(function(res){
+      if(!res.ok){ toast(res.error); return; }
+      renderGatherModal();
+      renderGather();
+      toast('已汇总 ' + res.count + ' 条回执' + (res.bad ? '；忽略 ' + res.bad + ' 条无法解析的内容' : ''));
+    });
+  }
+  function drawPollQr(url){
+    var cv = $('#pollLinkQr');
+    if(!cv) return null;
+    var ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    if(!url) return null;
+    var qr = qrBuild(url);
+    $('#pollLinkHint').textContent = qr ? '' : '链接超过二维码容量，请直接复制链接发送。';
+    if(!qr) return null;
+    var total = qr.size + 8;
+    var scale = Math.max(1, Math.floor(740 / total));
+    var px = scale * total, off = Math.floor((740 - px) / 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 740, 740);
+    ctx.fillStyle = '#111111';
+    for(var y = 0; y < qr.size; y++){
+      for(var x = 0; x < qr.size; x++){
+        if(qr.modules[y][x]) ctx.fillRect(off + (x + 4) * scale, off + (y + 4) * scale, scale, scale);
+      }
+    }
+    return qr;
+  }
+  function voteOpenLink(g){
+    if(!g || !g.id){ toast('先保存活动再生成链接'); return Promise.resolve(false); }
+    if(!(g.candidates || []).length){ toast('先生成候选再生成链接'); return Promise.resolve(false); }
+    return voteBuildLink(g).then(function(r){
+      voteLinkState = { g: g, url: r.url, length: r.length, ok: r.ok };
+      $('#pollLinkText').textContent = r.ok ? r.url : (r.remote
+        ? ('链接过长（' + r.length + ' 字符），已退回到「编号清单 + 手动回填」：请直接发送候选清单，让大家在群里报编号。')
+        : '当前是本地文件打开，链接无法在别人设备上使用；请用线上 HTTPS 地址，或直接发送候选清单让大家报编号。');
+      $('#btnPollLinkCopy').classList.toggle('hidden', !r.ok);
+      $('#pollLinkQr').classList.toggle('hidden', !r.ok);
+      $('#pollLinkHint').textContent = r.ok ? ('链接 ' + r.length + ' 字符 · 扫码或点开即可投票') : '';
+      drawPollQr(r.ok ? r.url : '');
+      $('#pollLinkMask').classList.remove('hidden');
+      return true;
+    });
+  }
+  function pollVoteOpen(poll){
+    var expired = false;
+    var t = new Date(String(poll.deadline || '')).getTime();
+    if(isFinite(t)) expired = Date.now() > t;
+    pollVoteState = {
+      poll: poll,
+      votes: poll.candidates.map(function(){ return 0; }),
+      expired: expired,
+      out: null
+    };
+    renderPollVote();
+    $('#pollVoteMask').classList.remove('hidden');
+  }
+  function renderPollVote(){
+    var st = pollVoteState;
+    if(!st) return;
+    var p = st.poll;
+    var dl = String(p.deadline || '').replace('T', ' ').slice(0, 16);
+    var head = st.expired
+      ? '<div class="notice" style="margin-bottom:10px">已过截止时间' + (dl ? '（' + esc(dl) + '）' : '') + '，本页只读，不能再投票。</div>'
+      : '<div class="notice" style="margin-bottom:10px">截止 ' + esc(dl || '未设置') + ' · 朋友局，无签名校验；只记录随机投票编号，不收集昵称或账号。</div>';
+    var rows = p.candidates.map(function(c, i){
+      var meta = [c.city, c.area, c.perPrice ? '人均 ' + c.perPrice + ' 元' : ''].filter(Boolean).join(' · ');
+      var v = st.votes[i], dis = st.expired ? ' disabled' : '';
+      return '<div class="pv-cand"><div class="g-cand-top"><span class="g-cnum">' + (i + 1) + '</span>' +
+        '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;overflow-wrap:anywhere">' + esc(c.name) + '</div>' +
+        '<p class="g-meta">' + esc(meta || '未填商圈与人均') + '</p></div></div>' +
+        '<div class="seg" role="group" aria-label="' + esc(c.name) + ' 的选择">' +
+          '<button type="button" data-pvopt="' + i + '" data-pvval="-1" class="' + (v === -1 ? 'on' : '') + '"' + dis + '>不想去</button>' +
+          '<button type="button" data-pvopt="' + i + '" data-pvval="0" class="' + (v === 0 ? 'on' : '') + '"' + dis + '>无所谓</button>' +
+          '<button type="button" data-pvopt="' + i + '" data-pvval="1" class="' + (v === 1 ? 'on' : '') + '"' + dis + '>想去</button>' +
+        '</div></div>';
+    }).join('');
+    var foot = '';
+    if(!st.expired){
+      if(!st.out){
+        foot = '<button type="button" class="btn btn-primary btn-block" style="margin-top:12px" data-pvact="receipt">生成回执</button>' +
+          '<p class="dist-note">回执只包含本活动的选择与随机编号，发回群里即可；文本与链接二选一。</p>';
+      }else{
+        foot = '<div class="notice" style="margin-top:12px">把下面的回执发回群里，发起人粘贴后会自动汇总；同一人多次提交只取最新一条。</div>' +
+          '<textarea class="input pv-out" id="pollVoteShort" readonly>' + esc(st.out.short) + '</textarea>' +
+          '<div class="actions" style="margin-top:8px">' +
+            '<button type="button" class="btn btn-primary btn-sm" data-pvact="copyShort">复制回执文本</button>' +
+            '<button type="button" class="btn btn-sm" data-pvact="copyLink">复制回执链接</button>' +
+          '</div><p class="dist-note">也可以直接发送「回执链接」；发起人两种都能识别。</p>';
+      }
+    }
+    $('#pollVoteBody').innerHTML = head + rows + foot;
+  }
+  function pollVoteMakeReceipt(){
+    var st = pollVoteState;
+    if(!st || st.expired) return;
+    voteBuildReceipt(st.poll, st.votes).then(function(out){
+      st.out = out;
+      renderPollVote();
+      toast('回执已生成，复制后发回群里');
+    });
+  }
+  function pollHandleHash(){
+    if(String(location.hash || '').indexOf('#poll=pv1.') < 0) return Promise.resolve(false);
+    return voteReadHash().then(function(p){
+      if(!p || p.error){ toast('投票链接不完整或已损坏，请让发起人重新发送'); return false; }
+      pollVoteOpen(p);
+      return true;
+    });
+  }
+  (function bindPollUi(){
+    var lm = $('#pollLinkMask');
+    if(lm){
+      var lc = $('#btnPollLinkClose');
+      if(lc) lc.addEventListener('click', function(){ lm.classList.add('hidden'); });
+      lm.addEventListener('click', function(e){ if(e.target === lm) lm.classList.add('hidden'); });
+      var lcopy = $('#btnPollLinkCopy');
+      if(lcopy) lcopy.addEventListener('click', function(){
+        if(voteLinkState && voteLinkState.ok) copyText(voteLinkState.url);
+      });
+      var listCopy = $('#btnPollListCopy');
+      if(listCopy) listCopy.addEventListener('click', function(){
+        if(voteLinkState && voteLinkState.g) copyText(voteListText(voteLinkState.g));
+      });
+    }
+    var vm = $('#pollVoteMask');
+    if(vm){
+      var vc = $('#btnPollVoteClose');
+      if(vc) vc.addEventListener('click', function(){ vm.classList.add('hidden'); });
+      vm.addEventListener('click', function(e){ if(e.target === vm) vm.classList.add('hidden'); });
+      vm.addEventListener('click', function(e){
+        var b = e.target.closest ? e.target.closest('[data-pvopt]') : null;
+        if(b && pollVoteState && !pollVoteState.expired){
+          var idx = Number(b.getAttribute('data-pvopt')), val = Number(b.getAttribute('data-pvval'));
+          if(isFinite(idx) && idx >= 0 && idx < pollVoteState.votes.length){
+            pollVoteState.votes[idx] = (val === -1 || val === 1) ? val : 0;
+            renderPollVote();
+          }
+          return;
+        }
+        var a = e.target.closest ? e.target.closest('[data-pvact]') : null;
+        if(!a) return;
+        var act = a.getAttribute('data-pvact');
+        if(act === 'receipt'){ pollVoteMakeReceipt(); return; }
+        if(act === 'copyShort' || act === 'copyLink'){
+          if(!pollVoteState || !pollVoteState.out) return;
+          copyText(act === 'copyShort' ? pollVoteState.out.short : pollVoteState.out.link);
+        }
+      });
+    }
   })();
 
   /* ================= 健身 ================= */
@@ -17909,17 +18334,48 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       fail: function(code){ voiceFail(code); return true; },
       begin: voiceBegin, stop: voiceStop
     },
-    sync: FZSync.test
+    sync: FZSync.test,
+    poll: {
+      vid: voteVid,
+      payload: votePollPayload,
+      buildLink: function(id){
+        var g = gatherById(id);
+        return g ? voteBuildLink(g) : Promise.resolve({ ok:false, error:'no-gather' });
+      },
+      readHash: voteReadHash,
+      hashOpen: function(){ return !$('#pollVoteMask').classList.contains('hidden'); },
+      linkOpen: function(){ return !$('#pollLinkMask').classList.contains('hidden'); },
+      buildReceipt: function(poll, votes){ return voteBuildReceipt(poll, votes); },
+      parseReceipts: voteParseReceipts,
+      apply: function(id, text){
+        var g = gatherById(id);
+        if(!g) return Promise.resolve({ ok:false, error:'no-gather' });
+        return voteApplyReceipts(g, text).then(function(r){
+          if(r.ok){ renderGatherModal(); renderGather(); }
+          return r;
+        });
+      },
+      openLink: function(id){ return voteOpenLink(gatherById(id)); },
+      openParticipant: pollVoteOpen,
+      state: function(){
+        if(!pollVoteState) return null;
+        return { poll:pollVoteState.poll, votes:pollVoteState.votes.slice(), expired:pollVoteState.expired, out:pollVoteState.out };
+      },
+      listText: function(id){ return voteListText(gatherById(id)); },
+      gather: function(id){ return gatherById(id); }
+    }
   };
   if(recoveredBackup) toast('上次数据损坏，已从备份恢复，原始内容保留在 '+RAW_KEY);
   else if(legacyData) toast('已自动升级旧版数据，共 '+db.records.length+' 条记录');
   setTimeout(function(){ photoStats(); moveLegacyPhotos(); }, 300);
   initGuide();
   handleFanziHash();
+  pollHandleHash();
   var shared = readShareHash();
   if(shared) showShare(shared, true);
   window.addEventListener('hashchange', function(){
     handleFanziHash();
+    pollHandleHash();
     var p = readShareHash();
     if(p) showShare(p, true);
   });
