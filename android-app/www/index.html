@@ -950,6 +950,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .save-done p{margin:0 0 10px;font-size:12.5px;line-height:1.6;color:var(--ink2)}
   .save-done .actions{gap:8px}
   .save-done .btn{flex:1;min-height:44px}
+  .save-done #btnDoneNext{flex:1 0 100%}
   .snap-entry{display:flex;align-items:center;gap:10px;padding:12px;margin-bottom:12px}
   .snap-entry .grow{min-width:0}
   .snap-entry b{font-size:14px}
@@ -1750,8 +1751,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <h3 id="saveDoneTitle">已记录</h3>
       <p id="saveDoneSub">没填的字段会保持为空或「未评价」，不会自动生成评分。</p>
       <div class="actions">
-        <button type="button" class="btn btn-primary" id="btnDoneHome">完成，返回首页</button>
+        <button type="button" class="btn btn-primary" id="btnDoneNext">再记一家（连续记录）</button>
         <button type="button" class="btn" id="btnDoneMore">继续完善本次记录</button>
+        <button type="button" class="btn" id="btnDoneHome">完成，返回首页</button>
       </div>
     </div>
 
@@ -15400,6 +15402,25 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#saveDoneBox').classList.add('hidden');
     applyFormMode('full');
     setTimeout(function(){ try{ $('#f-per').focus(); }catch(e){} }, 60);
+  });
+  /* 连续记录：保存成功后不退出表单，保留日期/人数/场景/餐次，直接开下一条 */
+  $('#btnDoneNext').addEventListener('click', function(){
+    var nextMode = formMode === 'backfill' ? 'backfill' : (formMode === 'snap' ? 'snap' : 'quick');
+    var keep = {
+      visitDate: $('#f-date').value || todayStr(),
+      people: Math.max(1, Math.round(num($('#f-people').value) || 1)),
+      scene: $('#f-scene').value || '',
+      mealType: $('#f-meal').value || '',
+      city: $('#f-city').value || ''
+    };
+    openForm(null, keep, nextMode);
+    if(nextMode === 'backfill'){
+      /* 补录模式会主动清空日期，这里把上一家的日期放回去并标记为已手动选择 */
+      $('#f-date').value = keep.visitDate;
+      formDateTouched = true;
+    }
+    setTimeout(function(){ try{ $('#f-name').focus(); }catch(e){} }, 60);
+    toast('继续记下一家');
   });
   function saveRecordDefaults(){
     db.settings.defaultPeople = clamp(Math.round(num($('#setDefPeople').value) || 4), 1, 60);
