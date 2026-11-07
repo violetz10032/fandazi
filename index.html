@@ -22550,6 +22550,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return { enabled:false, deviceId:'', gistId:'', salt:'', lastRev:0, lastSyncAt:'', consentAt:'',
         userName:'', baseHashes:{}, dirty:{}, tombstones:[],
         photoGistId:'', photoMissing:0, photoMissingRefs:[],
+        /* 通道回退：默认 Gist；Contents 回退只写单独通道，不双写 */
+        channel:'gist', repo:{ owner:'', name:'', branch:'main', dir:'fandazi-sync' },
+        channelSwitch:{ at:'', from:'', to:'', reason:'', code:'' }, lastGistProbeAt:0,
         outbox:{ tries:0, nextAt:0, lastErr:'', lastCode:'', lastTryAt:0, dead:null } };
     }
     function loadMeta(){
@@ -22561,6 +22564,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         var ob = (m && m.outbox) || {};
         out.outbox = { tries:num2(ob.tries), nextAt:num2(ob.nextAt), lastErr:ob.lastErr || '',
           lastCode:ob.lastCode || '', lastTryAt:num2(ob.lastTryAt), dead:ob.dead || null };
+        out.channel = out.channel === 'contents' ? 'contents' : 'gist';
+        var rp = (m && m.repo) || {};
+        out.repo = { owner:String(rp.owner || ''), name:String(rp.name || ''),
+          branch:String(rp.branch || 'main'), dir:String(rp.dir || 'fandazi-sync') };
+        var cs = (m && m.channelSwitch) || {};
+        out.channelSwitch = { at:cs.at || '', from:cs.from || '', to:cs.to || '', reason:cs.reason || '', code:cs.code || '' };
+        out.lastGistProbeAt = num2(m && m.lastGistProbeAt);
         return out;
       }catch(e){ return defaultMeta(); }
     }
@@ -22585,6 +22595,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         E_NO_SUBTLE:'当前浏览器缺少加密能力（WebCrypto），无法安全同步',
         E_TOKEN:'GitHub Token 无效或已撤销，请重新粘贴（权限至少需要 gist）',
         E_SCOPE:'Token 权限不足：至少需要 gist 权限',
+        E_REPO_SCOPE:'Gist 不可用时的私有仓库回退需要 repo 权限：请重新生成 Token 并勾选 repo',
         E_RATE:'GitHub 接口限流，请稍后再试',
         E_NOT_FOUND:'找不到这个 Gist：ID 不对、已被删除，或 Token 无权访问',
         E_CRYPTO:'口令错误或同步文件已损坏；本机记录未改动',
@@ -22610,9 +22621,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var token = opts.token || ghToken();
       if(!token) return Promise.reject(code('E_TOKEN'));
       var ctrl = new AbortController();
-      var timer = setTimeout(function(){ try{ ctrl.abort(); }catch(e){} }, 20000);
-      return fetch('https://api.github.com' + path, {
-        method: opts.method || 'GET',
+      var timer = setTimeout(function(){ try{ ctrl.abort(); }catch(e){} }, num2(opts.timeout) || 20000);
+      var method = opts.method || 'GET';
+      var urlPath = path;
+      /* GET 加时间戳：避开 WebView/代理缓存，保证写完回读拿到的是最新版本 */
+      if(method === 'GET') urlPath += (path.indexOf('?') >= 0 ? '&' : '?') + '_fz=' + Date.now();
+      return fetch('https://api.github.com' + urlPath, {
+        method: method,
         headers: {
           'Authorization': 'Bearer ' + token,
           'Accept': 'application/vnd.github+json',
@@ -22628,6 +22643,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           if(!res.ok){
             var c = res.status === 401 ? 'E_TOKEN' : res.status === 404 ? 'E_NOT_FOUND'
               : res.status === 403 ? (data && /rate limit/i.test(String(data.message||'')) ? 'E_RATE' : 'E_SCOPE')
+              : res.status === 409 ? 'E_CONFLICT'
               : res.status === 422 ? 'E_FORMAT' : 'E_NET';
             var e = code(c); e.status = res.status; e.message = (data && data.message) || ''; throw e;
           }
@@ -23030,6 +23046,175 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return ghRequest('/gists/' + encodeURIComponent(id), { method:'PATCH', token:token, body:body });
     }
 
+    /* ---------- 通道抽象：Gist → 私有仓库 Contents API ----------
+       仅当 Gist 明确不可用（网络/超时/5xx/限流）时切换；401/403 权限/422/404 属于账号或空间问题，
+       不回退，避免把账号问题误判成通道故障。任何时刻只写一条通道，不做静默双写。
+       两条通道共用同一份加密 manifest 与 payload（format/version/salt 完全一致），可互认。
+       Contents 每次 PUT 都带上一轮读到的文件 sha 做乐观锁；sha 过期返回 409 → E_CONFLICT，
+       交给已有 rev/updatedAt 合并逻辑重新读取再写，不强推。 */
+    var GIST_PROBE_MS = 10 * 60 * 1000;
+    function chan(){ return meta.channel === 'contents' ? 'contents' : 'gist'; }
+    function channelLabel(ch){ return ch === 'contents' ? '私有仓库 Contents API' : '私有 Gist'; }
+    function contentsRepo(){ var r = meta.repo || (meta.repo = defaultMeta().repo); return r; }
+    function repoLabel(){
+      var r = contentsRepo();
+      return (r.owner || '?') + '/' + (r.name || '?') + (r.dir ? '/' + r.dir : '');
+    }
+    function encPath(p){ return String(p || '').split('/').filter(Boolean).map(encodeURIComponent).join('/'); }
+    function repoBase(){
+      var r = contentsRepo();
+      return '/repos/' + encodeURIComponent(r.owner) + '/' + encodeURIComponent(r.name) + '/contents/';
+    }
+    function setChannel(ch, reason, c){
+      var from = chan();
+      if(from === ch) return;
+      meta.channel = ch;
+      meta.channelSwitch = { at:new Date().toISOString(), from:from, to:ch, reason:reason || '', code:c || '' };
+      if(ch === 'gist') meta.lastGistProbeAt = 0;
+      saveMeta(meta);
+      renderCard();
+    }
+    function fallbackable(e){
+      var c = (e && e.code) || '';
+      return c === 'E_NET' || c === 'E_RATE' || c === 'E_TIMEOUT' || num2(e && e.status) >= 500;
+    }
+    async function ensureContentsRepo(token){
+      var r = contentsRepo();
+      if(!r.owner || !r.name){
+        var me = await ghRequest('/user', { token:token });
+        if(!me || !me.login) throw code('E_TOKEN');
+        r.owner = me.login;
+        r.name = 'fandazi-sync';
+        r.branch = r.branch || 'main';
+        r.dir = r.dir || 'fandazi-sync';
+        meta.repo = r;
+        saveMeta(meta);
+      }
+      var info = null;
+      try{ info = await ghRequest('/repos/' + encodeURIComponent(r.owner) + '/' + encodeURIComponent(r.name), { token:token }); }
+      catch(e){ if(e.code !== 'E_NOT_FOUND') throw e; }
+      if(!info){
+        try{
+          info = await ghRequest('/user/repos', { method:'POST', token:token,
+            body:{ name:r.name, private:true, auto_init:true, description:'fandazi sync (encrypted)' } });
+        }catch(e){
+          if(e.code === 'E_SCOPE') throw code('E_REPO_SCOPE');
+          if(e.code === 'E_FORMAT'){
+            try{ info = await ghRequest('/repos/' + encodeURIComponent(r.owner) + '/' + encodeURIComponent(r.name), { token:token }); }catch(e2){}
+          }
+          if(!info) throw e;
+        }
+      }
+      if(info && info.default_branch) r.branch = info.default_branch;
+      meta.repo = r;
+      saveMeta(meta);
+      return r;
+    }
+    async function contentsList(token){
+      var r = contentsRepo();
+      var q = '?ref=' + encodeURIComponent(r.branch || 'main');
+      var items;
+      try{ items = await ghRequest(repoBase() + encPath(r.dir) + q, { token:token }); }
+      catch(e){ if(e.code === 'E_NOT_FOUND') return []; throw e; }
+      return Array.isArray(items) ? items : [];
+    }
+    async function contentsGetFile(name, token){
+      var r = contentsRepo();
+      var data = await ghRequest(repoBase() + encPath(r.dir + '/' + name) + '?ref=' + encodeURIComponent(r.branch || 'main'), { token:token });
+      if(!data || Array.isArray(data) || typeof data.content !== 'string') throw code('E_FORMAT');
+      var txt;
+      try{ txt = dec.decode(unb64(String(data.content).replace(/\s+/g, ''))); }catch(e){ throw code('E_FORMAT'); }
+      return { content:txt, sha:String(data.sha || ''), size:num2(data.size) };
+    }
+    async function contentsRead(token){
+      var items = await contentsList(token);
+      var byName = {}, listing = [], shas = {};
+      items.forEach(function(it){
+        if(!it || !it.name) return;
+        byName[it.name] = it;
+        listing.push({ name:it.name, sha:String(it.sha || ''), size:num2(it.size) });
+        shas[it.name] = String(it.sha || '');
+      });
+      if(!byName[MANIFEST_FILE]) return { channel:'contents', id:repoLabel(), files:{}, shas:shas, listing:listing, empty:true };
+      var files = {};
+      var mf = await contentsGetFile(MANIFEST_FILE, token);
+      files[MANIFEST_FILE] = { content:mf.content, truncated:false, size:mf.size };
+      shas[MANIFEST_FILE] = mf.sha;
+      var parts = [];
+      try{ var mm = JSON.parse(mf.content); parts = (mm && mm.parts) || []; }catch(e){ throw code('E_FORMAT'); }
+      for(var i = 0; i < parts.length; i++){
+        var nm = parts[i] && parts[i].file;
+        if(!nm) throw code('E_FORMAT');
+        if(files[nm]) continue;
+        var f = await contentsGetFile(nm, token);
+        files[nm] = { content:f.content, truncated:false, size:f.size };
+        shas[nm] = f.sha;
+      }
+      return { channel:'contents', id:repoLabel(), files:files, shas:shas, listing:listing, empty:false };
+    }
+    async function contentsWrite(store, files, token){
+      var r = contentsRepo();
+      var branch = r.branch || 'main';
+      var shas = (store && store.shas) || {};
+      var keep = files || {};
+      var listing = (store && store.listing) || [];
+      var names = Object.keys(keep);
+      for(var j = 0; j < names.length; j++){
+        var name = names[j], f = keep[name];
+        if(!f || f.content == null) continue;
+        var body = { message:'fandazi sync', content:b64(enc.encode(String(f.content))), branch:branch };
+        if(shas[name]) body.sha = shas[name];
+        try{
+          await ghRequest(repoBase() + encPath(r.dir + '/' + name), { method:'PUT', token:token, body:body });
+        }catch(e){
+          /* 未带 sha 却已存在同名文件 / sha 已过期：按并发冲突处理，交给上层重读合并 */
+          var ne = (e.code === 'E_FORMAT' && /sha/i.test(String(e.message || ''))) ? code('E_CONFLICT') : e;
+          ne.debug = { putFile:name, status:e.status, msg:String(e.message || '') };
+          throw ne;
+        }
+      }
+      /* manifest 已写成功后才清理旧分片：manifest 冲突时旧 manifest+旧分片仍完整可读 */
+      for(var i = 0; i < listing.length; i++){
+        var it = listing[i];
+        if(!/^data-.*\.fz\.json$/.test(it.name) || keep[it.name]) continue;
+        try{
+          await ghRequest(repoBase() + encPath(r.dir + '/' + it.name), { method:'DELETE', token:token,
+            body:{ message:'fandazi sync cleanup', sha:it.sha, branch:branch } });
+        }catch(e){ if(e.code !== 'E_NOT_FOUND') throw e; }
+      }
+    }
+    async function readStore(token){
+      if(chan() === 'contents'){
+        await ensureContentsRepo(token);
+        return await contentsRead(token);
+      }
+      var g = await gistFiles(meta.gistId, token);
+      return { channel:'gist', id:meta.gistId, files:g.files, shas:{}, gist:g };
+    }
+    async function writeStore(store, files, newTotal, oldTotal, token){
+      if(store && store.channel === 'contents') return contentsWrite(store, files, token);
+      return patchGist(store.id, files, newTotal, oldTotal, token);
+    }
+    async function decodeStore(store, pass, saltB64){
+      if(!store || store.empty) return { store:store, manifest:null, payload:null, salt:saltB64 || meta.salt || '', key:null, empty:true };
+      var mfFile = store.files[MANIFEST_FILE];
+      if(!mfFile || !mfFile.content || mfFile.truncated) throw code('E_FORMAT');
+      var manifest = JSON.parse(mfFile.content);
+      var salt = saltB64 || (manifest.kdf && manifest.kdf.salt) || '';
+      if(!salt) throw code('E_FORMAT');
+      var aes = key || await deriveKey(pass, salt);
+      if(!photoKey && pass && String(pass).length >= 10){
+        photoKey = await derivePhotoKey(pass, salt).catch(function(){ return null; });
+      }
+      var payload = await decryptPayload(manifest, store.files, aes);
+      return { store:store, manifest:manifest, payload:payload, key:aes, salt:salt, empty:false };
+    }
+    async function probeGist(token){
+      if(!meta.gistId) return false;
+      try{ await ghRequest('/gists/' + encodeURIComponent(meta.gistId), { token:token, timeout:8000 }); return true; }
+      catch(e){ return false; }
+    }
+
     async function buildPayload(records, rev, parentRev){
       var outRecords = [], uploads = [];
       for(var i = 0; i < records.length; i++){
@@ -23151,7 +23336,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       db.records = merged.records;
       try{ db.records.forEach(function(r){ if(!r.updatedAt) r.updatedAt = new Date().toISOString(); }); }catch(e){}
       meta.enabled = true;
-      meta.gistId = gistId;
+      if(gistId) meta.gistId = gistId;
       meta.salt = saltB64;
       meta.lastRev = rev;
       meta.lastSyncAt = new Date().toISOString();
@@ -23235,17 +23420,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
     async function fetchPayload(gistId, token, pass, saltB64){
       var g = await gistFiles(gistId, token);
-      var mfFile = g.files[MANIFEST_FILE];
-      if(!mfFile || !mfFile.content || mfFile.truncated) throw code('E_FORMAT');
-      var manifest = JSON.parse(mfFile.content);
-      var salt = saltB64 || (manifest.kdf && manifest.kdf.salt) || '';
-      if(!salt) throw code('E_FORMAT');
-      var aes = key || await deriveKey(pass, salt);
-      if(!photoKey && pass && String(pass).length >= 10){
-        photoKey = await derivePhotoKey(pass, salt).catch(function(){ return null; });
-      }
-      var payload = await decryptPayload(manifest, g.files, aes);
-      return { gist:g, manifest:manifest, payload:payload, key:aes, salt:salt };
+      var got = await decodeStore({ channel:'gist', id:gistId, files:g.files, shas:{}, gist:g }, pass, saltB64);
+      return { gist:g, manifest:got.manifest, payload:got.payload, key:got.key, salt:got.salt };
     }
 
     async function joinFlow(o){
@@ -23285,35 +23461,109 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       }finally{ unlock(lk); }
     }
 
+    async function syncOnce(token, pass, store, got){
+      if(got && got.payload && got.payload.photoGistId) meta.photoGistId = got.payload.photoGistId;
+      await makeSnapshot('before-sync');
+      var merged = (got && got.payload)
+        ? await mergeRecords(db.records, got.payload)
+        : { records:db.records.slice(), tombstones:pruneTombs(meta.tombstones), conflicts:0 };
+      var parent = (got && got.manifest) ? num2(got.manifest.payloadRev) : 0;
+      var rev = Math.max(num2(meta.lastRev), parent) + 1;
+      var salt = (got && got.salt) || meta.salt || '';
+      if(!salt) throw code('E_FORMAT');
+      var aes = (got && got.key) || key || await deriveKey(pass, salt);
+      var built = await buildPayload(merged.records, rev, parent);
+      var payload = built.payload;
+      payload.photoGistId = meta.photoGistId || '';
+      var encrypted = await encryptPayload(payload, aes, salt);
+      /* Contents 通道：分片按 rev 命名，manifest 最后写。manifest 的 sha 冲突时，
+         远端旧的 manifest + 旧分片仍然完整可读，下一轮重读即可合并，不会把数据写坏。 */
+      if(store.channel === 'contents'){
+        var tag = 'r' + rev + '-';
+        var mfo = JSON.parse(encrypted.files[MANIFEST_FILE].content);
+        var nf = {};
+        mfo.parts = (mfo.parts || []).map(function(p){
+          var nn = String(p.file).replace(/^data-/, 'data-' + tag);
+          nf[nn] = encrypted.files[p.file];
+          p.file = nn;
+          return p;
+        });
+        nf[MANIFEST_FILE] = { content: JSON.stringify(mfo) };
+        encrypted.files = nf;
+        encrypted.manifest = mfo;
+      }
+      await writeStore(store, encrypted.files, encrypted.manifest.parts.length,
+        (got && got.manifest) ? got.manifest.parts.length : 0, token);
+      /* 写完立刻回读校验：没读到自己的 rev 就不算「远端已更新」 */
+      var rb = await readStore(token);
+      var mf = JSON.parse(rb.files[MANIFEST_FILE].content);
+      if(mf.writerId !== ensureDevice() || num2(mf.payloadRev) !== rev){
+        var ce = code('E_CONFLICT');
+        ce.debug = { writer:mf.writerId, dev:ensureDevice(), gotRev:num2(mf.payloadRev), wantRev:rev, channel:store.channel };
+        throw ce;
+      }
+      key = aes;
+      var res = await applySuccess(merged, rev, store.channel === 'gist' ? store.id : '', salt, merged.tombstones, db.records.length);
+      var photoOut = { uploaded:0, downloaded:0, missing:0, pending:0, error:'' };
+      if(photoKey){
+        try{ photoOut = await photoRoundTrip(db.records, token, aes, salt, built.uploads); }
+        catch(e){ photoOut.error = errText(e); }
+      }
+      return Object.assign({ gistId:meta.gistId, channel:chan(), photos:photoOut }, res);
+    }
+
     async function syncNow(pass){
       if(!meta.enabled || !meta.gistId) throw code('E_OFF');
       if(!ghToken()) throw code('E_TOKEN');
       if(!key && (!pass || String(pass).length < 10)) throw code('E_PASS');
+      var token = ghToken();
       var lk = lock(); if(!lk) throw code('E_BUSY');
       try{
-        var got = await fetchPayload(meta.gistId, ghToken(), pass, meta.salt || '');
-        if(got.payload.photoGistId) meta.photoGistId = got.payload.photoGistId;
-        await makeSnapshot('before-sync');
-        var merged = await mergeRecords(db.records, got.payload);
-        var parent = num2(got.manifest.payloadRev);
-        var rev = Math.max(num2(meta.lastRev), parent) + 1;
-        var built = await buildPayload(merged.records, rev, parent);
-        var payload = built.payload;
-        payload.photoGistId = meta.photoGistId || '';
-        var encrypted = await encryptPayload(payload, got.key, got.salt);
-        await patchGist(meta.gistId, encrypted.files, encrypted.manifest.parts.length, got.manifest.parts.length, ghToken());
-        var rb = await gistFiles(meta.gistId, ghToken());
-        var mf = JSON.parse(rb.files[MANIFEST_FILE].content);
-        if(mf.writerId !== ensureDevice() || num2(mf.payloadRev) !== rev) throw code('E_CONFLICT');
-        key = got.key;
-        var res = await applySuccess(merged, rev, meta.gistId, got.salt, merged.tombstones, db.records.length);
-        var photoOut = { uploaded:0, downloaded:0, missing:0, pending:0, error:'' };
-        if(photoKey){
-          try{ photoOut = await photoRoundTrip(db.records, ghToken(), got.key, got.salt, built.uploads); }
-          catch(e){ photoOut.error = errText(e); }
+        /* Contents 通道：每 10 分钟探测一次 Gist，恢复后自动切回，不静默留在回退通道 */
+        if(chan() === 'contents' && (!num2(meta.lastGistProbeAt) || Date.now() - num2(meta.lastGistProbeAt) > GIST_PROBE_MS)){
+          var back = await probeGist(token);
+          meta.lastGistProbeAt = Date.now();
+          if(back) setChannel('gist', 'Gist 已恢复，自动切回', 'E_RECOVERED');
+          else saveMeta(meta);
         }
-        return Object.assign({ gistId:meta.gistId, photos:photoOut }, res);
+        var store = null, got = null, err = null;
+        try{
+          store = await readStore(token);
+          got = store.empty ? null : await decodeStore(store, pass, meta.salt || '');
+        }catch(e){ err = e; }
+        if(!err){
+          try{ return await syncOnce(token, pass, store, got); }
+          catch(e){ err = e; }
+        }
+        /* 只有 Gist 通道明确不可用才回退；其它错误照旧交给 outbox/标死逻辑 */
+        if(chan() !== 'gist' || !fallbackable(err)) throw err;
+        var cstore = null, cgot = null;
+        try{
+          await ensureContentsRepo(token);
+          setChannel('contents', 'Gist 不可用（' + errText(err) + '），本轮改走 Contents API', err.code || 'E_NET');
+          cstore = await readStore(token);
+          cgot = cstore.empty ? null : await decodeStore(cstore, pass, meta.salt || '');
+          return await syncOnce(token, pass, cstore, cgot);
+        }catch(e2){
+          /* 回退因权限/Token 问题无法成立：退回 Gist 通道并如实记录，不留下「已切换」的错觉 */
+          if(e2.code === 'E_REPO_SCOPE' || e2.code === 'E_SCOPE' || e2.code === 'E_TOKEN' || e2.code === 'E_NO_REPO'){
+            setChannel('gist', 'Contents 回退未成功（' + errText(e2) + '），已退回 Gist 通道', e2.code);
+          }
+          throw e2;
+        }
       }finally{ unlock(lk); }
+    }
+
+    async function switchBackToGist(){
+      if(busy) return;
+      busy = true;
+      try{
+        var ok = await probeGist(ghToken());
+        meta.lastGistProbeAt = Date.now();
+        if(ok){ setChannel('gist', '手动切回：Gist 可用', 'E_MANUAL'); toast('已切回 Gist 通道，下次同步走 Gist'); }
+        else{ saveMeta(meta); toast('Gist 仍不可用，继续使用 Contents API 通道'); }
+        renderCard();
+      }finally{ busy = false; }
     }
 
     function markChanged(id){
@@ -23357,11 +23607,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
        不可重试（401 / 403 权限 / 422 校验 / 404 空间不存在 / 口令错）：标死并给可操作提示，
        等用户改完 Token 或口令后点「重新尝试」再排队。 */
     var RETRY_STEPS = [30000, 120000, 600000, 3600000];
-    var DEAD_CODES = { E_TOKEN:1, E_SCOPE:1, E_FORMAT:1, E_NOT_FOUND:1, E_NO_GIST:1,
+    var DEAD_CODES = { E_TOKEN:1, E_SCOPE:1, E_REPO_SCOPE:1, E_FORMAT:1, E_NOT_FOUND:1, E_NO_GIST:1,
       E_CRYPTO:1, E_PASS:1, E_OFF:1, E_NO_SUBTLE:1, E_GIST_PUBLIC:1, E_TOO_BIG:1 };
     var DEAD_HINT = {
       E_TOKEN:'请到 GitHub 设置里重新生成或粘贴有效 Token（需 gist 权限）',
       E_SCOPE:'Token 权限不足，请勾选 gist 权限后重新粘贴',
+      E_REPO_SCOPE:'Gist 回退到私有仓库需要 repo 权限：请重新生成 Token 并勾选 repo',
       E_FORMAT:'远端文件校验失败：确认同步口令与 Gist ID 是否对应',
       E_NOT_FOUND:'找不到远端空间：Gist 可能已删除，或 Token 无权访问',
       E_NO_GIST:'缺少 Gist ID，请填另一台设备显示的 ID',
@@ -23508,11 +23759,20 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var info = $('#syncInfo');
       if(!info) return;
       if(on){
-        info.innerHTML = 'Gist ID：<b>' + esc(meta.gistId) + '</b> ' +
+        var ch = chan();
+        var chLine = '通道：<b>' + esc(channelLabel(ch)) + '</b>';
+        if(ch === 'contents'){
+          chLine += '（' + esc(repoLabel()) + '）';
+          if(!contentsRepo().owner) chLine += '，私有仓库将在首次回退时创建';
+        }
+        var sw = meta.channelSwitch || {};
+        if(sw.at && sw.reason) chLine += '<br><span class="muted">上次切换：' + esc(sw.at.slice(0, 16).replace('T', ' ')) + ' · ' + esc(sw.reason) + '</span>';
+        info.innerHTML = chLine + '<br>Gist ID：<b>' + esc(meta.gistId) + '</b> ' +
           '<button class="btn btn-sm" id="btnSyncCopy" style="flex:none">复制</button>' +
+          (ch === 'contents' ? '<button class="btn btn-sm" id="btnSyncBackGist" style="flex:none;margin-left:8px">重试 Gist 通道</button>' : '') +
           '<br><span class="muted">口令不保存，刷新后同步需重新输入；照片单独存在第二个私有 Gist，想去清单、地点、设置与投票暂不同步。</span>';
       }else{
-        info.innerHTML = '同步到店记录（含删除墓碑）与照片；照片单独加密上传到第二个私有 Gist，失败只影响照片。数据加密后上传至 GitHub（境外）。';
+        info.innerHTML = '同步到店记录（含删除墓碑）与照片；照片单独加密上传到第二个私有 Gist，失败只影响照片。数据加密后上传至 GitHub（境外）。Gist 不可用时会显式切换到私有仓库 Contents API 通道。';
       }
       var pbox = $('#syncPhotoBox');
       if(!pbox) return;
@@ -23650,11 +23910,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var chk = $('#syncConsent'); if(chk) chk.addEventListener('change', updateSubmit);
       var info = $('#syncInfo'); if(info) info.addEventListener('click', function(e){
         var b = e.target && e.target.closest ? e.target.closest('#btnSyncCopy') : null;
-        if(!b) return;
-        var txt = meta.gistId || '';
-        if(navigator.clipboard && navigator.clipboard.writeText){
-          navigator.clipboard.writeText(txt).then(function(){ toast('已复制 Gist ID'); }, function(){ toast('复制失败，请长按复制'); });
-        }else toast('请长按复制 Gist ID：' + txt);
+        if(b){
+          var txt = meta.gistId || '';
+          if(navigator.clipboard && navigator.clipboard.writeText){
+            navigator.clipboard.writeText(txt).then(function(){ toast('已复制 Gist ID'); }, function(){ toast('复制失败，请长按复制'); });
+          }else toast('请长按复制 Gist ID：' + txt);
+          return;
+        }
+        var bg = e.target && e.target.closest ? e.target.closest('#btnSyncBackGist') : null;
+        if(bg) switchBackToGist();
       });
       var pbox = $('#syncPhotoBox'); if(pbox) pbox.addEventListener('click', function(e){
         var b = e.target && e.target.closest ? e.target.closest('#btnSyncPhotoRetry') : null;
@@ -23701,10 +23965,25 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             salt:m.salt || '', keyInMemory:!!key, pending:pendingCount(), modal:!$('#syncMask').classList.contains('hidden'),
             photoGistId:m.photoGistId || '', photoMissing:num2(m.photoMissing),
             photoKeyInMemory:!!photoKey,
+            channel:chan(), repo:Object.assign({}, m.repo || {}),
+            channelSwitch:Object.assign({}, m.channelSwitch || {}),
             photoState:Object.assign({}, photoState)
           };
         },
         meta: function(){ return loadMeta(); },
+        channel: function(){
+          return { channel:chan(), repo:Object.assign({}, contentsRepo()), switchInfo:Object.assign({}, meta.channelSwitch || {}),
+            probeAt:num2(meta.lastGistProbeAt), gistId:meta.gistId || '', label:channelLabel(chan()) };
+        },
+        readStore: function(){ return readStore(ghToken()); },
+        switchBack: function(){ return switchBackToGist(); },
+        probe: function(ts){ meta.lastGistProbeAt = num2(ts); saveMeta(meta); return true; },
+        rawGist: function(id){
+          return gistFiles(id || meta.gistId, ghToken()).then(function(g){
+            var f = g.files[MANIFEST_FILE];
+            return f && f.content ? JSON.parse(f.content) : null;
+          });
+        },
         enable: function(token, pass){ return enableFlow({ token:token, pass:pass, consent:true }); },
         join: function(token, gistId, pass){ return joinFlow({ token:token, gistId:gistId, pass:pass, consent:true }); },
         now: function(pass){ return syncNow(pass || ''); },
