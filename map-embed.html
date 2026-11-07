@@ -41,6 +41,7 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
     return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o);
   }
   var parentOrigin = '';
+  var FZ_PROTO = 3;   /* 与宿主握手协议版本：pong 回传，便于识别缓存里的旧内嵌页 */
   var map = null;
   var markers = [];
   var pending = null;
@@ -233,9 +234,10 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
     parentOrigin = e.origin;
     var d = e.data || {};
     if(d.type === 'fz:ping'){
-      /* 宿主探测：回报本页实际来源与 Referer 策略，用于和 iframe 内外对照 */
+      /* 宿主探测：回报本页实际来源、Referer 策略，以及 AMap / 地图实例当前是否可用 */
       send({ type:'fz:pong', href:location.href, host:location.host,
-        referrer:String(document.referrer || ''), policy:String(document.referrerPolicy || '') });
+        referrer:String(document.referrer || ''), policy:String(document.referrerPolicy || ''),
+        amap:!!(window.AMap && typeof window.AMap.Map === 'function'), map:!!map, v:FZ_PROTO });
       return;
     }
     if(d.type === 'fz:init'){
@@ -256,7 +258,7 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
   /* 脚本加载完即通知宿主（此时还没有业务数据，可以用 * 作为目标源） */
   dbg('standalone=' + standalone + ' page=' + location.href);
   dbg('script=' + SRC);
-  trace('page-start', { href:location.href });
+  trace('page-start', { href:location.href, v:FZ_PROTO });
   ensure(function(err){
     if(err) return;   /* 失败已由 diag 发送 fz:error */
     if(standalone){
@@ -264,7 +266,7 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
       init({ center:[116.397428, 39.90923], zoom:10, pts:[] });
       dbg('AMap 注册成功，对照地图已初始化');
     }
-    send({ type:'fz:script-ready' });
+    send({ type:'fz:script-ready', v:FZ_PROTO });
   });
 })();
 </script>

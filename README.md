@@ -1202,7 +1202,8 @@ var MAP_BASE_LAYER = {
 - **失败降级（可诊断）**：脚本 `onerror`、12 秒超时、`window.AMap` 未注册、初始化抛错、非 HTTPS / `file://` 环境，都会回落画布。回落前会先复现一次加载并读取高德真实返回：域名校验失败时高德给的是 **HTTP 200 + `application/json`**（`{"info":"INVALID_USER_DOMAIN","infocode":"10006",…}`，不是脚本，所以旧的「网络不通或被拦截」文案看不到真正原因）。现在会临时接管 `console.error/warn` 与 `window.onerror`，并在失败后 `fetch` 同一脚本地址解析 `info/infocode`，把 **错误码 + 一句话处理建议**写进地图页错误卡片；最近一次失败原因存 `localStorage['fandazi.mapAmapErr']`，刷新后仍能在「我的 → 地图底图」看到，成功加载后自动清除。已覆盖 `INVALID_USER_DOMAIN(10006)`、`INVALID_USER_SCODE`、`USERKEY_PLAT_NOMATCH`、`INVALID_USER_KEY`、`OVER_QUERY_LIMIT`、`DAILY_QUERY_OVER_LIMIT` 等。
 - **凭据与合规**：Key 与 `securityJsCode` 以常量内联（单文件应用无法隐藏）；`window._AMapSecurityConfig` 在 loader 脚本执行**之前**写入，避免 `INVALID_USER_SCODE`。请在<https://console.amap.com/dev/key/app> 把域名白名单设为 **violetz10032.github.io**（只保留这一条）。**`localhost` 加不进去**——高德控制台会直接拒绝并提示「域名不符合规范」，所以网页版/APK 都不要指望把 localhost 加白。按高德协议，本应用**不抓取、不缓存、不转存**服务端数据与底图图片，不做 POI 批量复制。
 - **APK 内嵌地图页**：APK 的页面源是 `https://localhost`，直连高德必然 `INVALID_USER_DOMAIN`。因此 APK 内改为在 `#amapLayer` 里加载 `https://violetz10032.github.io/fandazi/map-embed.html`（独立静态页，源是 `github.io`，可通过域名校验），高德脚本只在那个 iframe 里加载。该页**只做地图渲染、不含业务数据**：宿主只传店铺编号 / 显示坐标（GCJ-02）/ 聚合数量 / 点半径 / 颜色，以及中心点与缩放；**不传店名、备注、精确地址**。内嵌页回传四类消息：`fz:trace`（加载阶段打点：iframe 载入 / 脚本开始下载 / 脚本载入 / AMap 注册的毫秒数）、`fz:view`（拖动/缩放后的中心与 zoom）、`fz:pick`（点击的店铺编号）、`fz:error`（高德错误码）。双向都用 `postMessage` 显式指定目标源：宿主只接受 `https://violetz10032.github.io` 且校验 `event.source`，内嵌页只接受 `https://localhost` / `capacitor://localhost` 与本机调试源（含端口）。**等待窗口**：iframe 载入 15 秒、载入后等高德脚本注册 20 秒（脚本近 1 MB，移动网络慢时 5–20 秒属正常），期间地图页提示条持续显示「高德图层加载中… 已等 X 秒 · 当前阶段」；超时只重试一次（重建 iframe 并带一次性查询参数），重试仍失败才回落画布。回落文案区分两种原因：超时/未加载完写「已重试 1 次 / 仍未完成加载，并非高德返回错误码」，脚本确实失败写「内嵌地图页加载失败：+ 真实错误码/网络原因」；画布地图的数据与交互完全不动。
-- **实测**：CDP 脚本 `.tmp/amap-layer-test.js` **23/23 通过**，覆盖默认不注入脚本、WGS→GCJ 参考点误差（天安门 ±0.0002°）、境外不偏移、mock AMap 选层/拖动回读/点击开卡、切回画布恢复手势、拦截高德域名后的失败降级与重试入口、**真实网络下 127.0.0.1 触发 `INVALID_USER_DOMAIN` 并显示 10006 与页面源**、`securityJsCode` 注入顺序、错误码持久化到设置页、常见错误码建议表、**内嵌页本地副本握手失败时回报真实错误码并回落画布**。等待窗口专项 `.tmp/amap-embed-wait-test.js` **8/8 通过**：慢加载 9 秒不会被 6 秒误判、加载中显示已等待秒数与阶段、宿主忽略非 iframe 窗口伪造的 `fz:script-ready`、超时只重试一次且重试仍失败才回落、回落文案区分「未完成加载（已重试）」与「确实报错」、真实 `map-embed.html` 回传 `iframe-load / script-start / script-error` 打点。诊断明细专项 `.tmp/amap-embed-diag-test.js` **5/5 通过**：三类失败各自落到网络层 / 脚本层 / 注册层，面板默认展开且含请求 URL、HTTP 状态、耗时、真实错误码与 `document.referrer` / `referrerPolicy`。同一轮 `p0` 回归 **28/28**、`amap-layer` **23/23**。真实高德瓦片与 APK 内嵌页的实际手势/网络表现仍需联网真机验收（见文末未验证项）。
+- **就绪即终态（状态机）**：内嵌页状态机分「未开始 / 加载中 / 已就绪」三态，`embedReady=true` 是终态，任何 `load`、计时回调、重试路径都不得把它清回去或重开计时。三条成功信号等价：`fz:script-ready`、`fz:trace` 的 `stage='amap-ready'`、以及 `fz:pong` 里 `amap:true`（宿主在 iframe `onload` 后主动 ping，未就绪时每 1.2 秒补 ping，用来兜住早到/丢失的就绪消息）。消息监听在创建 iframe、设置 `src` **之前**就绑定，避免内嵌页先发、宿主后挂。
+- **实测**：CDP 脚本 `.tmp/amap-layer-test.js` **23/23 通过**，覆盖默认不注入脚本、WGS→GCJ 参考点误差（天安门 ±0.0002°）、境外不偏移、mock AMap 选层/拖动回读/点击开卡、切回画布恢复手势、拦截高德域名后的失败降级与重试入口、**真实网络下 127.0.0.1 触发 `INVALID_USER_DOMAIN` 并显示 10006 与页面源**、`securityJsCode` 注入顺序、错误码持久化到设置页、常见错误码建议表、**内嵌页本地副本握手失败时回报真实错误码并回落画布**。等待窗口专项 `.tmp/amap-embed-wait-test.js` **12/12 通过**：慢加载 9 秒不会被 6 秒误判、加载中显示已等待秒数与阶段、宿主忽略非 iframe 窗口伪造的 `fz:script-ready`、超时只重试一次且重试仍失败才回落、回落文案区分「未完成加载（已重试）」与「确实报错」、真实 `map-embed.html` 回传 `iframe-load / script-start / script-error` 打点，以及**真机时序回归**（`amap-ready` 140ms 早于 `iframe-load` 297ms、内嵌页只发 `fz:trace` 不带额外握手，断言不回落 / 不重试 / 不显示超时文案 / 容器 606×298 且已收到 `fz:init`）与**就绪消息完全丢失时由 ping/pong 自愈**（`readyBy='pong'`、不回落）。诊断明细专项 `.tmp/amap-embed-diag-test.js` **5/5 通过**：三类失败各自落到网络层 / 脚本层 / 注册层，面板默认展开且含请求 URL、HTTP 状态、耗时、真实错误码与 `document.referrer` / `referrerPolicy`。同一轮 `p0` 回归 **28/28**、`amap-layer` **23/23**。真实高德瓦片与 APK 内嵌页的实际手势/网络表现仍需联网真机验收（见文末未验证项）。
 
 #### APK 内高德失败诊断（2026-11-07）
 
@@ -1218,6 +1219,15 @@ var MAP_BASE_LAYER = {
 - **Referer 修正**：旧版 iframe 带 `referrerpolicy="no-referrer"`，会把内嵌页发往 `webapi.amap.com` 的 Referer 一并剥掉；高德按域名白名单校验时可能因此判失败。本版移除该属性，恢复默认策略（只发来源域名），明细里同时显示 `document.referrer` 与策略，便于和顶层打开对照。
 - **顶层对照入口**：错误卡片新增「直接打开地图页」按钮，用同一个 `map-embed.html` 在顶层打开（APK 内由 Capacitor 交给系统浏览器），绕过 iframe。若顶层能出图、iframe 不能，问题就在 iframe/WebView 这一层；内嵌页单独打开时右下角也会显示同样的阶段与真实请求结果。
 - **实测**：CDP `.tmp/amap-embed-diag-test.js` **5/5**（连接挂起 → 网络层；只有 `page-start` → 脚本层；回传 `INVALID_USER_DOMAIN` + HTTP 200 / 123 ms → 注册层）。注意：无真机时只能验证宿主与内嵌页的判定逻辑，WebView 的实际 Referer / DNS / 证书行为仍需真机截图确认。
+
+#### APK 内高德「脚本未就绪」误判修复（2026-11-07）
+
+真机诊断显示：内嵌页自己已打印 `amap-ready`（宿主记录 145ms，早于 `iframe-load` 的 301ms），但宿主仍在 20 秒后报「高德脚本在 20 秒内仍未完成加载（已重试 1 次）」。
+
+- **真因**：`iframe.onload` 处理里无条件重开了一条「等待就绪」计时（`mapEmbedTimeout('ready')`），而就绪消息在 `load` 之前就已到达并处理；`load` 之后重开的计时器 20 秒后触发时，`mapEmbedTimeout` 没有「已就绪」终态守卫，于是把成功改写为超时，并触发 `?_fzr=1` 重试，第二次再复现一次，最终报「未完成加载」。**不是网络问题，不是消息名不一致，也不是 `event.source` / origin 校验误拒**——诊断面板能打印 `amap-ready` 就证明消息已收到且校验通过，监听也在 `load` 之前就已绑定。
+- **修法**：① 消息监听在创建 iframe / 设置 `src` 之前绑定；② `mapEmbedReadyNow()` 只在首次就绪时落终态，此后任何 `load` / 计时回调 / 重试都不得清空；③ `f.onload` 先查 `amapState.embedReady`，已就绪则直接返回，不再挂新计时；④ `mapEmbedTimeout()` 入口加终态守卫；⑤ 三条成功信号等价（`fz:script-ready` / `fz:trace:amap-ready` / `fz:pong.amap===true`），并在未就绪时每 1.2 秒补 `fz:ping`；⑥ 内嵌页 `fz:pong` 增加 `amap / map / v:3` 字段，便于识别缓存里的旧内嵌页；⑦ 首次成功时同时清掉内存与 `localStorage['fandazi.mapAmapErr']`，设置卡不再展示历史失败文案。
+- **回归**：`.tmp/fixtures/embed-early.html` 精确复现真机时序（`page-start` 立即、`script-start` 15ms、`amap-ready` 130ms、不发 `fz:script-ready`，用 `?_fzd=280` 把 `iframe-load` 推到约 300ms）；断言 `readyBy='trace'`、`retry=0`、`stage≠ready-timeout`、不回落、容器可见且 `fz:init` 已送达、无超时文案。`.tmp/fixtures/embed-pong-only.html` 验证就绪消息完全丢失时的 ping/pong 兜底。`amap-embed-wait-test` **12/12**、`amap-layer-test` **23/23**、`p0-test` **28/28** 全部通过。
+- **仍未验证**：本机无真机，WebView 内的实际拖动 / 缩放手势、真实高德瓦片渲染效果仍需真机确认；自动化只证明「判定成功后容器可见、尺寸非 0、`fz:init` 已下发」，不能替代真机手感验收。
 
 #### 若 APK 内 JS API 仍不可行：两条路径的成本对比
 
@@ -1804,6 +1814,7 @@ fandazi/
 11. 主题只有浅色 / 深色两套固定配色，不支持自定义主题色；分享图、长图与图标固定浅色，不随主题变化。
 12. 语音输入只有网页 / PWA 在线识别：需要 **HTTPS（或 localhost）+ 麦克风授权**，识别时音频会上传到云端语音服务；APK / Android WebView 多数不提供 Web Speech，入口会按能力探测自动隐藏；Safari / iOS 不支持，真机识别质量未验证。
 13. 行程分享包与记录分享包一样**无签名校验**，无法证明来源；重复导入同一份行程会多出一份行程副本（店铺始终不重复建档，也不覆盖原有档案）；导入撤销只在本次打开期间有效。
+14. APK 内高德图层已在自动化里验证「判定成功 → 容器可见、尺寸非 0、`fz:init` 已下发」，但 WebView 内的真实拖动 / 缩放手感与高德瓦片渲染效果仍需真机验收；内嵌页缓存旧版本时以 `fz:pong` 的 `v:3` 字段识别，未升级的内嵌页可能拿不到兜底 ping 的 `amap` 字段。
 
 ## 许可与版权
 

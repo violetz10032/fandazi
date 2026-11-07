@@ -13937,7 +13937,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     embed:null, embedReady:false, embedOrigin:'', embedCb:null,
     embedMsgBound:false, embedSig:'', embedTimer:null,
     embedT0:0, embedLoadMs:0, embedReadyMs:0, embedStage:'', embedTrace:[],
-    embedRetry:0, embedAttempts:0, embedNoteTimer:null, embedDiag:null
+    embedRetry:0, embedAttempts:0, embedNoteTimer:null, embedDiag:null,
+    embedReadyBy:'', embedVisible:false, embedPingTimer:null
   };
 
   /* WGS84（GPS / 记录里的原始坐标）→ GCJ-02（高德底图）标准偏移算法；反向不回写记录。 */
@@ -15028,6 +15029,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       if(msg) localStorage.setItem(AMAP_ERR_KEY, String(msg).slice(0, 400));
       else localStorage.removeItem(AMAP_ERR_KEY);
     }catch(e){}
+    /* 成功即清空内存里的旧失败，避免设置卡继续展示历史错误 */
+    if(!msg) amapState.err = '';
   }
   function mapAmapErrRead(){
     if(amapState.err) return amapState.err;
@@ -15269,22 +15272,33 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     amapState.embedReady = false;
     mapEmbedNoteStop();
     if(amapState.embedTimer){ clearTimeout(amapState.embedTimer); amapState.embedTimer = null; }
+    if(amapState.embedPingTimer){ clearInterval(amapState.embedPingTimer); amapState.embedPingTimer = null; }
     var f = amapState.embed;
     if(amapState.embed === f) amapState.embed = null;
     try{ if(f && f.parentNode) f.parentNode.removeChild(f); }catch(e){}
     if(cb) cb(msg);
     else mapAmapFail(msg);
   }
-  function mapEmbedReadyNow(){
-    if(amapState.embedReady) return;
+  function mapEmbedReadyNow(src){
+    /* 已就绪是终态：任何 load / 计时 / 重试路径都不得再把状态清回去 */
     var cb = amapState.embedCb;
     amapState.embedCb = null;
-    amapState.embedReady = true;
-    amapState.loading = false;
-    amapState.embedReadyMs = amapState.embedT0 ? Math.round(nowMs() - amapState.embedT0) : 0;
-    mapEmbedNoteStop();
     if(amapState.embedTimer){ clearTimeout(amapState.embedTimer); amapState.embedTimer = null; }
-    if(cb) cb(null);
+    if(amapState.embedPingTimer){ clearInterval(amapState.embedPingTimer); amapState.embedPingTimer = null; }
+    var first = false;
+    if(!amapState.embedReady){
+      amapState.embedReady = true;
+      amapState.loading = false;
+      amapState.embedReadyMs = amapState.embedT0 ? Math.round(nowMs() - amapState.embedT0) : 0;
+      amapState.embedReadyBy = String(src || '');
+      mapEmbedNoteStop();
+      first = true;
+    }
+    var f = amapState.embed;
+    var rc = null;
+    try{ rc = f ? f.getBoundingClientRect() : null; }catch(e){}
+    amapState.embedVisible = !!(rc && rc.width > 0 && rc.height > 0);
+    if(first && cb) cb(null);
   }
   /* 内嵌页只回传视野、点击编号与加载阶段打点 */
   function mapEmbedOnMessage(e){
@@ -15296,13 +15310,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(d.type === 'fz:pong'){
       if(dg){
         dg.pong = { href:String(d.href || ''), host:String(d.host || ''),
-          referrer:String(d.referrer || ''), policy:String(d.policy || '') };
+          referrer:String(d.referrer || ''), policy:String(d.policy || ''),
+          amap:!!d.amap, map:!!d.map, v:String(d.v || '') };
         dg.contentWindow = true;
         mapEmbedDiagRender(false);
       }
+      /* 兜底：就绪消息可能早到丢包，宿主 ping 一次即可由内嵌页自报 AMap 是否可用 */
+      if(d.amap === true) mapEmbedReadyNow('pong');
       return;
     }
-    if(d.type === 'fz:trace'){ mapEmbedTrace(d); return; }
+    if(d.type === 'fz:trace'){
+      mapEmbedTrace(d);
+      /* 协议对齐：内嵌页报「已注册 AMap」就是可用的那一刻，直接判成功，不再等别的消息名 */
+      if(d.stage === 'amap-ready') mapEmbedReadyNow('trace');
+      return;
+    }
     if(d.type === 'fz:diag'){
       if(dg){
         if(d.url) dg.scriptUrl = String(d.url);
@@ -15314,7 +15336,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       }
       return;
     }
-    if(d.type === 'fz:script-ready'){ mapEmbedReadyNow(); return; }
+    if(d.type === 'fz:script-ready'){ mapEmbedReadyNow('script-ready'); return; }
     if(d.type === 'fz:error'){
       if(dg){
         if(d.url) dg.scriptUrl = String(d.url);
@@ -15399,15 +15421,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
        高德按域名白名单校验时可能因此失败。默认策略只发来源域名，足够校验且不泄露具体记录。 */
     /* 重试加一次性查询参数，绕开可能被缓存的旧响应 */
     var finalUrl = retry ? (url + (url.indexOf('?') >= 0 ? '&' : '?') + '_fzr=' + retry) : url;
-    f.src = finalUrl;
     mapEmbedDiagReset(finalUrl, retry);
     amapState.embed = f;
     amapState.embedReady = false;
     amapState.embedCb = cb;
+    /* 监听必须早于 iframe 导航：内嵌页可能在 load 事件之前就发出就绪消息 */
     if(!amapState.embedMsgBound){
       window.addEventListener('message', mapEmbedOnMessage);
       amapState.embedMsgBound = true;
     }
+    f.src = finalUrl;
     mapEmbedNoteStart();
     amapState.embedTimer = setTimeout(function(){ mapEmbedTimeout('load', retry); }, mapEmbedLoadMs());
     f.onload = function(){
@@ -15421,11 +15444,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         dg.htmlMs = amapState.embedLoadMs;
         try{ dg.contentWindow = !!f.contentWindow; }catch(e){}
       }
-      /* 握手：确认 contentWindow 可达，并让内嵌页自报 href / referrer / referrerPolicy */
+      /* 握手：确认 contentWindow 可达，并让内嵌页自报 href / referrer / referrerPolicy / AMap 是否已可用 */
       try{ f.contentWindow.postMessage({ type:'fz:ping' }, '*'); }catch(e){}
       mapEmbedNoteTick();
-      if(amapState.embedTimer) clearTimeout(amapState.embedTimer);
+      if(amapState.embedTimer){ clearTimeout(amapState.embedTimer); amapState.embedTimer = null; }
+      /* 已就绪是终态：load 晚于就绪时（真机就绪比 load 早 150ms+）不得再开计时，否则会误判超时并重试 */
+      if(amapState.embedReady) return;
       amapState.embedTimer = setTimeout(function(){ mapEmbedTimeout('ready', retry); }, mapEmbedReadyMs());
+      /* 兜底：就绪消息可能早到丢失，等待期间定期 ping，由内嵌页按当前状态回 pong */
+      if(amapState.embedPingTimer){ clearInterval(amapState.embedPingTimer); }
+      amapState.embedPingTimer = setInterval(function(){
+        if(!amapState.embedReady){ try{ f.contentWindow.postMessage({ type:'fz:ping' }, '*'); }catch(e){} }
+        else if(amapState.embedPingTimer){ clearInterval(amapState.embedPingTimer); amapState.embedPingTimer = null; }
+      }, 1200);
     };
     layer.classList.remove('hidden');
     layer.setAttribute('aria-hidden', 'false');
@@ -15433,6 +15464,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   /* 超时只重试一次；重试仍失败才回落，提示区分「还没加载完」与「确实报错」 */
   function mapEmbedTimeout(kind, retry){
+    /* 已就绪是终态：任何滞留的计时回调都不得把成功改成失败 */
+    if(amapState.embedReady) return;
     if(kind === 'load'){
       if(!retry){
         mapEmbedRetry('内嵌地图页 ' + Math.round(mapEmbedLoadMs()/1000) + ' 秒未载入完成，正在重试一次…', retry);
@@ -15464,6 +15497,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var cb = amapState.embedCb;
     mapEmbedNoteStop();
     if(amapState.embedTimer){ clearTimeout(amapState.embedTimer); amapState.embedTimer = null; }
+    if(amapState.embedPingTimer){ clearInterval(amapState.embedPingTimer); amapState.embedPingTimer = null; }
     amapState.embedReady = false;
     amapState.loading = false;
     amapState.embedCb = null;
@@ -25102,7 +25136,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           ready: amapState.ready, loading: amapState.loading, err: amapState.err,
           origin: mapAmapOrigin(), local: mapAmapIsLocal(), lastErr: mapAmapErrRead(),
           embed: { attempts:amapState.embedAttempts, retry:amapState.embedRetry,
-            loadMs:amapState.embedLoadMs, readyMs:amapState.embedReadyMs,
+            loadMs:amapState.embedLoadMs, readyMs:amapState.embedReadyMs, readyBy:amapState.embedReadyBy,
+            visible:amapState.embedVisible,
             stage:amapState.embedStage, trace:amapState.embedTrace.slice(),
             diag:amapState.embedDiag ? JSON.parse(JSON.stringify(amapState.embedDiag)) : null,
             diagText: $('#mapDiagBody') ? $('#mapDiagBody').textContent : '',
