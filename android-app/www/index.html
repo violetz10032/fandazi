@@ -1141,6 +1141,43 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .quick-save-bar .qs-keys{display:block;font-size:11px;color:var(--ink3)}
   .quick-save-bar .btn{flex:none;min-width:118px;min-height:44px;padding:0 18px}
   .quick-save-bar .btn:disabled{opacity:.6}
+
+  /* ---------- 全局照片中心 ---------- */
+  .pw-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .pw-head h2{margin:0}
+  .pw-stats{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .pw-stat{font-size:12px;color:var(--ink2);background:var(--chip);border:1px solid var(--line);
+    border-radius:999px;padding:2px 9px;line-height:1.7}
+  .pw-stat.warn{color:var(--warn-ink);background:var(--warn-bg);border-color:var(--warn-line)}
+  .pw-filters{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  .pw-filters .input{min-height:40px;width:100%;min-width:0}
+  .pw-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .pw-actions .btn{flex:1;min-width:92px}
+  .pw-hint{font-size:12px;line-height:1.6;color:var(--ink3);margin:8px 0 0}
+  .pw-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px}
+  .pw-item{position:relative;aspect-ratio:1/1;border-radius:12px;overflow:hidden;
+    background:var(--chip);border:1px solid var(--line);cursor:pointer;
+    padding:0;font:inherit;color:inherit;text-align:left}
+  .pw-item img{width:100%;height:100%;object-fit:cover;display:block}
+  .pw-item.on{outline:3px solid var(--accent);outline-offset:-3px}
+  .pw-check{position:absolute;top:6px;left:6px;width:30px;height:30px;border-radius:9px;
+    background:rgba(0,0,0,.34);display:flex;align-items:center;justify-content:center;z-index:2}
+  .pw-check input{width:19px;height:19px;accent-color:var(--accent);margin:0}
+  .pw-meta{position:absolute;left:0;right:0;bottom:0;padding:16px 7px 5px;
+    background:linear-gradient(transparent,rgba(0,0,0,.66));color:#fff;font-size:10px;line-height:1.35}
+  .pw-meta b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pw-meta span{opacity:.82}
+  .pw-flag{position:absolute;top:6px;right:6px;z-index:2;font-size:10px;line-height:1;
+    padding:4px 6px;border-radius:999px;background:rgba(0,0,0,.5);color:#fff}
+  .pw-flag.bad{background:var(--warn-ink)}
+  .pw-empty{padding:26px 12px;text-align:center;color:var(--ink3);font-size:13px}
+  .pw-list{display:grid;gap:8px;margin-top:10px}
+  .pw-list-item{display:flex;gap:10px;align-items:center;border:1px solid var(--line);
+    border-radius:10px;padding:6px;background:var(--panel-2)}
+  .pw-list-item img{width:50px;height:50px;border-radius:8px;object-fit:cover;flex:none}
+  .pw-list-item .grow{min-width:0}
+  .pw-list-item b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pw-list-item span{font-size:11px;color:var(--ink3)}
 </style>
 </head>
 <body>
@@ -2010,6 +2047,55 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       </div>
     </section>
 
+    <!-- ================= 照片中心 ================= -->
+    <section class="view hidden" id="view-photos">
+      <div class="card">
+        <div class="pw-head">
+          <h2>照片中心</h2>
+          <button type="button" class="btn btn-soft btn-sm" id="pwRefresh">刷新</button>
+        </div>
+        <p class="pw-hint" id="pwSub">全部照片统一管理；删除只移入回收站，可恢复。</p>
+        <div class="pw-stats" id="pwStats"></div>
+        <div class="pw-filters">
+          <select class="input" id="pwYear" aria-label="按年份筛选"></select>
+          <select class="input" id="pwMonth" aria-label="按月份筛选"></select>
+          <select class="input" id="pwShop" aria-label="按店铺筛选"></select>
+          <select class="input" id="pwDish" aria-label="按菜品筛选"></select>
+          <select class="input" id="pwRecord" aria-label="按到店记录筛选" style="grid-column:1/-1"></select>
+        </div>
+        <div class="pw-actions">
+          <button type="button" class="btn btn-soft btn-sm" id="pwSort">时间倒序</button>
+          <button type="button" class="btn btn-soft btn-sm" id="pwTrashToggle">回收站 <span id="pwTrashCount">0</span></button>
+          <button type="button" class="btn btn-soft btn-sm" id="pwOrphanBtn">孤立照片清理</button>
+        </div>
+      </div>
+
+      <div class="card hidden" id="pwBatchCard">
+        <div class="pw-head">
+          <b id="pwSelText">已选 0 张</b>
+          <button type="button" class="btn btn-soft btn-sm" id="pwSelClear">清空选择</button>
+        </div>
+        <div class="pw-actions">
+          <button type="button" class="btn btn-soft btn-sm" id="pwReassignBtn">改关联记录</button>
+          <button type="button" class="btn btn-soft btn-sm" id="pwBatchTrash">移入回收站</button>
+          <button type="button" class="btn btn-soft btn-sm hidden" id="pwRestoreBtn">恢复所选</button>
+          <button type="button" class="btn btn-soft btn-sm hidden" id="pwEmptyBtn">清空回收站</button>
+        </div>
+        <div class="hidden" id="pwReassignBox" style="margin-top:10px">
+          <select class="input" id="pwTarget" aria-label="目标到店记录"></select>
+          <div class="pw-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="pwReassignGo">确认改关联</button>
+            <button type="button" class="btn btn-soft btn-sm" id="pwReassignCancel">取消</button>
+          </div>
+        </div>
+        <p class="pw-hint" id="pwBatchHint">带有效引用的照片不能直接删除；请先解除关联，或用「孤立照片清理」处理。</p>
+      </div>
+
+      <div class="card hidden" id="pwOrphanCard"></div>
+      <div class="pw-grid" id="pwGrid"></div>
+      <div class="pw-empty hidden" id="pwEmptyBox"></div>
+    </section>
+
   </div>
 </main>
 
@@ -2094,6 +2180,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     </button>
     <button data-view="pick" aria-label="抽签">
       <svg viewBox="0 0 24 24" data-ico="random"></svg><span>抽签</span>
+    </button>
+    <button data-view="photos" aria-label="照片">
+      <svg viewBox="0 0 24 24" data-ico="camera"></svg><span>照片</span>
     </button>
     <button data-view="more" aria-label="我的">
       <svg viewBox="0 0 24 24" data-ico="user"></svg><span>我的</span>
@@ -2416,6 +2505,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <button type="button" class="btn btn-sm btn-soft" id="pvRight">后移</button>
       <button type="button" class="btn btn-sm btn-soft" id="pvReplace">替换</button>
       <button type="button" class="btn btn-sm btn-soft" id="pvOrig">看原图</button>
+      <button type="button" class="btn btn-sm btn-soft hidden" id="pvShopLink">店铺档案</button>
       <button type="button" class="btn btn-sm btn-danger" id="pvDelete">删除</button>
     </div>
   </div>
@@ -5661,43 +5751,541 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function recordPhotoCount(){
     return db.records.filter(function(r){ return recordPhotoIds(r).length > 0 || !!r.photo; }).length;
   }
-  function photoReferencedBy(pid, exceptRecordId){
-    if(!pid) return false;
-    return db.records.some(function(r){
-      if(exceptRecordId && r.id === exceptRecordId) return false;
-      return recordPhotoIds(r).indexOf(String(pid)) >= 0;
-    });
-  }
-  /* 删照片 / 删记录时只删没有任何记录再引用的照片，避免误删别人的图 */
-  function releasePhoto(pid, exceptRecordId){
-    if(!pid) return Promise.resolve(false);
-    if(photoReferencedBy(pid, exceptRecordId)) return Promise.resolve(false);
-    delete photoCache[pid];
-    delete photoCache[pid + '#t'];
-    return photoDelete(pid);
-  }
-  /* 孤儿照片：IndexedDB 里有、但没有任何记录引用。只报告，不自动删 */
-  function orphanPhotoIds(){
-    var used = {};
-    db.records.forEach(function(r){ recordPhotoIds(r).forEach(function(pid){ used[pid] = 1; }); });
-    return openPhotoDb().then(function(d){
+  /* 全量读取照片记录（含回收站标记），用于照片中心与引用核算 */
+  function photoAllRecords(){
+    return photoStore('readonly').then(function(store){
       return new Promise(function(resolve){
-        var out = [];
-        try{
-          var tx = d.transaction(PHOTO_STORE, 'readonly');
-          var req = tx.objectStore(PHOTO_STORE).getAll();
-          req.onsuccess = function(){
-            (req.result || []).forEach(function(v){
-              if(v && v.id && !used[String(v.id)]) out.push(String(v.id));
-            });
-          };
-          req.onerror = function(){};
-          tx.oncomplete = function(){ resolve(out); };
-          tx.onabort = function(){ resolve(out); };
-        }catch(e){ resolve([]); }
+        var req = store.getAll();
+        req.onsuccess = function(){ resolve((req.result || []).filter(Boolean)); };
+        req.onerror = function(){ resolve([]); };
       });
     }).catch(function(){ return []; });
   }
+  /* 有效引用集合：到店记录 + 菜品 + 草稿 + 年度报告 + 所有恢复点快照。
+     清理类操作统一以这里为准，避免只看 db.records 时误删仍被报告/恢复点使用的照片。 */
+  function photoRefIndex(opts){
+    opts = opts || {};
+    var used = {}, refs = {};
+    function add(pid, label){
+      pid = String(pid == null ? '' : pid);
+      if(!pid) return;
+      used[pid] = 1;
+      if(label){
+        var arr = refs[pid] || (refs[pid] = []);
+        if(arr.indexOf(label) < 0 && arr.length < 8) arr.push(label);
+      }
+    }
+    function scanRecordPhotos(r, label){
+      if(!r) return;
+      photosOfRecord(r).forEach(function(p){
+        add(p.id, label + (String(r.name || '') ? ' · ' + String(r.name) : ''));
+      });
+    }
+    (db.records || []).forEach(function(r){
+      if(opts.exceptRecordId && r.id === opts.exceptRecordId) return;
+      scanRecordPhotos(r, '到店记录');
+    });
+    (dishesLoad().items || []).forEach(function(d){
+      (d.photoIds || []).forEach(function(p){ add(p && p.id, '菜品 · ' + String(d.name || '')); });
+    });
+    draftsLoad().forEach(function(d){ add(d && d.photoId, '草稿 · ' + String((d && d.name) || '')); });
+    reportAll().items.forEach(function(it){
+      if(it && it.highlight && it.highlight.photoId) add(it.highlight.photoId, '年度报告 · ' + String(it.year || ''));
+    });
+    return snapshotAll().then(function(list){
+      (list || []).forEach(function(snap){
+        var at = snap && snap.at ? new Date(num(snap.at)).toISOString().slice(0, 10) : '';
+        ((snap && snap.photoIds) || []).forEach(function(pid){ add(pid, '恢复点 · ' + at); });
+        var data = (snap && snap.data) || {};
+        (data.records || []).forEach(function(r){ scanRecordPhotos(r, '恢复点 ' + at); });
+        var ds = (data.dishes && data.dishes.items) || [];
+        ds.forEach(function(d){ (d.photoIds || []).forEach(function(p){ add(p && p.id, '恢复点菜品 · ' + at); }); });
+        var rp = (data.reports && data.reports.items) || [];
+        rp.forEach(function(it){
+          if(it && it.highlight && it.highlight.photoId) add(it.highlight.photoId, '恢复点报告 · ' + at);
+        });
+      });
+      return { used: used, refs: refs };
+    }).catch(function(){ return { used: used, refs: refs }; });
+  }
+  /* 同步版引用判断：只覆盖本地同步可读的数据源（快照需异步，见 photoRefIndex） */
+  function photoReferencedBy(pid, exceptRecordId){
+    pid = String(pid == null ? '' : pid);
+    if(!pid) return false;
+    var found = false;
+    (db.records || []).forEach(function(r){
+      if(found || (exceptRecordId && r.id === exceptRecordId)) return;
+      if(recordPhotoIds(r).indexOf(pid) >= 0) found = true;
+    });
+    if(found) return true;
+    (dishesLoad().items || []).forEach(function(d){
+      if(!found && (d.photoIds || []).some(function(p){ return String(p && p.id) === pid; })) found = true;
+    });
+    if(found) return true;
+    draftsLoad().forEach(function(d){ if(d && String(d.photoId || '') === pid) found = true; });
+    if(found) return true;
+    return reportAll().items.some(function(it){
+      return !!(it && it.highlight && String(it.highlight.photoId || '') === pid);
+    });
+  }
+  /* 删照片 / 删记录时只删「全量引用」里都没有的照片，避免误删报告/恢复点仍在用的图 */
+  function releasePhoto(pid, exceptRecordId){
+    pid = String(pid == null ? '' : pid);
+    if(!pid) return Promise.resolve(false);
+    return photoRefIndex({ exceptRecordId: exceptRecordId }).then(function(idx){
+      if(idx.used[pid]) return false;
+      delete photoCache[pid];
+      delete photoCache[pid + '#t'];
+      return photoDelete(pid);
+    }).catch(function(e){ logError('照片释放', e); return false; });
+  }
+  /* 孤儿照片：IndexedDB 里有、但全量引用里都没有，且不在回收站。只报告，不自动删 */
+  function orphanPhotoIds(){
+    return Promise.all([photoAllRecords(), photoRefIndex()]).then(function(r){
+      var list = r[0], idx = r[1];
+      return list.filter(function(v){
+        return v && v.id && !v.trashAt && !idx.used[String(v.id)];
+      }).map(function(v){ return String(v.id); });
+    }).catch(function(){ return []; });
+  }
+
+  /* ---- 回收站：只在照片记录上打标记，不复制二进制、不新增对象仓库 ---- */
+  function photoPatch(id, patch){
+    return photoStore('readwrite').then(function(store){
+      return new Promise(function(resolve){
+        var req = store.get(id);
+        req.onsuccess = function(){
+          var v = req.result;
+          if(!v){ resolve(null); return; }
+          Object.keys(patch || {}).forEach(function(k){
+            if(patch[k] === null) delete v[k]; else v[k] = patch[k];
+          });
+          var put = store.put(v);
+          put.onsuccess = function(){ resolve(v); };
+          put.onerror = function(){ resolve(null); };
+        };
+        req.onerror = function(){ resolve(null); };
+      });
+    }).catch(function(){ return null; });
+  }
+  function photoTrashMark(ids, source, refs){
+    var list = (ids || []).map(function(x){ return String(x == null ? '' : x); }).filter(Boolean);
+    if(!list.length) return Promise.resolve(0);
+    return Promise.all(list.map(function(pid){
+      return photoPatch(pid, {
+        trashAt: Date.now(), trashSource: String(source || 'manual'),
+        trashRefs: refs && refs[pid] ? refs[pid].slice(0, 6) : []
+      });
+    })).then(function(out){ return out.filter(Boolean).length; });
+  }
+  function photoRestore(ids){
+    var list = (ids || []).map(function(x){ return String(x == null ? '' : x); }).filter(Boolean);
+    if(!list.length) return Promise.resolve(0);
+    return Promise.all(list.map(function(pid){
+      return photoPatch(pid, { trashAt: null, trashSource: null, trashRefs: null });
+    })).then(function(out){ return out.filter(Boolean).length; });
+  }
+  /* 真正清空：清空前重算全量引用，仍被记录/菜品/报告/恢复点引用的照片保留 */
+  function photoEmptyTrash(){
+    return Promise.all([photoAllRecords(), photoRefIndex()]).then(function(r){
+      var list = r[0], idx = r[1], gone = [], kept = [];
+      list.forEach(function(v){
+        if(!v || !v.trashAt) return;
+        if(idx.used[String(v.id)]) kept.push(String(v.id)); else gone.push(String(v.id));
+      });
+      return Promise.all(gone.map(function(pid){
+        delete photoCache[pid];
+        delete photoCache[pid + '#t'];
+        return photoDelete(pid);
+      })).then(function(out){
+        return { ok:true, removed: out.filter(function(x){ return x === true; }).length, kept: kept.length, keptIds: kept };
+      });
+    }).catch(function(e){ logError('清空回收站', e); return { ok:false, removed:0, kept:0, keptIds:[] }; });
+  }
+  /* 照片 → 到店记录/菜品 的归属表，用于筛选、改关联和展示 */
+  function photoUsageMap(){
+    var map = {};
+    (db.records || []).forEach(function(r){
+      var sid = shopIdOf(r.name, r.city);
+      photosOfRecord(r).forEach(function(p){
+        var pid = String((p && p.id) || '');
+        if(!pid || map[pid]) return;
+        map[pid] = {
+          recordId: String(r.id || ''), recordName: String(r.name || ''),
+          shopId: sid, shopName: String(r.name || ''), city: String(r.city || ''),
+          date: String(r.visitDate || '').slice(0, 10),
+          dishId: '', dishName: '', cat: String(p.cat || 'visit')
+        };
+      });
+    });
+    (dishesLoad().items || []).forEach(function(d){
+      (d.photoIds || []).forEach(function(p){
+        var pid = String((p && p.id) || '');
+        if(!pid) return;
+        var rec = dishRecordById(d.visitId);
+        var cur = map[pid] || {};
+        map[pid] = {
+          recordId: String(d.visitId || cur.recordId || ''),
+          recordName: rec ? String(rec.name || '') : String(cur.recordName || ''),
+          shopId: String(d.shopId || cur.shopId || ''),
+          shopName: rec ? String(rec.name || '') : String(cur.shopName || ''),
+          city: rec ? String(rec.city || '') : String(cur.city || ''),
+          date: rec ? String(rec.visitDate || '').slice(0, 10) : String(cur.date || ''),
+          dishId: String(d.id || ''), dishName: String(d.name || ''), cat: 'dish'
+        };
+      });
+    });
+    return map;
+  }
+  /* 批量改关联：先把照片从所有记录/菜品上摘掉，再挂到目标记录；照片文件不移动不复制 */
+  function photoReassign(ids, targetId){
+    var list = (ids || []).map(function(x){ return String(x == null ? '' : x); }).filter(Boolean);
+    if(!list.length) return Promise.resolve({ ok:false, error:'没有选中照片' });
+    var target = String(targetId || ''), tRec = null;
+    if(target){
+      tRec = (db.records || []).filter(function(r){ return String(r.id) === target; })[0];
+      if(!tRec) return Promise.resolve({ ok:false, error:'目标到店记录不存在' });
+    }
+    var set = {};
+    list.forEach(function(pid){ set[pid] = 1; });
+    var touched = 0;
+    (db.records || []).forEach(function(r){
+      var changed = false;
+      if(Array.isArray(r.photos)){
+        var next = r.photos.filter(function(p){ return !set[String(p && p.id)]; });
+        if(next.length !== r.photos.length){ r.photos = next; changed = true; }
+      }
+      if(Array.isArray(r.photoIds)){
+        var n2 = r.photoIds.filter(function(pid){ return !set[String(pid)]; });
+        if(n2.length !== r.photoIds.length){ r.photoIds = n2; changed = true; }
+      }
+      if(r.photoId && set[String(r.photoId)]){
+        r.photoId = Array.isArray(r.photos) && r.photos.length ? String(r.photos[0].id) : '';
+        changed = true;
+      }
+      if(changed) touched++;
+    });
+    (dishesLoad().items || []).forEach(function(d){
+      var ph = d.photoIds || [];
+      var keep = ph.filter(function(p){ return !set[String(p && p.id)]; });
+      if(keep.length !== ph.length) dishUpdate(d.id, { photoIds: keep });
+    });
+    if(tRec){
+      var usage = photoWallState.usage || {};
+      if(!Array.isArray(tRec.photos)) tRec.photos = photosOfRecord(tRec).slice();
+      tRec.photos.forEach(function(p){ delete set[String(p && p.id)]; });
+      list.forEach(function(pid){
+        if(!set[pid]) return;
+        var cat = (usage[pid] && usage[pid].cat) || 'visit';
+        tRec.photos.push({ id: pid, cat: cat === 'dish' ? 'dish' : (cat === 'store' ? 'store' : 'visit') });
+      });
+      tRec.photoId = tRec.photos.length ? String(tRec.photos[0].id) : '';
+      if(Array.isArray(tRec.photoIds)) delete tRec.photoIds;
+    }
+    save(true);
+    invalidateStores();
+    photoWallState.sel = {};
+    return loadPhotoWall().then(function(){
+      return { ok:true, moved:list.length, touched:touched, target:target };
+    });
+  }
+  /* ---- 照片中心：照片墙（筛选 / 正倒序 / 统计 / 回收站 / 待清理清单） ---- */
+  var photoWallState = {
+    loaded:false, loading:false, list:[], refs:{}, usage:{}, sel:{},
+    trashMode:false, desc:true, orphanOpen:false,
+    f:{ year:'', month:'', shop:'', dish:'', record:'' }
+  };
+  function pwDateOf(v){
+    var u = photoWallState.usage[String(v && v.id)] || {};
+    if(u.date) return String(u.date).slice(0, 10);
+    return v && v.at ? new Date(num(v.at)).toISOString().slice(0, 10) : '';
+  }
+  function pwSortKey(v){
+    var d = pwDateOf(v);
+    return (d || '') + '#' + String(num(v && v.at)).padStart(14, '0');
+  }
+  function pwFiltered(){
+    var st = photoWallState, f = st.f;
+    var out = (st.list || []).filter(function(v){
+      if(!v) return false;
+      if(st.trashMode ? !v.trashAt : !!v.trashAt) return false;
+      var u = st.usage[String(v.id)] || {};
+      var d = pwDateOf(v);
+      if(f.year && d.slice(0, 4) !== f.year) return false;
+      if(f.month && d.slice(0, 7) !== f.month) return false;
+      if(f.shop && String(u.shopId || '') !== f.shop) return false;
+      if(f.dish && String(u.dishId || '') !== f.dish) return false;
+      if(f.record && String(u.recordId || '') !== f.record) return false;
+      return true;
+    });
+    out.sort(function(a, b){
+      var ka = pwSortKey(a), kb = pwSortKey(b);
+      return st.desc ? (kb > ka ? 1 : (kb < ka ? -1 : 0)) : (ka > kb ? 1 : (ka < kb ? -1 : 0));
+    });
+    return out;
+  }
+  /* 照片总数/占用按「当前筛选结果」统计；回收站与未引用按全库统计 */
+  function photoWallStats(vis){
+    var st = photoWallState, out = { total:vis.length, bytes:0, withThumb:0, noThumb:0, trash:0, orphans:0 };
+    vis.forEach(function(v){
+      out.bytes += num(v && v.bytes);
+      if(v && v.thumb) out.withThumb++; else if(v) out.noThumb++;
+    });
+    (st.list || []).forEach(function(v){
+      if(!v) return;
+      if(v.trashAt) out.trash++;
+      else if(!(st.refs[String(v.id)] || []).length) out.orphans++;
+    });
+    return out;
+  }
+  function loadPhotoWall(){
+    if(photoWallState.loading) return Promise.resolve(0);
+    photoWallState.loading = true;
+    return Promise.all([photoAllRecords(), photoRefIndex()]).then(function(r){
+      photoWallState.list = r[0] || [];
+      photoWallState.refs = (r[1] && r[1].refs) || {};
+      photoWallState.usage = photoUsageMap();
+      photoWallState.loaded = true;
+      photoWallState.loading = false;
+      var alive = {};
+      photoWallState.list.forEach(function(v){ alive[String(v && v.id)] = 1; });
+      Object.keys(photoWallState.sel).forEach(function(k){ if(!alive[k]) delete photoWallState.sel[k]; });
+      renderPhotoWall();
+      return photoWallState.list.length;
+    }).catch(function(e){
+      logError('照片墙加载', e);
+      photoWallState.loading = false;
+      renderPhotoWall();
+      return 0;
+    });
+  }
+  function renderPhotoWall(){
+    var st = photoWallState;
+    if(!st.loaded && !st.loading){ loadPhotoWall(); return; }
+    var grid = $('#pwGrid');
+    if(!grid) return;
+    var vis = pwFiltered();
+    var s = photoWallStats(vis);
+    var box = $('#pwStats');
+    if(box){
+      var chips = [];
+      chips.push('<span class="pw-stat">当前 ' + s.total + ' 张</span>');
+      chips.push('<span class="pw-stat">占用 ' + esc(fmtBytes(s.bytes)) + '</span>');
+      chips.push('<span class="pw-stat">缩略图 ' + s.withThumb + '/' + (s.withThumb + s.noThumb) + '</span>');
+      chips.push('<span class="pw-stat">回收站 ' + s.trash + ' 张</span>');
+      if(s.orphans) chips.push('<span class="pw-stat warn">未引用 ' + s.orphans + ' 张</span>');
+      if(s.noThumb) chips.push('<span class="pw-stat warn">缺缩略图 ' + s.noThumb + ' 张</span>');
+      box.innerHTML = chips.join('');
+    }
+    pwPopulateFilters();
+    var emp = $('#pwEmptyBox');
+    if(!vis.length){
+      grid.innerHTML = '';
+      if(emp){
+        emp.classList.remove('hidden');
+        emp.textContent = st.loading ? '正在读取照片…' : (st.trashMode ? '回收站是空的。' : '还没有照片，或当前筛选没有匹配。');
+      }
+    }else{
+      if(emp) emp.classList.add('hidden');
+      grid.innerHTML = vis.map(function(v){
+        var id = String(v.id);
+        var u = st.usage[id] || {};
+        var d = pwDateOf(v);
+        var on = !!st.sel[id];
+        var refs = st.refs[id] || [];
+        var title = u.dishName || u.recordName || '未关联';
+        var flag = v.trashAt ? '<span class="pw-flag">回收站</span>'
+          : (!refs.length ? '<span class="pw-flag bad">未引用</span>' : '');
+        return '<button type="button" class="pw-item' + (on ? ' on' : '') + '" data-pw-item="' + esc(id) + '" aria-pressed="' + (on ? 'true' : 'false') + '">' +
+          '<span class="pw-check"><input type="checkbox" data-pw-check="' + esc(id) + '"' + (on ? ' checked' : '') + ' aria-label="选择这张照片"></span>' +
+          flag +
+          '<img src="' + esc(v.thumb || v.dataUrl || '') + '" loading="lazy" decoding="async" alt="' + esc(title) + '">' +
+          '<span class="pw-meta"><b>' + esc(title) + '</b><span>' + esc([d || '日期未知', fmtBytes(v.bytes)].join(' · ')) + '</span></span>' +
+          '</button>';
+      }).join('');
+    }
+    pwPaintBatch();
+    renderOrphanPanel();
+  }
+  function pwFillSelect(sel, cur, all, arr){
+    var el = $(sel);
+    if(!el) return;
+    var html = '<option value="">' + esc(all) + '</option>';
+    (arr || []).forEach(function(x){
+      html += '<option value="' + esc(x.v) + '"' + (String(x.v) === String(cur) ? ' selected' : '') + '>' + esc(x.t) + '</option>';
+    });
+    el.innerHTML = html;
+  }
+  function pwPopulateFilters(){
+    var st = photoWallState, f = st.f;
+    var years = {}, months = {}, shops = {}, dishes = {}, recs = {};
+    (st.list || []).forEach(function(v){
+      if(!v) return;
+      var d = pwDateOf(v);
+      if(d.length >= 7) months[d.slice(0, 7)] = 1;
+      if(d.length >= 4) years[d.slice(0, 4)] = 1;
+      var u = st.usage[String(v.id)];
+      if(!u) return;
+      if(u.shopId) shops[u.shopId] = u.shopName || u.shopId;
+      if(u.dishId) dishes[u.dishId] = u.dishName || u.dishId;
+      if(u.recordId) recs[u.recordId] = { t: (u.recordName || '记录') + (u.date ? ' ' + u.date : ''), d: u.date || '' };
+    });
+    var yArr = Object.keys(years).sort(function(a, b){ return b > a ? 1 : (b < a ? -1 : 0); }).map(function(k){ return { v:k, t:k + ' 年' }; });
+    var mArr = Object.keys(months).filter(function(k){ return !f.year || k.slice(0, 4) === f.year; })
+      .sort(function(a, b){ return b > a ? 1 : (b < a ? -1 : 0); }).map(function(k){ return { v:k, t:k }; });
+    var sArr = Object.keys(shops).sort().map(function(k){ return { v:k, t:shops[k] }; });
+    var dArr = Object.keys(dishes).sort().map(function(k){ return { v:k, t:dishes[k] }; });
+    var rArr = Object.keys(recs).sort(function(a, b){ return String(recs[b].d) > String(recs[a].d) ? 1 : -1; })
+      .map(function(k){ return { v:k, t:recs[k].t }; });
+    pwFillSelect('#pwYear', f.year, '全部年份', yArr);
+    pwFillSelect('#pwMonth', f.month, '全部月份', mArr);
+    pwFillSelect('#pwShop', f.shop, '全部店铺', sArr);
+    pwFillSelect('#pwDish', f.dish, '全部菜品', dArr);
+    pwFillSelect('#pwRecord', f.record, '全部到店记录', rArr);
+  }
+  function pwSelCount(){ return Object.keys(photoWallState.sel).length; }
+  function pwToggleSel(pid, on){
+    pid = String(pid == null ? '' : pid);
+    if(!pid) return;
+    if(on === undefined) on = !photoWallState.sel[pid];
+    if(on) photoWallState.sel[pid] = 1; else delete photoWallState.sel[pid];
+    var items = $$('#pwGrid [data-pw-item]');
+    items.forEach(function(item){
+      if(item.getAttribute('data-pw-item') !== pid) return;
+      item.classList.toggle('on', !!on);
+      item.setAttribute('aria-pressed', on ? 'true' : 'false');
+      var cb = item.querySelector('input[data-pw-check]');
+      if(cb) cb.checked = !!on;
+    });
+    pwPaintBatch();
+  }
+  function pwPaintBatch(){
+    var st = photoWallState, n = pwSelCount();
+    var card = $('#pwBatchCard');
+    if(!card) return;
+    card.classList.toggle('hidden', !(n > 0 || st.trashMode));
+    var t = $('#pwSelText');
+    if(t) t.textContent = '已选 ' + n + ' 张';
+    ['pwReassignBtn', 'pwBatchTrash'].forEach(function(id){
+      var el = $('#' + id);
+      if(el) el.classList.toggle('hidden', st.trashMode);
+    });
+    ['pwRestoreBtn', 'pwEmptyBtn'].forEach(function(id){
+      var el = $('#' + id);
+      if(el) el.classList.toggle('hidden', !st.trashMode);
+    });
+    var rbox = $('#pwReassignBox');
+    if(rbox && st.trashMode) rbox.classList.add('hidden');
+    var tc = $('#pwTrashToggle');
+    if(tc){
+      tc.classList.toggle('btn-primary', st.trashMode);
+      tc.classList.toggle('btn-soft', !st.trashMode);
+    }
+    var cnt = $('#pwTrashCount');
+    if(cnt) cnt.textContent = String((st.list || []).filter(function(v){ return v && v.trashAt; }).length);
+    var hint = $('#pwBatchHint');
+    if(hint){
+      hint.textContent = st.trashMode
+        ? '回收站里的照片不参与展示；清空前会自动建恢复点，仍被记录/报告/恢复点引用的照片会保留。'
+        : '带有效引用的照片不能直接删除；请先改关联或解除关联，再用「孤立照片清理」处理。';
+    }
+    var sort = $('#pwSort');
+    if(sort) sort.textContent = st.desc ? '时间倒序' : '时间正序';
+    var sub = $('#pwSub');
+    if(sub){
+      sub.textContent = st.trashMode
+        ? '回收站：可恢复；清空后不可恢复，清空前会自动建立恢复点。'
+        : '全部照片统一管理；删除只移入回收站，可恢复。';
+    }
+  }
+  function renderOrphanPanel(){
+    var st = photoWallState;
+    var card = $('#pwOrphanCard');
+    if(!card) return;
+    if(!st.orphanOpen){ card.classList.add('hidden'); card.innerHTML = ''; return; }
+    var ids = (st.list || []).filter(function(v){
+      return v && !v.trashAt && !(st.refs[String(v.id)] || []).length;
+    });
+    var bytes = 0;
+    ids.forEach(function(v){ bytes += num(v.bytes); });
+    card.classList.remove('hidden');
+    card.innerHTML = '<div class="pw-head"><b>待清理清单（' + ids.length + ' 张 / ' + esc(fmtBytes(bytes)) + '）</b>' +
+      '<button type="button" class="btn btn-soft btn-sm" data-pw-orphan="close">取消</button></div>' +
+      '<p class="pw-hint">这些照片没有被任何到店记录、菜品、草稿、年度报告或恢复点引用。移入回收站后仍可恢复，真正清空前会自动建恢复点。</p>' +
+      (ids.length
+        ? '<div class="pw-list">' + ids.map(function(v){
+            return '<div class="pw-list-item"><img src="' + esc(v.thumb || v.dataUrl || '') + '" alt="">' +
+              '<div class="grow"><b>' + esc(String(v.id)) + '</b><span>' + esc(fmtBytes(v.bytes)) + ' · ' + esc(pwDateOf(v) || '日期未知') + '</span></div></div>';
+          }).join('') + '</div>' +
+          '<div class="pw-actions"><button type="button" class="btn btn-primary btn-sm" data-pw-orphan="go">移入回收站（' + ids.length + ' 张）</button></div>'
+        : '<div class="pw-empty">没有发现未引用的照片。</div>');
+  }
+  function pwFillTargets(){
+    var el = $('#pwTarget');
+    if(!el) return;
+    var recs = (db.records || []).slice().sort(function(a, b){
+      return String(b.visitDate || '') > String(a.visitDate || '') ? 1 : -1;
+    });
+    var html = '<option value="">解除关联（不挂到任何记录）</option>';
+    recs.slice(0, 400).forEach(function(r){
+      html += '<option value="' + esc(r.id) + '">' + esc(String(r.name || '未命名') + (r.visitDate ? ' · ' + r.visitDate : '')) + '</option>';
+    });
+    el.innerHTML = html;
+  }
+  function pwTrashSelected(){
+    var ids = Object.keys(photoWallState.sel);
+    if(!ids.length){ toast('先选照片'); return Promise.resolve(false); }
+    var blocked = ids.filter(function(pid){ return (photoWallState.refs[pid] || []).length; });
+    if(blocked.length){
+      toast('有 ' + blocked.length + ' 张仍被记录/菜品/报告/恢复点引用，不能移入回收站；请先改关联或解除关联');
+      return Promise.resolve(false);
+    }
+    var bytes = 0;
+    (photoWallState.list || []).forEach(function(v){ if(ids.indexOf(String(v.id)) >= 0) bytes += num(v.bytes); });
+    if(!confirm('把 ' + ids.length + ' 张照片（' + fmtBytes(bytes) + '）移入回收站？\n\n照片仍保留在本机，可随时恢复；不会复制文件。')) return Promise.resolve(false);
+    return makeSnapshot('照片清理前').then(function(){
+      return photoTrashMark(ids, 'manual', photoWallState.refs);
+    }).then(function(n){
+      photoWallState.sel = {};
+      return loadPhotoWall().then(function(){ toast('已移入回收站 ' + n + ' 张'); return { ok:true, trashed:n }; });
+    });
+  }
+  function pwRestoreSelected(){
+    var ids = Object.keys(photoWallState.sel);
+    if(!ids.length){ toast('先选照片'); return Promise.resolve(false); }
+    return photoRestore(ids).then(function(n){
+      photoWallState.sel = {};
+      return loadPhotoWall().then(function(){ toast('已恢复 ' + n + ' 张'); return n; });
+    });
+  }
+  function pwEmptyTrashConfirm(){
+    var n = (photoWallState.list || []).filter(function(v){ return v && v.trashAt; }).length;
+    if(!n){ toast('回收站是空的'); return Promise.resolve(false); }
+    if(!confirm('清空回收站？共 ' + n + ' 张。\n\n会先自动建恢复点；仍被记录、报告或恢复点引用的照片会自动保留。清空后未引用的照片无法恢复。')) return Promise.resolve(false);
+    return makeSnapshot('清空回收站前').then(function(){
+      return photoEmptyTrash();
+    }).then(function(r){
+      photoWallState.sel = {};
+      return loadPhotoWall().then(function(){
+        toast('已清空 ' + r.removed + ' 张' + (r.kept ? '，保留 ' + r.kept + ' 张仍被引用' : ''));
+        return r;
+      });
+    });
+  }
+  function pwOrphanToTrash(){
+    var ids = (photoWallState.list || []).filter(function(v){
+      return v && !v.trashAt && !(photoWallState.refs[String(v.id)] || []).length;
+    }).map(function(v){ return String(v.id); });
+    if(!ids.length){ toast('没有未引用的照片'); return Promise.resolve(false); }
+    if(!confirm('把待清理清单里的 ' + ids.length + ' 张照片移入回收站？\n\n仍可恢复；清空前会自动建恢复点。')) return Promise.resolve(false);
+    return makeSnapshot('照片清理前').then(function(){
+      return photoTrashMark(ids, 'orphan', photoWallState.refs);
+    }).then(function(n){
+      photoWallState.orphanOpen = false;
+      return loadPhotoWall().then(function(){ toast('已移入回收站 ' + n + ' 张'); return n; });
+    });
+  }
+
   function hydratePhotos(root){
     var imgs = $$('img[data-photo]', root || document);
     if(!imgs.length) return;
@@ -6027,13 +6615,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return true;
   }
   function paintPhotoView(){
-    var ids = formPhotos.map(function(p){ return p.id; });
+    var fromWall = !!pvState.wallIds;
+    var ids = fromWall ? pvState.wallIds.map(String) : formPhotos.map(function(p){ return p.id; });
     if(!ids.length){ closePhotoView(); return; }
     if(ids.indexOf(pvState.id) < 0) pvState.id = ids[0];
     pvState.ids = ids;
     var idx = ids.indexOf(pvState.id);
-    var p = formPhotos[idx];
-    $('#pvTitle').textContent = photoCatLabel(p.cat) + ' · ' + (idx + 1) + '/' + ids.length;
+    var p = fromWall ? null : formPhotos[idx];
+    $('#pvTitle').textContent = (fromWall ? '照片中心' : photoCatLabel(p.cat)) + ' · ' + (idx + 1) + '/' + ids.length;
     $('#pvImg').classList.remove('orig');
     $('#pvOrig').textContent = '看原图';
     $('#pvImg').src = '';
@@ -6042,17 +6631,37 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var bits = [];
       if(m && m.w) bits.push(m.w + '×' + m.h);
       if(m && m.bytes) bits.push(fmtBytes(m.bytes));
-      if(idx === 0) bits.push('当前封面');
+      if(!fromWall && idx === 0) bits.push('当前封面');
       bits.push('已压缩，原图长边 ≤1280');
       $('#pvMeta').textContent = bits.join(' · ');
     });
-    $('#pvCover').classList.toggle('hidden', idx === 0);
+    $('#pvCover').classList.toggle('hidden', fromWall || idx === 0);
+    ['pvLeft', 'pvRight', 'pvReplace', 'pvDelete'].forEach(function(id){
+      var el = $('#' + id);
+      if(el) el.classList.toggle('hidden', fromWall);
+    });
+    var shopBtn = $('#pvShopLink');
+    if(shopBtn){
+      var u = fromWall ? (photoWallState.usage[String(pvState.id)] || {}) : {};
+      shopBtn.classList.toggle('hidden', !(fromWall && u.shopId));
+    }
     $('#pvLeft').disabled = idx === 0;
     $('#pvRight').disabled = idx === ids.length - 1;
   }
   function openPhotoView(pid){
     if(!pid) return;
+    pvState.wallIds = null;
     pvState.id = pid;
+    paintPhotoView();
+    $('#photoViewMask').classList.remove('hidden');
+    try{ syncBackGuard(); }catch(e){}
+  }
+  /* 照片中心的原图查看：在当前筛选结果内左右切换 */
+  function openWallPhotoView(pid, ids){
+    if(!pid) return;
+    pvState.wallIds = (ids || []).map(String).filter(Boolean);
+    if(pvState.wallIds.indexOf(String(pid)) < 0) pvState.wallIds = [String(pid)];
+    pvState.id = String(pid);
     paintPhotoView();
     $('#photoViewMask').classList.remove('hidden');
     try{ syncBackGuard(); }catch(e){}
@@ -6061,6 +6670,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var el = $('#photoViewMask');
     if(el) el.classList.add('hidden');
     $('#pvImg').src = '';
+    pvState.wallIds = null;
     pvState.id = null;
     try{ syncBackGuard(); }catch(e){}
   }
@@ -12833,6 +13443,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       safeRender('renderMore', renderMore, '#statBox');
       safeRender('renderInstall', renderInstall);
       safeRender('updateNotifyUI', updateNotifyUI);
+    }
+    if(name === 'photos'){
+      safeRender('renderPhotoWall', renderPhotoWall, '#pwGrid');
+      loadPhotoWall();
     }
     if(name === 'record' || name === 'recommend') safeRender('renderReminder', renderReminder);
     safeRender('renderBackupReminder', renderBackupReminder);
@@ -21865,6 +22479,105 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   $$('.tabbar button[data-view]').forEach(function(b){
     b.addEventListener('click', function(){ showView(b.getAttribute('data-view')); });
   });
+
+  /* 照片中心：筛选 / 正倒序 / 回收站 / 批量改关联 / 待清理清单 */
+  (function(){
+    function closest(el, sel){
+      while(el && el.nodeType === 1){
+        if(el.matches && el.matches(sel)) return el;
+        el = el.parentNode;
+      }
+      return null;
+    }
+    var refresh = $('#pwRefresh');
+    if(refresh) refresh.addEventListener('click', function(){
+      loadPhotoWall().then(function(n){ toast('已刷新：' + n + ' 张照片'); });
+    });
+    var sort = $('#pwSort');
+    if(sort) sort.addEventListener('click', function(){
+      photoWallState.desc = !photoWallState.desc;
+      renderPhotoWall();
+    });
+    var trashToggle = $('#pwTrashToggle');
+    if(trashToggle) trashToggle.addEventListener('click', function(){
+      photoWallState.trashMode = !photoWallState.trashMode;
+      photoWallState.sel = {};
+      photoWallState.orphanOpen = false;
+      renderPhotoWall();
+    });
+    var orphanBtn = $('#pwOrphanBtn');
+    if(orphanBtn) orphanBtn.addEventListener('click', function(){
+      photoWallState.orphanOpen = !photoWallState.orphanOpen;
+      if(!photoWallState.loaded && !photoWallState.loading){ loadPhotoWall(); return; }
+      renderOrphanPanel();
+    });
+    [['pwYear','year'], ['pwMonth','month'], ['pwShop','shop'], ['pwDish','dish'], ['pwRecord','record']].forEach(function(pair){
+      var el = $('#' + pair[0]);
+      if(!el) return;
+      el.addEventListener('change', function(){
+        photoWallState.f[pair[1]] = String(el.value || '');
+        if(pair[1] === 'year' && photoWallState.f.month && photoWallState.f.month.slice(0, 4) !== photoWallState.f.year){
+          photoWallState.f.month = '';
+        }
+        photoWallState.sel = {};
+        renderPhotoWall();
+      });
+    });
+    var selClear = $('#pwSelClear');
+    if(selClear) selClear.addEventListener('click', function(){
+      photoWallState.sel = {};
+      renderPhotoWall();
+    });
+    var reBtn = $('#pwReassignBtn');
+    if(reBtn) reBtn.addEventListener('click', function(){
+      var box = $('#pwReassignBox');
+      if(!box) return;
+      var willOpen = box.classList.contains('hidden');
+      box.classList.toggle('hidden', !willOpen);
+      if(willOpen) pwFillTargets();
+    });
+    var reCancel = $('#pwReassignCancel');
+    if(reCancel) reCancel.addEventListener('click', function(){
+      var box = $('#pwReassignBox');
+      if(box) box.classList.add('hidden');
+    });
+    var reGo = $('#pwReassignGo');
+    if(reGo) reGo.addEventListener('click', function(){
+      var ids = Object.keys(photoWallState.sel);
+      if(!ids.length){ toast('先选照片'); return; }
+      var target = $('#pwTarget') ? String($('#pwTarget').value || '') : '';
+      var msg = target ? '把 ' + ids.length + ' 张照片改挂到所选到店记录？' : '解除这 ' + ids.length + ' 张照片的所有关联？';
+      if(!confirm(msg + '\n\n照片文件不会移动或复制。')) return;
+      photoReassign(ids, target).then(function(r){
+        if(!r || r.ok === false){ toast((r && r.error) || '操作失败'); return; }
+        var box = $('#pwReassignBox');
+        if(box) box.classList.add('hidden');
+        toast((target ? '已改关联 ' : '已解除关联 ') + r.moved + ' 张');
+      });
+    });
+    var batchTrash = $('#pwBatchTrash');
+    if(batchTrash) batchTrash.addEventListener('click', function(){ pwTrashSelected(); });
+    var restoreBtn = $('#pwRestoreBtn');
+    if(restoreBtn) restoreBtn.addEventListener('click', function(){ pwRestoreSelected(); });
+    var emptyBtn = $('#pwEmptyBtn');
+    if(emptyBtn) emptyBtn.addEventListener('click', function(){ pwEmptyTrashConfirm(); });
+    var grid = $('#pwGrid');
+    if(grid) grid.addEventListener('click', function(e){
+      var item = closest(e.target, '[data-pw-item]');
+      if(!item) return;
+      var pid = item.getAttribute('data-pw-item');
+      if(closest(e.target, '.pw-check')){ e.preventDefault(); pwToggleSel(pid); return; }
+      openWallPhotoView(pid, pwFiltered().map(function(v){ return String(v.id); }));
+    });
+    var orphanCard = $('#pwOrphanCard');
+    if(orphanCard) orphanCard.addEventListener('click', function(e){
+      var btn = closest(e.target, '[data-pw-orphan]');
+      if(!btn) return;
+      var act = btn.getAttribute('data-pw-orphan');
+      if(act === 'close'){ photoWallState.orphanOpen = false; renderOrphanPanel(); }
+      else if(act === 'go'){ pwOrphanToTrash(); }
+    });
+  })();
   $$('#recordSeg button').forEach(function(b){
     b.addEventListener('click', function(){ showPanel('record', b.getAttribute('data-panel')); });
   });
@@ -22902,8 +23615,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   });
   $('#pvDelete').addEventListener('click', function(){
     if(!pvState.id) return;
+    if(pvState.wallIds){ toast('照片中心的照片请用批量操作处理'); return; }
     if(!confirm('删除这张照片？')) return;
     removeFormPhoto(pvState.id);
+  });
+  $('#pvShopLink').addEventListener('click', function(){
+    var u = photoWallState.usage[String(pvState.id)] || {};
+    if(!u.shopId) return;
+    closePhotoView();
+    openShopMetaSheet(u.shopId, u.shopName || u.recordName || '店铺档案');
   });
 
   /* 记录体验 2.0 · P0：模式 / 选店 / 预填 / 快速保存后续动作 / 记录默认 */
@@ -25644,6 +26364,121 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             obj.checksum.value = sum;
             return JSON.stringify(obj);
           });
+        });
+      }
+    },
+    photoCenter: {
+      records: function(){
+        return photoAllRecords().then(function(list){
+          return list.map(function(v){
+            return { id:String(v.id), bytes:num(v.bytes), hasThumb:!!v.thumb, trashAt:num(v.trashAt), source:String(v.trashSource || '') };
+          });
+        });
+      },
+      refs: function(){
+        return photoRefIndex().then(function(r){ return { used:Object.keys(r.used), refs:r.refs }; });
+      },
+      orphans: orphanPhotoIds,
+      stats: function(){
+        return Promise.all([photoAllRecords(), photoRefIndex()]).then(function(r){
+          var list = r[0], refs = r[1].refs;
+          var out = { count:list.length, bytes:0, withThumb:0, noThumb:0, trash:0, orphans:0 };
+          list.forEach(function(v){
+            out.bytes += num(v.bytes);
+            if(v.thumb) out.withThumb++; else out.noThumb++;
+            if(v.trashAt) out.trash++;
+            else if(!(refs[String(v.id)] || []).length) out.orphans++;
+          });
+          return out;
+        });
+      },
+      wall: function(){
+        return Promise.all([photoAllRecords(), photoRefIndex()]).then(function(r){
+          var usage = photoUsageMap();
+          return r[0].map(function(v){
+            var u = usage[String(v.id)] || {};
+            return {
+              id:String(v.id), bytes:num(v.bytes), hasThumb:!!v.thumb, trashAt:num(v.trashAt),
+              refs:(r[1].refs[String(v.id)] || []).slice(),
+              recordId:String(u.recordId || ''), recordName:String(u.recordName || ''),
+              shopId:String(u.shopId || ''), dishId:String(u.dishId || ''), dishName:String(u.dishName || ''),
+              cat:String(u.cat || '')
+            };
+          });
+        });
+      },
+      trashed: function(){
+        return photoAllRecords().then(function(list){
+          return list.filter(function(v){ return v && v.trashAt; }).map(function(v){ return String(v.id); });
+        });
+      },
+      trash: function(ids, source){ return photoTrashMark(ids, source || 'manual'); },
+      restore: photoRestore,
+      empty: photoEmptyTrash,
+      release: function(pid, except){ return releasePhoto(pid, except); },
+      reassign: function(ids, target){ return photoReassign(ids, target); },
+      load: function(){ return loadPhotoWall(); },
+      render: renderPhotoWall,
+      state: function(){
+        return {
+          loaded:photoWallState.loaded, trashMode:photoWallState.trashMode, desc:photoWallState.desc,
+          sel:Object.keys(photoWallState.sel),
+          filters:JSON.parse(JSON.stringify(photoWallState.f)),
+          visible:pwFiltered().map(function(v){ return String(v.id); }),
+          stats:$('#pwStats') ? $('#pwStats').textContent : '',
+          sub:$('#pwSub') ? $('#pwSub').textContent : ''
+        };
+      },
+      setFilters: function(o){
+        Object.keys(o || {}).forEach(function(k){ if(Object.prototype.hasOwnProperty.call(photoWallState.f, k)) photoWallState.f[k] = String(o[k] || ''); });
+        photoWallState.sel = {};
+        renderPhotoWall();
+        return JSON.parse(JSON.stringify(photoWallState.f));
+      },
+      resetFilters: function(){
+        photoWallState.f = { year:'', month:'', shop:'', dish:'', record:'' };
+        photoWallState.sel = {};
+        renderPhotoWall();
+        return true;
+      },
+      sort: function(desc){ photoWallState.desc = desc !== false; renderPhotoWall(); return photoWallState.desc; },
+      mode: function(trash){ photoWallState.trashMode = !!trash; photoWallState.sel = {}; renderPhotoWall(); return photoWallState.trashMode; },
+      select: function(ids){
+        photoWallState.sel = {};
+        (ids || []).forEach(function(pid){ photoWallState.sel[String(pid)] = 1; });
+        renderPhotoWall();
+        return Object.keys(photoWallState.sel);
+      },
+      toggleSel: function(pid){ pwToggleSel(pid); return Object.keys(photoWallState.sel); },
+      orphanPanel: function(open){ photoWallState.orphanOpen = !!open; renderOrphanPanel(); return photoWallState.orphanOpen; },
+      seed: function(id, dataUrl, thumb){ return photoPut(id, dataUrl, thumb).then(function(){ return true; }); },
+      seedDraft: function(pid, name){
+        var list = draftsLoad();
+        list.unshift({ id:'dr' + Date.now().toString(36), name:String(name || '草稿'), photoId:String(pid), createdAt:new Date().toISOString() });
+        draftsSaveAll(list);
+        return draftsLoad().length;
+      },
+      seedReport: function(pid, year){
+        var y = Number(year) || 2025, st = reportAll();
+        st.items = st.items.filter(function(x){ return Number(x.year) !== y; });
+        st.items.push({
+          year:y, archivedAt:new Date().toISOString(), calcVersion:REPORT_CALC_VERSION,
+          stats:{ records:1, stores:1, money:{ sum:0, n:0, miss:0, avgVisit:null }, topCat:null, bestVisit:null, bestRated:null, firstDate:'', lastDate:'', months:[] },
+          highlight:{ id:'ph1', name:'测试高光', date:String(y) + '-01-01', rating:5, note:'', people:2, photoId:String(pid) }
+        });
+        st.items.sort(function(a, b){ return b.year - a.year; });
+        reportWrite(st);
+        return reportAll().items.length;
+      },
+      seedDish: function(pid){
+        var rec = db.records[0];
+        if(!rec) return { ok:false, error:'先造一条到店记录' };
+        return dishAdd({ visitId:rec.id, name:'照片中心测试菜', photoIds:[{ id:String(pid), cat:'dish' }] });
+      },
+      snapshot: function(reason){ return makeSnapshot(reason || '照片中心测试'); },
+      snapshots: function(){
+        return snapshotAll().then(function(list){
+          return list.map(function(s){ return { id:s.id, reason:s.reason, photoIds:(s.photoIds || []).slice() }; });
         });
       }
     },
