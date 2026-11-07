@@ -23565,7 +23565,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       o.conflictFrom = String(from || 'other');
       o.source = 'conflict';
       o.note = '[冲突副本] ' + String(loser.note || '');
-      o.updatedAt = new Date().toISOString();
+      /* 冲突副本必须可复现：两台设备对同一 loser 生成的副本要逐字段一致，
+         否则同一 id 的 updatedAt 因毫秒差不同，下一轮会被当成新改动再复制一层。 */
+      o.updatedAt = String(loser.updatedAt || loser.createdAt || new Date().toISOString());
       o.createdAt = loser.createdAt || o.updatedAt;
       return o;
     }
@@ -23593,8 +23595,20 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var out = [], conflicts = 0;
       for(var i = 0; i < ids.length; i++){
         var id = ids[i];
-        if(tombKeys['record:' + id]) continue;
         var l = localMap[id], r = remoteMap[id], base = (meta.baseHashes || {})[id] || '';
+        if(tombKeys['record:' + id]){
+          /* 删除优先；但另一方在删除后仍改过这条时，把改动留成冲突副本，不静默丢数据。
+             副本 id 由内容哈希生成、updatedAt 取 loser 原值，两台设备得到同一份副本。 */
+          var live = l || r;
+          if(live){
+            var lh0 = await hashRecord(live);
+            if(base && base !== lh0){
+              var cf0 = await conflictCopy(live, id, 'delete-edit');
+              if(!localMap[cf0.id]){ out.push(cf0); conflicts++; }
+            }
+          }
+          continue;
+        }
         if(l && !r){ out.push(l); continue; }
         if(r && !l){ out.push(withRefs(syncRecordOf(r), r)); continue; }
         if(!l && !r) continue;
