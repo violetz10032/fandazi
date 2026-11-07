@@ -772,6 +772,28 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .map-visit{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:12px;cursor:pointer;color:var(--ink2)}
   .map-visit:last-child{border-bottom:0}
   .map-visit b{font-weight:500;color:var(--ink)}
+  /* 店铺档案增强：到店时间轴 / 人均与评分变化 / 疑似同店（只读档案，不新建店铺表） */
+  .store-block{margin-bottom:12px}
+  .store-block-title{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-size:12px;color:var(--ink3)}
+  .store-tl{max-height:300px;overflow:auto;-webkit-overflow-scrolling:touch}
+  .store-tl-row{display:flex;gap:10px;align-items:baseline;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--line);font-size:12px;cursor:pointer;color:var(--ink2)}
+  .store-tl-row:last-child{border-bottom:0}
+  .store-tl-row .d{flex:none;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .store-tl-row .m{flex:1;min-width:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .store-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:8px}
+  .store-stat-cell{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 9px;min-width:0}
+  .store-stat-cell b{display:block;font-size:16px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .store-stat-cell span{display:block;font-size:10.5px;color:var(--ink3);margin-top:2px}
+  .store-stat-cell em{display:block;font-style:normal;font-size:10.5px;color:var(--ink2);margin-top:3px}
+  .store-delta{font-size:11.5px;color:var(--ink2);margin-top:4px}
+  .store-delta .up{color:var(--good-ink)}
+  .store-delta .down{color:var(--warn-ink)}
+  .store-dup{border:1px solid var(--accent-line);background:var(--soft);border-radius:12px;padding:10px 12px;margin-bottom:12px}
+  .store-dup-row{padding:8px 0;border-top:1px dashed var(--line)}
+  .store-dup-row:first-of-type{border-top:0}
+  .store-dup-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .store-dup-actions .btn{min-height:36px}
+  .fb-note{flex:1 0 100%;font-size:10.5px;color:var(--ink3);margin-top:2px;line-height:1.5}
 
 
   .vote-item{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px dashed var(--line)}
@@ -3313,7 +3335,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
    * 记录里的坐标、评分、消费金额仍以到店记录为唯一事实来源，参考人均/平台评分不参与计算。
    */
   var SHOPMETA_KEY = 'fandazi.shopmeta';
-  var SHOPMETA_VERSION = 1;
+  /* v2 只新增可选字段（aliases / relatedShops / relatedTo / dupIgnored）：
+     旧数据与旧备份没有这些字段时按缺省读取，不报错、不改写。 */
+  var SHOPMETA_VERSION = 2;
   var SHOPMETA_MAX_LINKS = 20;
   var SHOP_LINK_STATUS = { ok:'正常', pending:'待确认', broken:'无法访问' };
   var SHOP_PLATFORM_LIST = [
@@ -3407,11 +3431,30 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var saved = shopMetaTouch(shopId, function(m){ m.location = n; });
     return saved ? saved.location : null;
   }
+  /* 同店引用（合并 / 关联 / 忽略）的最小结构：只存店铺标识，不复制记录或照片 */
+  function shopMetaRefNorm(x){
+    if(!x || typeof x !== 'object') return null;
+    var name = String(x.name == null ? '' : x.name).trim().slice(0, 40);
+    var city = String(x.city == null ? '' : x.city).trim().slice(0, 20);
+    var id = String(x.shopId == null ? '' : x.shopId).trim().slice(0, 40);
+    if(!id && !name) return null;
+    return { shopId: id || shopIdOf(name, city), name: name, city: city, at: String(x.at || '') };
+  }
   function shopMetaNormEntry(m){
     if(!m || typeof m !== 'object') return null;
     var out = { updatedAt: String(m.updatedAt || ''), links: [], fields: {} };
     var loc = shopLocationNorm(m.location);
     if(loc) out.location = loc;
+    var aliases = (Array.isArray(m.aliases) ? m.aliases : []).map(shopMetaRefNorm).filter(Boolean).slice(0, 50);
+    if(aliases.length) out.aliases = aliases;
+    var related = (Array.isArray(m.relatedShops) ? m.relatedShops : []).map(shopMetaRefNorm).filter(Boolean).slice(0, 50);
+    if(related.length) out.relatedShops = related;
+    var rt = String(m.relatedTo == null ? '' : m.relatedTo).trim().slice(0, 40);
+    if(rt) out.relatedTo = rt;
+    var ignored = (Array.isArray(m.dupIgnored) ? m.dupIgnored : []).map(function(x){
+      return String(x == null ? '' : x).trim().slice(0, 40);
+    }).filter(Boolean).slice(0, 100);
+    if(ignored.length) out.dupIgnored = ignored;
     (Array.isArray(m.links) ? m.links : []).forEach(function(l){
       var n = shopLinkNorm(l);
       if(n) out.links.push(n);
@@ -3890,6 +3933,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<button type="button" class="btn btn-primary" data-act="tripStopEat" data-tid="' + esc(t.id) + '" data-sid="' + esc(s.shopId) + '" style="flex:1;min-height:44px">记一餐 / 确认到店</button>' +
         '<button type="button" class="btn btn-sm" data-act="tripStopDel" data-tid="' + esc(t.id) + '" data-sid="' + esc(s.shopId) + '" style="min-height:44px;min-width:64px">移除</button>' +
       '</div>' +
+      (store ? feedbackBarHtml(store, 'trip') : '') +
     '</div>';
   }
   function tripCandidates(t, q){
@@ -7586,10 +7630,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
      key 现阶段沿用现有去重键「城市|店名」（与 keyOf 一致的小写形式）；
      v2 迁移时会把它映射为 shopId，避免以后改店名/换城市丢反馈。 */
   var FB_KEY = 'fandazi.feedback';
-  var FB_VERSION = 1;
+  var FB_VERSION = 2;
   var FB_TIRED_DAYS = 21;
+  /* surface 只用于追溯「这条反馈来自哪个推荐入口」：可选字段，旧数据缺省为空 */
+  var FB_SURFACES = { daily:'日常推荐', draw:'抽签', blind:'盲盒', trip:'旅行计划' };
   var FB_ACTIONS = {
-    want:    { label:'想吃',        tone:'good' },
+    want:    { label:'喜欢 / 想吃', tone:'good' },
     neutral: { label:'可以考虑',    tone:'' },
     today:   { label:'今天不想吃',  tone:'warn' },
     tired:   { label:'最近吃腻了',  tone:'warn' },
@@ -7615,7 +7661,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             at: new Date(isFinite(at) ? at : Date.now()).toISOString(),
             until: isFinite(until) ? new Date(until).toISOString() : (it.action === 'tired' ? new Date(Date.now() + FB_TIRED_DAYS*86400000).toISOString() : null),
             name: String(it.name || ''),
-            blackKey: it.blackKey ? String(it.blackKey) : null
+            blackKey: it.blackKey ? String(it.blackKey) : null,
+            surface: Object.prototype.hasOwnProperty.call(FB_SURFACES, String(it.surface)) ? String(it.surface) : ''
           });
         });
       }
@@ -7690,7 +7737,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     ensureFeedbackToday();
     return !!feedbackToday.items[feedbackKeyOf(store)];
   }
-  function feedbackPersist(action, store){
+  function feedbackPersist(action, store, surface){
     if(!store) return null;
     pruneFeedback();
     var key = feedbackKeyOf(store), now = Date.now();
@@ -7699,14 +7746,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       saveFeedbackStore();
       return null;
     }
-    var item = { key:key, action:action, at:new Date(now).toISOString(), name:String(store.name || '') };
+    var item = { key:key, action:action, at:new Date(now).toISOString(), name:String(store.name || ''),
+      surface: Object.prototype.hasOwnProperty.call(FB_SURFACES, String(surface)) ? String(surface) : '' };
     if(action === 'tired') item.until = new Date(now + FB_TIRED_DAYS*86400000).toISOString();
     if(action === 'never') item.blackKey = store.key || key;
     feedbackStore.items.push(item);
     saveFeedbackStore();
     return item;
   }
-  function applyFeedback(action, store){
+  function applyFeedback(action, store, surface){
     if(!store || !FB_ACTIONS[action]) return false;
     ensureFeedbackToday();
     var key = feedbackKeyOf(store);
@@ -7720,12 +7768,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       if(!confirm('把「'+(store.name||'这家店')+'」设为永不推荐？\n\n将从推荐与抽签中彻底排除，可在「我的 → 推荐反馈」或黑名单里移除。')) return false;
       delete feedbackToday.items[key];
       if(!isBlack(store)) blackStore(store);
-      else { feedbackPersist('never', store); toast('已标记为永不推荐'); }
+      else { feedbackPersist('never', store, surface); toast('已标记为永不推荐'); }
       refreshAfterFeedback();
       return true;
     }
     delete feedbackToday.items[key];
-    feedbackPersist(action, store);
+    feedbackPersist(action, store, surface);
     var msg = action === 'neutral' ? '已恢复中性，负向反馈已清除'
       : action === 'want' ? '已标记想吃，推荐会适度提高这家店'
       : action === 'tired' ? '已标记吃腻了，'+FB_TIRED_DAYS+' 天内降权，到期自动恢复'
@@ -7802,8 +7850,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!parts.length) return '';
     return '<span class="fb-badge">'+esc(parts.join(' · '))+'</span>';
   }
-  function feedbackBarHtml(store){
+  function feedbackBarHtml(store, surface){
     var key = feedbackKeyOf(store), cur = feedbackActiveFor(key), today = feedbackTodaySkipped(store);
+    var surf = Object.prototype.hasOwnProperty.call(FB_SURFACES, String(surface)) ? String(surface) : 'daily';
     var on = {
       want: !!(cur && cur.action === 'want'),
       neutral: !cur,
@@ -7814,8 +7863,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     };
     return '<div class="fb-bar"><span class="fb-label">反馈</span>'+
       Object.keys(FB_ACTIONS).map(function(a){
-        return '<button type="button" class="fb-chip'+(on[a]?' on':'')+'" data-act="fb" data-key="'+esc(store.key)+'" data-fb="'+a+'">'+esc(FB_ACTIONS[a].label)+'</button>';
-      }).join('')+'</div>';
+        return '<button type="button" class="fb-chip'+(on[a]?' on':'')+'" data-act="fb" data-key="'+esc(store.key)+'" data-fb="'+a+'" data-surface="'+surf+'">'+esc(FB_ACTIONS[a].label)+'</button>';
+      }).join('')+
+      '<span class="fb-note">'+esc(FB_SURFACES[surf])+'反馈 · 只影响推荐排序，不写到店记录；「想去」和「就吃这个」是另外两类。</span></div>';
   }
 
   /* ================= 饮食偏好画像（派生数据 + 手动设置） ================= */
@@ -8353,6 +8403,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         : (r.photo ? '<img class="thumb" src="'+esc(r.photo)+'" loading="lazy" decoding="async" alt="到访照片">' : ''))+
       '<div class="actions rec-actions">'+
         '<button class="btn btn-sm" data-act="edit" data-id="'+esc(r.id)+'">'+icon('edit')+'编辑</button>'+
+        '<button class="btn btn-sm btn-soft" data-act="storeProfile" data-key="'+esc(keyOf(r))+'" title="查看这家店的档案：时间轴 / 人均与评分 / 疑似同店">店铺档案</button>'+
         '<button class="btn btn-sm btn-soft" data-act="aa" data-id="'+esc(r.id)+'">AA 分账</button>'+
         '<button class="btn btn-sm btn-danger" data-act="del" data-id="'+esc(r.id)+'">删除</button>'+
         '<button class="btn btn-sm btn-soft" data-act="map" data-id="'+esc(r.id)+'" title="点击在高德打开，长按可选高德/百度">'+icon('pin')+'地图</button>'+
@@ -8846,10 +8897,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '<div class="actions" style="margin-top:12px">'+
         '<button class="btn btn-soft" data-act="dailyRotate">换一批</button>'+
         '<button class="btn btn-soft" data-act="jumpStore" data-key="'+esc(main.store.key)+'">打开平台</button>'+
+        '<button class="btn" data-act="fbWish" data-key="'+esc(main.store.key)+'" title="只加入想去清单，不算到店">加入想去</button>'+
         '<button class="btn" data-act="shareDaily">分享图</button>'+
       '</div>'+
       '<button class="btn btn-primary btn-block btn-lg" data-act="dailyEat" data-key="'+esc(main.store.key)+'" style="margin-top:9px">就吃这个</button>'+
-      feedbackBarHtml(main.store)+
+      feedbackBarHtml(main.store, 'daily')+
     '</article>';
 
     var altCards = alts.map(function(x, i){
@@ -8861,7 +8913,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<div class="actions" style="margin-top:10px">'+
           '<button class="btn btn-sm" data-act="dailyEat" data-key="'+esc(x.store.key)+'">就吃这个</button>'+
           '<button class="btn btn-sm btn-soft" data-act="jumpStore" data-key="'+esc(x.store.key)+'">打开平台</button>'+
-        '</div>'+feedbackBarHtml(x.store)+'</article>';
+          '<button class="btn btn-sm btn-soft" data-act="fbWish" data-key="'+esc(x.store.key)+'">加入想去</button>'+
+        '</div>'+feedbackBarHtml(x.store, 'daily')+'</article>';
     }).join('');
 
     var log = '候选 '+st.list.length+' 家；已排除 '+(st.skipped.length)+' 家';
@@ -9069,10 +9122,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           '<button class="btn" data-act="shareDraw">分享图</button>'+
         '</div>'+
         '<div class="actions" style="margin-top:9px">'+
-          '<button class="btn btn-soft" data-act="drawWish" data-key="'+k+'">加想去</button>'+
+          '<button class="btn btn-soft" data-act="drawWish" data-key="'+k+'">加想去（不算到店）</button>'+
           '<button class="btn btn-soft" data-act="drawMap" data-key="'+k+'">看地图</button>'+
         '</div>'+
         '<button class="btn btn-primary btn-block btn-lg" data-act="drawRecord" data-key="'+k+'" style="margin-top:9px">记一餐</button>'+
+        feedbackBarHtml(st.picked.store, 'draw')+
       '</article>'+
       '<div class="log" style="margin-top:10px">'+esc(log)+'</div>';
   }
@@ -9103,19 +9157,25 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       visitDate:todayStr(), people:db.settings.defaultPeople || 4, drawRef:true
     }, 'quick');
   }
-  function drawWishAdd(key){
-    var s = findStore(key);
-    if(!s){ toast('没找到这家店'); return; }
+  /* 统一「想去」写入：只动 db.wishlist，绝不写消费/到店记录 */
+  function wishAddStore(s){
+    if(!s){ toast('没找到这家店'); return false; }
     var cityNow = s.city || '';
     var dup = db.wishlist.some(function(w){ return w.name === s.name && String(w.city || '') === String(cityNow); });
-    if(dup){ toast('想去清单里已经有这家'); return; }
+    if(dup){ toast('想去清单里已经有这家'); return false; }
     db.wishlist.unshift({
       id:newId('w'), name:s.name, city:cityNow, area:s.area || '',
       budget:num(s.perPrice) > 0 ? Math.round(num(s.perPrice)) : null,
       note:'', createdAt:new Date().toISOString()
     });
     save();
-    toast('已加入想去清单');
+    toast('已加入想去清单（不算到店）');
+    return true;
+  }
+  function drawWishAdd(key){
+    var s = findStore(key);
+    if(!s){ toast('没找到这家店'); return; }
+    wishAddStore(s);
   }
   function drawMapOpen(key){
     var s = findStore(key);
@@ -9314,9 +9374,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '<p class="blind-meta">'+esc(storeRatingText(s)+' · '+storeFreshnessText(s))+'</p>'+
       (sig ? '<p class="blind-meta">'+esc(sig)+'</p>' : '')+
       '<p class="blind-reason">'+esc(reasonText)+'</p>'+
-      (res.notes && res.notes.length ? '<p class="blind-meta">'+esc(res.notes.join('；'))+'</p>' : '');
+      (res.notes && res.notes.length ? '<p class="blind-meta">'+esc(res.notes.join('；'))+'</p>' : '')+
+      feedbackBarHtml(s, 'blind');
     acts.innerHTML =
       '<button class="btn btn-soft" data-act="blindRollAgain">换一个</button>'+
+      '<button class="btn btn-soft" data-act="fbWish" data-key="'+esc(s.key)+'" title="只加入想去清单，不算到店">加想去</button>'+
       '<button class="btn" data-act="blindNav" data-key="'+esc(s.key)+'">导航前往</button>'+
       '<button class="btn btn-primary" data-act="blindEat" data-key="'+esc(s.key)+'">就吃这家</button>';
   }
@@ -14511,6 +14573,365 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function mapSheetOpen(){
     return !$('#mapStoreMask').classList.contains('hidden');
   }
+  /* ================= 店铺档案增强：又来了 / 重复识别 / 时间轴 / 人均与评分 =================
+   * 全部只读写现有 db.records 与 fandazi.shopmeta：
+   *  - 不改店铺聚合规则，不新建第二套店铺表；
+   *  - 合并只把源店的记录改成目标店的「店名 + 城市」，记录 id / 日期 / 评分 / 金额 / 照片都保留；
+   *  - 关联 / 忽略只写 shopmeta 的别名与引用，不动任何记录。 */
+  var SHOP_DUP_RADIUS_M = 200;
+
+  function shopIdOfStore(s){ return s ? shopIdOf(s.name, s.city) : ''; }
+  function shopMetaCoordOf(sid){
+    var loc = shopMetaGet(sid).location;
+    if(loc && isFinite(num(loc.lat)) && isFinite(num(loc.lng)) && num(loc.lat) !== 0 && num(loc.lng) !== 0){
+      return { lat:num(loc.lat), lng:num(loc.lng) };
+    }
+    return null;
+  }
+  function shopDupCoordOf(s){
+    if(!s) return null;
+    return storeCoord(s) || shopMetaCoordOf(shopIdOfStore(s));
+  }
+  function shopDupAddrOf(s){
+    if(!s) return '';
+    var addr = String(s.address || '').trim();
+    if(addr) return addr;
+    var loc = shopMetaGet(shopIdOfStore(s)).location;
+    return loc ? String(loc.formattedAddress || '').trim() : '';
+  }
+  function shopPoiIdOf(sid){
+    var loc = shopMetaGet(sid).location;
+    return loc ? String(loc.amapPoiId || '') : '';
+  }
+  /* 实际人均：只认「实付总额 / 人数」，且必须通过现有“可计入统计”判定；不拿参考人均顶替 */
+  function shopActualPerCapita(r){
+    if(!r || !recordCountsInStats(r)) return null;
+    var total = amountCountable(r);
+    var people = Math.floor(num(r.people));
+    if(!(total > 0) || !(people > 0)) return null;
+    return total / people;
+  }
+  /* 参考人均：只认记录里手填的参考值，缺失时返回 null（不用实付折算） */
+  function shopRefPerCapita(r){
+    if(!r || !recordCountsInStats(r)) return null;
+    var p = num(r.perPrice);
+    return p > 0 ? p : null;
+  }
+  function shopRatingValue(r){
+    if(!r || !recordCountsInStats(r)) return null;
+    var rt = num(r.rating);
+    return rt > 0 ? rt : null;
+  }
+  function shopVisitsAsc(s){
+    return (s && s.records ? s.records : []).slice().sort(function(a, b){
+      var da = String(a.visitDate || ''), db = String(b.visitDate || '');
+      if(da !== db) return da < db ? -1 : 1;
+      return String(a.createdAt || '') < String(b.createdAt || '') ? -1 : 1;
+    });
+  }
+  function shopStatsCompute(s){
+    var recs = shopVisitsAsc(s);
+    var samples = recs.map(function(r){
+      return {
+        id:r.id, date:String(r.visitDate || ''), people:Math.floor(num(r.people)) || 0,
+        actual:shopActualPerCapita(r), ref:shopRefPerCapita(r), rating:shopRatingValue(r)
+      };
+    });
+    function series(k){
+      return samples.map(function(x){ return x[k]; }).filter(function(v){ return v != null; });
+    }
+    function avg(vals){
+      if(!vals.length) return null;
+      var sum = 0;
+      vals.forEach(function(v){ sum += v; });
+      return sum / vals.length;
+    }
+    function part(vals){
+      return { n:vals.length, avg:avg(vals), first:vals.length ? vals[0] : null, last:vals.length ? vals[vals.length - 1] : null };
+    }
+    var actual = part(series('actual')), ref = part(series('ref')), rating = part(series('rating'));
+    return { count:samples.length, samples:samples, actual:actual, ref:ref, rating:rating };
+  }
+  function shopDeltaText(label, p, fmt){
+    if(p.n < 2 || p.first == null || p.last == null) return '';
+    var diff = p.last - p.first;
+    var cls = diff > 0 ? 'up' : (diff < 0 ? 'down' : '');
+    var sign = diff > 0 ? '+' : (diff < 0 ? '−' : '±');
+    return '<div class="store-delta">'+esc(label)+'：'+esc(fmt(p.first))+' → '+esc(fmt(p.last))+
+      '（<span class="'+cls+'">'+sign+esc(fmt(Math.abs(diff)))+'</span>，'+p.n+' 次样本）</div>';
+  }
+  function shopAvgMoney(v){ return v == null ? '暂无数据' : money(v); }
+  function shopAvgRating(v){ return v == null ? '暂无数据' : (Math.round(v * 10) / 10).toFixed(1); }
+  function shopStatsHtml(s){
+    var st = shopStatsCompute(s);
+    if(!st.count){
+      return '<p class="muted" style="margin:0">暂无数据（只统计真实到店记录；不估算、不用参考值填充）</p>';
+    }
+    var hasAny = st.actual.n || st.ref.n || st.rating.n;
+    var head = '<div class="store-stat-grid">'+
+      '<div class="store-stat-cell"><b>'+esc(shopAvgMoney(st.actual.avg))+'</b><span>实际人均</span><em>'+st.actual.n+' 次有实付</em></div>'+
+      '<div class="store-stat-cell"><b>'+esc(shopAvgMoney(st.ref.avg))+'</b><span>参考人均</span><em>'+st.ref.n+' 次有参考值</em></div>'+
+      '<div class="store-stat-cell"><b>'+esc(shopAvgRating(st.rating.avg))+'</b><span>综合评分</span><em>'+st.rating.n+' 次有评分</em></div>'+
+      '</div>';
+    if(!hasAny){
+      return head + '<p class="muted" style="margin:4px 0 0">暂无数据（历次记录都没有实付、参考人均或评分；不估算）</p>';
+    }
+    var deltas = shopDeltaText('实际人均', st.actual, function(v){ return money(v); })+
+      shopDeltaText('综合评分', st.rating, function(v){ return (Math.round(v * 10) / 10).toFixed(1); });
+    if(!deltas) deltas = '<div class="store-delta">样本不足 2 次，暂不展示变化</div>';
+    var rows = st.samples.map(function(x){
+      return '<div class="store-tl-row" data-map-visit="'+esc(x.id)+'">'+
+        '<span class="d">'+esc(x.date || '日期未知')+'</span>'+
+        '<span class="m">'+esc([
+          x.actual != null ? '实际 '+money(x.actual) : '实际暂无',
+          x.ref != null ? '参考 '+money(x.ref) : '参考暂无',
+          x.rating != null ? '评分 '+(Math.round(x.rating * 10) / 10).toFixed(1) : '评分暂无'
+        ].join(' · '))+'</span></div>';
+    }).join('');
+    return head + deltas +
+      '<p class="muted" style="margin:8px 0 2px">逐次样本（实际人均 = 实付总额 / 人数；参考人均为记录里手填的参考值）</p>'+
+      '<div class="store-tl">'+rows+'</div>';
+  }
+  function shopTimelineHtml(s){
+    var recs = shopVisitsAsc(s).slice().reverse();
+    if(!recs.length) return '<p class="muted" style="margin:0">暂无到店记录</p>';
+    return '<div class="store-tl">'+recs.map(function(r){
+      var actual = shopActualPerCapita(r), ref = shopRefPerCapita(r);
+      var meta = [recordRatingText(r), (Math.floor(num(r.people)) || 1)+' 人',
+        actual != null ? '实际 '+money(actual) : '实际暂无',
+        ref != null ? '参考 '+money(ref) : '参考暂无'];
+      var pc = photosOfRecord(r).length;
+      if(pc) meta.push('照片 '+pc);
+      return '<div class="store-tl-row" data-map-visit="'+esc(r.id)+'">'+
+        '<span class="d">'+esc(r.visitDate || '日期未知')+'</span>'+
+        '<span class="m">'+esc(meta.join(' · '))+'</span></div>';
+    }).join('')+'</div>';
+  }
+
+  /* ---- 重复店铺识别：POI ID 优先；无 ID 时名称 + 坐标/地址近似 ---- */
+  function shopDupReasonOf(a, b){
+    if(!a || !b) return null;
+    var sidA = shopIdOfStore(a), sidB = shopIdOfStore(b);
+    var poiA = shopPoiIdOf(sidA), poiB = shopPoiIdOf(sidB);
+    if(poiA && poiB && poiA === poiB){
+      return { code:'poi', rank:0, text:'同一高德 POI（'+poiA+'）' };
+    }
+    var na = normStoreName(a.name), nb = normStoreName(b.name);
+    if(!na || !nb || na !== nb) return null;
+    /* 城市只做「带不带『市』」的归一，避免把「上海」与「上海市」当成两家 */
+    var ca = normStoreName(a.city).replace(/市$/, ''), cb = normStoreName(b.city).replace(/市$/, '');
+    if(ca && cb && ca !== cb) return null;
+    var aa = normStoreName(shopDupAddrOf(a)), ab = normStoreName(shopDupAddrOf(b));
+    if(aa && ab && (aa === ab || aa.indexOf(ab) >= 0 || ab.indexOf(aa) >= 0)){
+      return { code:'addr', rank:1, text:'名称相同 + 地址一致' };
+    }
+    var pa = shopDupCoordOf(a), pb = shopDupCoordOf(b);
+    if(pa && pb){
+      var km = haversineKm(pa.lat, pa.lng, pb.lat, pb.lng);
+      if(isFinite(km) && km * 1000 <= SHOP_DUP_RADIUS_M){
+        return { code:'coord', rank:2, text:'名称相同 + 坐标相距 ' + Math.round(km * 1000) + ' 米' };
+      }
+      return null;
+    }
+    if(!aa || !ab){
+      return { code:'name', rank:3, text:'名称相同（缺少坐标 / 地址，需人工确认）' };
+    }
+    return null;
+  }
+  function shopRefOf(s){
+    return { shopId:shopIdOfStore(s), name:String(s.name || ''), city:String(s.city || '') };
+  }
+  function shopDupSuppressed(sidA, sidB){
+    var a = shopMetaGet(sidA), b = shopMetaGet(sidB);
+    if((a.dupIgnored || []).indexOf(sidB) >= 0 || (b.dupIgnored || []).indexOf(sidA) >= 0) return true;
+    if((a.aliases || []).concat(a.relatedShops || []).some(function(x){ return x.shopId === sidB; })) return true;
+    if((b.aliases || []).concat(b.relatedShops || []).some(function(x){ return x.shopId === sidA; })) return true;
+    if(String(a.relatedTo || '') === sidB || String(b.relatedTo || '') === sidA) return true;
+    return false;
+  }
+  function shopDupCandidates(key){
+    var s = mapStoreByKey(key);
+    if(!s) return [];
+    var sid = shopIdOfStore(s);
+    var out = [];
+    getStores().forEach(function(o){
+      if(o.key === s.key) return;
+      var oid = shopIdOfStore(o);
+      if(!oid || oid === sid || shopDupSuppressed(sid, oid)) return;
+      var reason = shopDupReasonOf(s, o);
+      if(!reason) return;
+      out.push({ store:o, shopId:oid, reason:reason });
+    });
+    out.sort(function(x, y){ return x.reason.rank - y.reason.rank; });
+    return out;
+  }
+  function shopDupHtml(s){
+    var list = shopDupCandidates(s.key);
+    if(!list.length) return '';
+    var sid = shopIdOfStore(s);
+    var rows = list.map(function(x){
+      var o = x.store, oid = x.shopId;
+      return '<div class="store-dup-row">'+
+        '<b>'+esc(o.name)+'</b>'+
+        '<p class="meta" style="margin:2px 0 0">'+esc([o.city, o.area].filter(Boolean).join(' · ') || '未填位置')+
+          ' · 到访 '+esc(o.visits)+' 次 · '+esc(x.reason.text)+'</p>'+
+        '<div class="store-dup-actions">'+
+          '<button type="button" class="btn btn-sm" data-store-merge="'+esc(oid)+'" data-store-merge-key="'+esc(o.key)+'" data-store-target="'+esc(s.key)+'">合并到本店</button>'+
+          '<button type="button" class="btn btn-sm btn-soft" data-store-relate="'+esc(o.key)+'" data-store-target="'+esc(s.key)+'">标记同一家（不合并）</button>'+
+          '<button type="button" class="btn btn-sm btn-soft" data-store-ignore="'+esc(oid)+'">不是同一家</button>'+
+        '</div></div>';
+    }).join('');
+    return '<div class="store-dup"><div class="store-block-title"><span>疑似重复店铺</span><span>需你确认</span></div>'+
+      '<p class="muted" style="margin:0 0 4px">不会自动合并。合并只改记录店名/城市，历史到店与照片都保留。</p>'+rows+'</div>';
+  }
+
+  /* ---- 合并 / 关联 / 忽略（全部需要人工确认；无自动执行） ---- */
+  function shopMetaRefsAdd(arr, ref){
+    var list = Array.isArray(arr) ? arr.slice() : [];
+    if(!list.some(function(x){ return x.shopId === ref.shopId; })) list.push(ref);
+    return list.slice(-50);
+  }
+  function shopMetaMergeInto(fromId, toId, fromStore){
+    var st = shopMetaLoad();
+    var from = st.items[fromId] ? JSON.parse(JSON.stringify(st.items[fromId])) : { updatedAt:'', links:[], fields:{} };
+    var to = st.items[toId] ? JSON.parse(JSON.stringify(st.items[toId])) : { updatedAt:'', links:[], fields:{} };
+    var links = (to.links || []).slice();
+    (from.links || []).forEach(function(l){
+      if(!links.some(function(x){ return x.url === l.url; })) links.push(l);
+    });
+    if(links.length > SHOPMETA_MAX_LINKS) links = links.slice(0, SHOPMETA_MAX_LINKS);
+    var fields = {};
+    Object.keys(to.fields || {}).forEach(function(k){ fields[k] = to.fields[k]; });
+    Object.keys(from.fields || {}).forEach(function(k){
+      if(!fields[k] || !fields[k].value) fields[k] = from.fields[k];
+    });
+    var nowIso = new Date().toISOString();
+    var aliases = shopMetaRefsAdd((to.aliases || []).concat(from.aliases || []), { shopId:fromId, name:fromStore.name, city:fromStore.city || '', at:nowIso });
+    var related = shopMetaRefsAdd((to.relatedShops || []).concat(from.relatedShops || []), { shopId:fromId, name:fromStore.name, city:fromStore.city || '', at:nowIso })
+      .filter(function(x){ return x.shopId !== toId; });
+    var ignored = ((to.dupIgnored || []).concat(from.dupIgnored || [])).filter(function(x){ return x !== fromId && x !== toId; });
+    var merged = {
+      updatedAt: nowIso, links: links, fields: fields,
+      location: to.location || from.location,
+      aliases: aliases, relatedShops: related, dupIgnored: ignored
+    };
+    if(to.relatedTo && to.relatedTo !== fromId) merged.relatedTo = to.relatedTo;
+    var next = { version:SHOPMETA_VERSION, items:JSON.parse(JSON.stringify(st.items)) };
+    delete next.items[fromId];
+    next.items[toId] = shopMetaNormEntry(merged);
+    Object.keys(next.items).forEach(function(k){
+      var it = next.items[k];
+      if(!it) return;
+      if(it.relatedTo === fromId){ if(k === toId) delete it.relatedTo; else it.relatedTo = toId; }
+      if(Array.isArray(it.relatedShops)){
+        it.relatedShops = it.relatedShops.map(function(x){
+          return x.shopId === fromId ? { shopId:toId, name:'', city:'', at:x.at } : x;
+        }).filter(function(x){ return x.shopId !== k; });
+      }
+      if(Array.isArray(it.dupIgnored)) it.dupIgnored = it.dupIgnored.map(function(x){ return x === fromId ? toId : x; }).filter(function(x){ return x !== k; });
+      next.items[k] = shopMetaNormEntry(it);
+    });
+    next.items[toId] = shopMetaNormEntry(next.items[toId]);
+    return shopMetaWrite(next);
+  }
+  function shopMergeKeys(fromKey, toKey, opts){
+    opts = opts || {};
+    var from = mapStoreByKey(fromKey), to = mapStoreByKey(toKey);
+    if(!from || !to) return { ok:false, error:'店铺已变化，请刷新后重试' };
+    if(from.key === to.key) return { ok:false, error:'不能合并到自己' };
+    var fromId = shopIdOfStore(from), toId = shopIdOfStore(to);
+    if(!fromId || !toId) return { ok:false, error:'店铺标识缺失' };
+    var moving = db.records.filter(function(r){ return keyOf(r) === fromKey; });
+    if(!moving.length) return { ok:false, error:'源店铺没有到店记录可合并' };
+    if(opts.confirm !== false){
+      var ok = false;
+      try{
+        ok = window.confirm('把「'+from.name+'」并入「'+to.name+'」？\n\n'+
+          '将把 '+moving.length+' 条到店记录改成目标店的店名/城市；记录日期、评分、金额、菜品与照片全部保留。\n'+
+          '源店的平台链接、补充字段与坐标会并入目标店（已有值优先保留）。\n\n'+
+          '不会自动执行，确认后才写入；建议先导出完整备份。');
+      }catch(e){ ok = false; }
+      if(!ok) return { ok:false, cancelled:true };
+    }
+    var recSnap = JSON.parse(JSON.stringify(db.records));
+    var metaRaw = null;
+    try{ metaRaw = localStorage.getItem(SHOPMETA_KEY); }catch(e){}
+    var rawKey = v2Active ? V2_KEY : KEY;
+    var rawBefore = null;
+    try{ rawBefore = localStorage.getItem(rawKey); }catch(e){}
+    db.records.forEach(function(r){
+      if(keyOf(r) !== fromKey) return;
+      r.name = to.name;
+      r.city = to.city || '';
+      r.updatedAt = new Date().toISOString();
+    });
+    save(true);
+    var rawAfter = null;
+    try{ rawAfter = localStorage.getItem(rawKey); }catch(e){}
+    if(rawAfter === rawBefore){
+      db.records = recSnap;
+      invalidateStores();
+      renderAll();
+      return { ok:false, error:'写入本机失败，未改动任何数据（请先备份并检查存储空间）' };
+    }
+    var metaOk = shopMetaMergeInto(fromId, toId, from);
+    if(!metaOk){
+      db.records = recSnap;
+      invalidateStores();
+      try{
+        if(metaRaw == null) localStorage.removeItem(SHOPMETA_KEY); else localStorage.setItem(SHOPMETA_KEY, metaRaw);
+      }catch(e){}
+      shopMetaStore = null;
+      save(true);
+      renderAll();
+      return { ok:false, error:'店铺补充信息写入失败，已回滚本次合并' };
+    }
+    invalidateStores();
+    renderAll();
+    return { ok:true, moved:moving.length, fromId:fromId, toId:toId, fromName:from.name, toName:to.name };
+  }
+  function shopRelateKeys(fromKey, toKey){
+    var from = mapStoreByKey(fromKey), to = mapStoreByKey(toKey);
+    if(!from || !to || from.key === to.key) return { ok:false, error:'店铺已变化，请刷新后重试' };
+    var fromId = shopIdOfStore(from), toId = shopIdOfStore(to);
+    var st = shopMetaLoad();
+    var next = { version:SHOPMETA_VERSION, items:JSON.parse(JSON.stringify(st.items)) };
+    var a = next.items[fromId] ? JSON.parse(JSON.stringify(next.items[fromId])) : { updatedAt:'', links:[], fields:{} };
+    var b = next.items[toId] ? JSON.parse(JSON.stringify(next.items[toId])) : { updatedAt:'', links:[], fields:{} };
+    var nowIso = new Date().toISOString();
+    a.relatedTo = toId;
+    b.relatedShops = shopMetaRefsAdd(b.relatedShops, { shopId:fromId, name:from.name, city:from.city || '', at:nowIso });
+    b.aliases = shopMetaRefsAdd(b.aliases, { shopId:fromId, name:from.name, city:from.city || '', at:nowIso });
+    next.items[fromId] = shopMetaNormEntry(a);
+    next.items[toId] = shopMetaNormEntry(b);
+    if(!shopMetaWrite(next)) return { ok:false, error:'写入店铺补充信息失败' };
+    return { ok:true, fromId:fromId, toId:toId };
+  }
+  function shopIgnoreDup(sidA, sidB){
+    var a = String(sidA || ''), b = String(sidB || '');
+    if(!a || !b || a === b) return { ok:false, error:'店铺标识无效' };
+    var st = shopMetaLoad();
+    var next = { version:SHOPMETA_VERSION, items:JSON.parse(JSON.stringify(st.items)) };
+    [a, b].forEach(function(id, i){
+      var other = i ? a : b;
+      var cur = next.items[id] ? JSON.parse(JSON.stringify(next.items[id])) : { updatedAt:'', links:[], fields:{} };
+      var prior = (cur.dupIgnored || []).map(function(x){ return typeof x === 'string' ? x : (x && x.shopId) || ''; })
+        .filter(function(x){ return !!x && x !== id; });
+      if(prior.indexOf(other) < 0) prior.push(other);
+      cur.dupIgnored = prior.slice(-100);
+      next.items[id] = shopMetaNormEntry(cur);
+    });
+    if(!shopMetaWrite(next)) return { ok:false, error:'写入店铺补充信息失败' };
+    return { ok:true };
+  }
+  /* 档案页操作后刷新同一个 sheet，保持当前位置 */
+  function shopProfileRefresh(key){
+    if(!mapSheetOpen()) return;
+    var s = mapStoreByKey(key);
+    if(s) openMapStoreSheet(key);
+    else closeMapStoreSheet();
+  }
+
   function mapDishSummaryHtml(shopId){
     var list = dishesSummaryOfShop(shopId);
     var rows = list.length ? list.slice(0, 12).map(function(d){
@@ -14534,11 +14955,6 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     mapView.sheetKey = key;
     mapView.selected = '';
     var recs = (s.records || []).slice().sort(function(a,b){ return String(b.visitDate||'').localeCompare(String(a.visitDate||'')); });
-    var visits = recs.slice(0, 6).map(function(r){
-      return '<div class="map-visit" data-map-visit="'+esc(r.id)+'"><b>'+esc(diaryUnknown(r) ? '日期未知' : r.visitDate)+'</b>'+
-        '<span>'+esc([recordRatingText(r), (r.people||1)+' 人', recordPriceText(r)].join(' · '))+
-        ' <span class="muted">›</span></span></div>';
-    }).join('');
     var dims = s.ratings || {};
     var dimText = ['taste','env','service','value'].map(function(k){
       return num(dims[k]) > 0 ? (DIARY_DIM[k]||k)+' '+num(dims[k]) : '';
@@ -14561,9 +14977,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         diaryKv('平台链接', linkCount ? esc(linkCount + ' 条（点下方「链接 / 补充」管理）') : '暂无数据')+
         diaryKv('补充信息', esc(shopMetaSummary(sid)))+
       '</div>'+
-      (visits ? '<div class="card flat" style="padding:10px 12px;margin-bottom:12px"><p class="muted" style="margin-bottom:2px">最近到访（点开看该次详情）</p>'+visits+'</div>' : '')+
+      '<div class="card flat" style="padding:10px 12px;margin-bottom:12px">'+
+        '<div class="store-block-title"><span>到店时间轴</span><span>共 '+esc(s.visits)+' 次 · 点开看该次详情</span></div>'+
+        shopTimelineHtml(s)+
+      '</div>'+
+      '<div class="card flat" style="padding:10px 12px;margin-bottom:12px">'+
+        '<div class="store-block-title"><span>人均与评分变化</span><span>只统计真实到店</span></div>'+
+        shopStatsHtml(s)+
+      '</div>'+
+      shopDupHtml(s)+
       mapDishSummaryHtml(sid)+
       '<div class="actions" style="margin-top:0">'+
+        '<button type="button" class="btn" data-act="shopAgain" data-key="'+esc(s.key)+'">又来了</button>'+
         '<a class="btn btn-soft" href="'+esc(mapLinkOf(info, 'amap', false, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">高德'+(c?'定点':'搜索')+'</a>'+
         '<a class="btn" href="'+esc(mapLinkOf(info, 'baidu', false, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">百度搜索</a>'+
         (c ? '<a class="btn" href="'+esc(amapNavUrl(info, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">导航</a>' : '')+
@@ -19481,7 +19906,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         at: new Date(isFinite(at) ? at : Date.now()).toISOString(),
         until: isFinite(until) ? new Date(until).toISOString() : (it.action === 'tired' ? new Date(Date.now() + FB_TIRED_DAYS * 86400000).toISOString() : null),
         name: String(it.name || ''),
-        blackKey: it.blackKey ? String(it.blackKey) : null
+        blackKey: it.blackKey ? String(it.blackKey) : null,
+        surface: Object.prototype.hasOwnProperty.call(FB_SURFACES, String(it.surface)) ? String(it.surface) : ''
       });
     });
     feedbackStore = { version: norm.version, items: items };
@@ -21168,6 +21594,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     else if(act === 'del'){ deleteRecord(id); }
     else if(act === 'aa'){ openAA(id); }
     else if(act === 'again'){ haptic(10); eatAgain(id); }
+    else if(act === 'storeProfile'){ if(key) openMapStoreSheet(key); }
     else if(act === 'black'){
       var rb = recordById(id);
       if(rb){
@@ -21331,9 +21758,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     else if(act === 'unblack'){ if(key) unblack(key); }
     else if(act === 'fb'){
       var sfb = findStore(key);
-      if(sfb && fbAction) applyFeedback(fbAction, sfb);
+      if(sfb && fbAction) applyFeedback(fbAction, sfb, actEl.getAttribute('data-surface') || 'daily');
     }
     else if(act === 'fbUndo'){ if(fbKey && fbPrev) undoFeedback(fbKey, fbPrev); }
+    else if(act === 'fbWish'){ var sw = findStore(key); if(sw) wishAddStore(sw); }
     else if(act === 'profBoost'){ toggleProfileBoost(actEl.getAttribute('data-cat')); }
     else if(act === 'profBlock'){ toggleProfileBlock(actEl.getAttribute('data-cat')); }
     else if(act === 'profBudget'){
@@ -21759,6 +22187,44 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(visit){ var id = visit.getAttribute('data-map-visit'); closeMapStoreSheet(); diaryOpenDetail(id); return; }
     var open = e.target.closest ? e.target.closest('[data-map-open]') : null;
     if(open){ openMapStoreSheet(open.getAttribute('data-map-open')); return; }
+    var again = e.target.closest ? e.target.closest('[data-act="shopAgain"]') : null;
+    if(again){
+      var ak = again.getAttribute('data-key') || '';
+      var as = mapStoreByKey(ak);
+      if(as){ quickEat(as, guessMeal()); shopProfileRefresh(ak); }
+      return;
+    }
+    var mergeBtn = e.target.closest ? e.target.closest('[data-store-merge]') : null;
+    if(mergeBtn){
+      var fromKey = mergeBtn.getAttribute('data-store-merge-key') || '';
+      var toKey = mergeBtn.getAttribute('data-store-target') || mapView.sheetKey;
+      var mr = shopMergeKeys(fromKey, toKey, {});
+      if(mr.ok){
+        toast('已合并「'+mr.fromName+'」→「'+mr.toName+'」：'+mr.moved+' 条到店记录，照片与历史保留');
+        openMapStoreSheet(toKey);
+      }else if(mr.error){ toast(mr.error); }
+      return;
+    }
+    var relateBtn = e.target.closest ? e.target.closest('[data-store-relate]') : null;
+    if(relateBtn){
+      var rFrom = relateBtn.getAttribute('data-store-relate') || '';
+      var rTo = relateBtn.getAttribute('data-store-target') || mapView.sheetKey;
+      var rr = shopRelateKeys(rFrom, rTo);
+      if(rr.ok){ toast('已标记为同一家（未合并），历史记录保持不变'); shopProfileRefresh(rTo); }
+      else if(rr.error) toast(rr.error);
+      return;
+    }
+    var ignoreBtn = e.target.closest ? e.target.closest('[data-store-ignore]') : null;
+    if(ignoreBtn){
+      var cur = mapStoreByKey(mapView.sheetKey || '');
+      var sidSelf = cur ? shopIdOfStore(cur) : '';
+      var sidOther = ignoreBtn.getAttribute('data-store-ignore') || '';
+      if(!sidSelf || !sidOther){ toast('店铺已变化，请刷新后重试'); return; }
+      var ig = shopIgnoreDup(sidSelf, sidOther);
+      if(ig.ok){ toast('已标记为不是同一家，不再提示'); shopProfileRefresh(mapView.sheetKey); }
+      else if(ig.error) toast(ig.error);
+      return;
+    }
     var fix = e.target.closest ? e.target.closest('[data-map-fix]') : null;
     if(fix){ closeMapStoreSheet(); if(fix.getAttribute('data-map-fix')) openForm(fix.getAttribute('data-map-fix')); return; }
     var tj = e.target.closest ? e.target.closest('[data-trip-join]') : null;
@@ -25587,6 +26053,74 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           hintShown: $('#prefillHint').style.display !== 'none',
           per: $('#f-per').value, rating: $('#f-rating').value
         };
+      }
+    },
+    shopArchive: {
+      stores: function(){
+        return getStores().map(function(s){
+          return { key:s.key, name:s.name, city:s.city || '', visits:s.visits, lat:s.lat, lng:s.lng };
+        });
+      },
+      candidates: function(key){
+        return shopDupCandidates(key).map(function(x){
+          return { key:x.store.key, name:x.store.name, shopId:x.shopId, visits:x.store.visits, reason:x.reason.code, text:x.reason.text };
+        });
+      },
+      merge: function(fromKey, toKey){ return shopMergeKeys(fromKey, toKey, { confirm:false }); },
+      relate: function(fromKey, toKey){ return shopRelateKeys(fromKey, toKey); },
+      ignore: function(a, b){ return shopIgnoreDup(a, b); },
+      stats: function(key){
+        var s = mapStoreByKey(key);
+        if(!s) return null;
+        var st = shopStatsCompute(s);
+        return {
+          count: st.count,
+          actual: { n:st.actual.n, avg:st.actual.avg, first:st.actual.first, last:st.actual.last },
+          ref: { n:st.ref.n, avg:st.ref.avg },
+          rating: { n:st.rating.n, avg:st.rating.avg, first:st.rating.first, last:st.rating.last },
+          samples: st.samples
+        };
+      },
+      statsText: function(key){ var s = mapStoreByKey(key); return s ? shopStatsHtml(s) : ''; },
+      timelineText: function(key){ var s = mapStoreByKey(key); return s ? shopTimelineHtml(s) : ''; },
+      dupText: function(key){ var s = mapStoreByKey(key); return s ? shopDupHtml(s) : ''; },
+      bar: function(key, surface){
+        var s = findStore(key);
+        return s ? feedbackBarHtml(s, surface || 'daily') : '';
+      },
+      open: function(key){
+        openMapStoreSheet(key);
+        return { open: mapSheetOpen(), key: mapView.sheetKey, text: $('#mapStoreBody').innerText };
+      },
+      body: function(){ return $('#mapStoreBody').innerText; },
+      close: function(){ closeMapStoreSheet(); },
+      meta: function(sid){ return shopMetaGet(sid); },
+      setLocation: function(sid, loc){
+        shopMetaTouch(sid, function(m){ m.location = loc; });
+        return shopMetaGet(sid);
+      },
+      metaVersion: function(){
+        var raw = localStorage.getItem(SHOPMETA_KEY);
+        if(!raw) return 0;
+        try{ return num(JSON.parse(raw).version) || 0; }catch(e){ return 0; }
+      },
+      feedbackItems: function(){
+        return feedbackStore.items.map(function(it){
+          return { key:it.key, action:it.action, surface:it.surface || '', name:it.name };
+        });
+      },
+      feedbackApply: function(action, key, surface){
+        var s = findStore(key);
+        if(!s) return false;
+        applyFeedback(action, s, surface || 'daily');
+        return true;
+      },
+      wishAdd: function(key){ return wishAddStore(findStore(key)); },
+      again: function(key){
+        var s = findStore(key);
+        if(!s) return false;
+        quickEat(s, '');
+        return true;
       }
     },
     stats: {

@@ -205,6 +205,74 @@ PWA 层   manifest.webmanifest / sw.js / registerSW / updateBar
 - 解析失败回退 `.bak`；迁移抛错保留 `.raw` 并以空库启动，页面不白屏。
 - 写盘前与 `lastSavedStr` 比较，内容相同跳过；写入前旧值存 `.bak`。
 
+### 3.5 店铺档案增强与三类反馈（第一阶段）
+
+本阶段**不新增店铺表**：店铺仍由 `db.records` 按 `keyOf = city|name` 聚合，店铺级补充信息仍存独立键 `fandazi.shopmeta`；v2 模式下 `save()` 继续由记录全量重建 `shops/visits`，新能力不直接写 `shops`。
+
+`fandazi.shopmeta` 升到 **version 2**，新增字段全部可选：
+
+```json
+{
+  "version": 2,
+  "items": {
+    "店铺id": {
+      "updatedAt": "...",
+      "links": [],
+      "fields": {},
+      "location": { "coordinateSystem": "GCJ02", "source": "amap_poi", "amapPoiId": "B0FF...", "formattedAddress": "...", "lng": 121.47, "lat": 31.23 },
+      "aliases":     [ { "shopId": "旧店铺id", "name": "旧店名", "city": "上海", "at": "..." } ],
+      "relatedShops":[ { "shopId": "关联店铺id", "name": "关联店名", "city": "上海", "at": "..." } ],
+      "relatedTo":   "目标店铺id",
+      "dupIgnored":  ["已确认不是同一家的店铺id"]
+    }
+  }
+}
+```
+
+- `shopMetaNormEntry()` 做白名单：`aliases` / `relatedShops` 截断到 50 条，`dupIgnored` 截断到 100 条；非法值丢弃，不丢弃整段。
+- 旧 version 1 条目（只有 `updatedAt / links / fields / location`）原样可读；写入时按新版本落盘。
+- 备份中的 `payload.shopmeta` 随之为 version 2；完整备份格式仍为 `schemaVersion: 7`，旧备份导入走同一套可选字段归一，不报错。
+
+推荐反馈 `fandazi.feedback` 升到 **version 2**，每条新增可选 `surface`：
+
+```json
+{ "version": 2, "items": [ { "key": "上海|甲味小馆", "action": "tired", "surface": "daily", "at": "...", "until": "...", "name": "甲味小馆" } ] }
+```
+
+`surface ∈ {daily, draw, blind, trip}`，只用于来源归因与文案，**不改变 `feedbackMultiplier()` 的权重算法**；缺省 / 非法值按空处理，旧反馈照常生效。
+
+**三类数据边界（写死）**：
+
+| 类别 | 写入位置 | 入口 | 是否影响统计 |
+| --- | --- | --- | --- |
+| 想去 | `db.wishlist`（`wishAddStore()`） | 推荐 / 抽签 / 盲盒 / 旅行清单的「加入想去」 | 否 |
+| 推荐反馈 | `fandazi.feedback`（带 `surface`） | 同一套 `feedbackBarHtml()` / `applyFeedback()` | 否，只影响推荐排序 |
+| 真实到店 | `db.records`（`quickEat()` / 记录表单） | 档案页「又来了」、记一餐、确认到店 | 是，唯一统计事实来源 |
+
+反馈与想去都不写 `db.records`；「又来了」复用 `quickEat()`，不新建旁路记录。
+
+**重复店铺识别**（`shopDupReasonOf()`，按优先级返回首个命中）：
+
+| 级别 | 条件 | 说明 |
+| --- | --- | --- |
+| `poi` | 两边 `shopmeta.location.amapPoiId` 相同且非空 | 最高可信，优先于名称 |
+| `addr` | 店名归一化相同 + 城市相同（去掉末尾「市」）+ 地址一致或互相包含 | 无 POI 时的地址近似 |
+| `coord` | 店名与城市相同 + 坐标（记录坐标优先，缺省用 `shopmeta.location`）Haversine ≤ **200 m** | 无地址 / 地址不同时兜底 |
+| `name` | 店名与城市相同，但至少一方缺坐标或地址 | 标记「需人工确认」 |
+
+- 候选由 `shopDupCandidates(key)` 计算，排除已合并 / 已关联 / 已忽略；**没有任何自动合并路径**。
+- 合并（`shopMergeKeys`）先二次确认，再仅改源记录 `name/city`，随后 `save(true)`；`shopmeta` 写入失败会回滚内存记录与 `shopmeta` 原值并重新落盘，避免半成品。
+- 关联（`shopRelateKeys`）写 `relatedTo/relatedShops/aliases`，不改记录；忽略（`shopIgnoreDup`）写双方 `dupIgnored`，不改记录。
+
+**统计口径**（`shopStatsCompute()`，仅 `recordCountsInStats()` 通过的真实到店记录）：
+
+- 实际人均 = `amountCountable(r) / people`，金额或人数无效时为 `null`；
+- 参考人均 = 记录里手填的 `perPrice`，缺失为 `null`；
+- 综合评分 = `rating`，缺失为 `null`；
+- 两项人均分别求平均、分别展示首末变化，**互不顶替**；无样本或某列全空时显示「暂无数据」，不估算。
+
+时间轴（`shopTimelineHtml()`）按 `visitDate` 倒序，同日按 `createdAt` 稳定排序，行点击复用现有 `diaryOpenDetail(id)`。
+
 ---
 
 ## 4. 时间×距离推荐
@@ -578,6 +646,9 @@ i吃饭 · 分享清单
 11. 导入撤销快照保存在内存，刷新或关闭页面后失效；跨会话恢复请使用导出的 JSON 备份。
 12. 冲突选项的「覆盖」会替换对方记录中的可见字段，但不会删除本机原有照片。
 13. 互导教程为静态说明层，不直接替你勾选记录或执行分享/导入；轻提示只出现一次，清空 `localStorage['fandazi.tut.hint']` 或清除站点数据后会再次出现。
+14. 重复店铺识别只能处理聚合键不同的店；同名同城但实际是不同分店的记录，会先被 `keyOf` 合成同一家，档案页无法拆开。合并后目标店的地址 / 坐标取最近一次到访，可能随并入记录变化。
+15. 无 POI 的判重是启发式（名称 + 地址 / 200 米坐标），可能误报或漏报，必须人工确认；关联 / 忽略只写 `fandazi.shopmeta`，不进入跨设备同步包与好友分享包。
+16. 店铺档案的「实际人均」只认实付总额 / 人数，与参考人均分开统计；两者都缺失时只显示「暂无数据」，不估算、不互相填充。
 
 ---
 
@@ -592,6 +663,7 @@ i吃饭 · 分享清单
 | B 批回归 | 四时段、周末权重、不重复、0.5/3/10 km、分钟筛选、空结果、3 条与 1000 条导出、长图分页、移动四标签 | 通过 |
 | B4 分享/导入 | 互导 10 条、重复导入、8%/12% 边界、20 条链接、81 条阈值、二维码矩阵比对、损坏 JSON/version 2/11MB、1000 条耗时、375×812 预览 | 通过 |
 | 互导教程 | 帮助/分享/导入入口角色、首次提示与标记、引导冲突、1000 条耗时、375×812 与 375×520 布局、控制台/外部请求 | 通过 |
+| 店铺档案增强（第一阶段） | `shop-archive-test.js`：POI / 地址 / 坐标判重、跨城不误判、不自动合并、实际与参考人均分离、无数据「暂无数据」、时间轴、关联 / 忽略不改记录、合并保留历史与照片、四入口反馈 `surface`、想去只进 `wishlist`、v1 shopmeta 备份兼容、console/exception 0 | **28/28 通过** |
 | 移动截图 | 375×812 推荐页/抽签页/导入预览/教程顶底部；375×520 矮视口 | 布局正常，无溢出 |
 
 ### 10.2 手工自测清单
