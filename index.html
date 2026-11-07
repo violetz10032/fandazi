@@ -39,7 +39,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     --map-ink:rgba(107,97,90,.8); --map-ink2:rgba(154,143,134,.9);
     --map-ring1:rgba(232,89,12,.42); --map-ring2:rgba(232,89,12,.20);
     --map-dot-stroke:rgba(255,255,255,.85); --map-label:rgba(140,110,85,.75);
-    --map-scale:rgba(107,97,90,.55); --map-me-label:#b8460a; --map-wish:#2f7fd6;
+    --map-scale:rgba(107,97,90,.55); --map-me-label:#b8460a; --map-wish:#2f7fd6; --map-fav:#b7791f;
     --chart-axis:#e8ded2; --chart-grid:#f1eae0; --chart-text:#9a8f86;
     --chart-1:#e8590c; --chart-2:#2f8c5a; --chart-3:#6b5bd6; --chart-4:#b7791f; --chart-5:#3d7ea6; --chart-6:#9a8f86;
     --green:#2f8c5a; --amber:#b7791f; --danger:#b42318;
@@ -79,7 +79,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     --map-ink:rgba(242,235,227,.8); --map-ink2:rgba(242,235,227,.6);
     --map-ring1:rgba(255,122,47,.50); --map-ring2:rgba(255,122,47,.24);
     --map-dot-stroke:rgba(20,17,14,.85); --map-label:rgba(242,235,227,.72);
-    --map-scale:rgba(242,235,227,.55); --map-me-label:#ffb27a; --map-wish:#6bb6ff;
+    --map-scale:rgba(242,235,227,.55); --map-me-label:#ffb27a; --map-wish:#6bb6ff; --map-fav:#ffcf66;
     --chart-axis:#4a4038; --chart-grid:#332c25; --chart-text:#9d9184;
     --chart-1:#ff7a2f; --chart-2:#4cc08a; --chart-3:#8b7dff; --chart-4:#e8b34e; --chart-5:#5aa5cc; --chart-6:#9d9184;
     --green:#4cc08a; --amber:#e8b34e; --danger:#ff7a70;
@@ -742,6 +742,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .map-filters{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
   .map-filters select{flex:1;min-width:104px;font-size:12px;padding:7px 9px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
   .map-legend .lg-wish i{width:9px;height:9px;border-radius:50%;display:inline-block;background:transparent;border:2px solid var(--map-wish, #2f7fd6)}
+  .map-legend .lg-fav i{width:9px;height:9px;display:inline-block;background:var(--map-fav, #b7791f);transform:rotate(45deg);border-radius:2px}
   /* 店铺定位：高德搜索候选 + 地图选点 */
   .poi-row{display:flex;gap:8px;align-items:center}
   .poi-row .input{flex:1;min-width:0}
@@ -1338,7 +1339,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
               <option value="60-100">人均 60–100</option>
               <option value="100-">人均 100+</option>
             </select>
-            <span class="hint" style="flex:1;align-self:center">人均与菜系/评分同口径；未填人均不计入价格档</span>
+            <select class="input" id="favFilter" style="max-width:150px">
+              <option value="">全部收藏状态</option>
+              <option value="fav">仅收藏</option>
+              <option value="nofav">仅未收藏</option>
+            </select>
+            <span class="hint" style="flex:1;align-self:center">收藏按「城市+店名」判定，与想去清单分开；同一家店可同时想去和收藏</span>
           </div>
         </div>
         <div class="section-head">
@@ -1786,7 +1792,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           <select class="input" id="drawSource">
             <option value="all">全部有档案的店</option>
             <option value="wish">仅想去清单</option>
-            <option value="fav">仅收藏（应用内「收藏」页签即想去清单）</option>
+            <option value="fav">仅收藏（独立收藏夹，与想去分开）</option>
           </select>
         </div>
         <div class="chips">
@@ -2077,7 +2083,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           <div class="stat"><b id="st-records">0</b><span>条到访记录</span></div>
           <div class="stat"><b id="st-stores">0</b><span>家店铺</span></div>
           <div class="stat"><b id="st-wish">0</b><span>条想去</span></div>
+          <div class="stat"><b id="st-fav">0</b><span>家收藏</span></div>
         </div>
+        <div class="hint" style="margin:8px 2px 0">统计口径：想去与收藏分开计算。想去 = 想去清单里的待去店铺；收藏 = 独立收藏夹里按「城市+店名」去重的店铺。同一家店可以同时被标为想去和收藏，两边数量各自累加、互不覆盖。</div>
         <div class="actions">
           <button class="btn" id="btnExportJson">导出 JSON</button>
           <button class="btn" id="btnExportCsv">导出 CSV</button>
@@ -6509,13 +6517,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return drawPersist(next);
   }
   function drawStoreByShopId(id){
-    var all = getStores().concat(wishStores()), hit = null;
+    var all = getStores().concat(wishStores(), favoriteStores()), hit = null;
     all.forEach(function(s){ if(!hit && drawShopId(s) === String(id)) hit = s; });
     return hit;
   }
-  /* 来源池：想去 / 收藏在本应用里是同源集合（应用内「收藏」页签即想去清单），按 shopId 去重 */
+  /* 来源池：想去与收藏是两份独立数据；收藏按「城市+店名」归并到已有档案，
+     没有档案的收藏店用轻量占位，保证「仅收藏」也能抽。 */
   function drawSourcePool(source){
-    var list = (source === 'wish' || source === 'fav') ? wishStores() : getStores().concat(wishStores());
+    var list;
+    if(source === 'wish') list = wishStores();
+    else if(source === 'fav') list = favoritePickStores();
+    else list = getStores().concat(wishStores(), favoriteStores());
     var out = [], seen = {};
     list.forEach(function(s){
       var id = drawShopId(s);
@@ -8697,6 +8709,154 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       };
     });
   }
+  /* ================= 收藏（独立状态，与「想去」完全分开） =================
+   * 独立键 fandazi.favorites：不写 db.wishlist、不随 v1/v2 主库迁移。
+   * 归一键沿用「城市|店名」小写（与 keyOf / 店铺聚合一致），阶段④合并可直接迁移。
+   * 同一家店可以同时「想去」和「收藏」，两者互不联动、互不覆盖。 */
+  var FAV_KEY = 'fandazi.favorites';
+  var FAV_VERSION = 1;
+  var favStore = null;
+  function favoriteKeyOf(name, city){
+    return String(city == null ? '' : city).trim().toLowerCase() + '|' + String(name == null ? '' : name).trim().toLowerCase();
+  }
+  function favoriteNorm(it){
+    if(!it || typeof it !== 'object') return null;
+    var name = String(it.name == null ? '' : it.name).trim();
+    if(!name) return null;
+    var city = String(it.city == null ? '' : it.city).trim();
+    var key = favoriteKeyOf(name, city);
+    return {
+      id: String(it.id || ('f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6))),
+      key: key, name: name, city: city,
+      area: String(it.area == null ? '' : it.area).trim(),
+      at: String(it.at || ''),
+      source: String(it.source || 'manual')
+    };
+  }
+  function favoritesLoad(){
+    if(favStore) return favStore;
+    var items = [];
+    try{
+      var raw = localStorage.getItem(FAV_KEY);
+      if(raw){
+        var obj = JSON.parse(raw);
+        var arr = Array.isArray(obj) ? obj : (obj && Array.isArray(obj.items) ? obj.items : []);
+        var seen = {};
+        arr.forEach(function(x){
+          var n = favoriteNorm(x);
+          if(!n || seen[n.key]) return;
+          seen[n.key] = 1;
+          items.push(n);
+        });
+      }
+    }catch(e){ items = []; }
+    favStore = { version: FAV_VERSION, items: items };
+    return favStore;
+  }
+  function favoritesPersist(store){
+    var next = { version: FAV_VERSION, items: (store && Array.isArray(store.items) ? store.items : []).slice() };
+    try{ localStorage.setItem(FAV_KEY, JSON.stringify(next)); }
+    catch(e){ logError('收藏保存', e); toast('收藏保存失败：本机存储空间不足'); return false; }
+    favStore = next;
+    return true;
+  }
+  function favoriteOf(name, city){
+    var key = favoriteKeyOf(name, city);
+    return favoritesLoad().items.filter(function(x){ return x.key === key; })[0] || null;
+  }
+  function favoriteHas(name, city){ return !!favoriteOf(name, city); }
+  function favoriteCount(){ return favoritesLoad().items.length; }
+  function favoriteToggle(name, city, area){
+    var cur = favoritesLoad();
+    var key = favoriteKeyOf(name, city);
+    var hit = cur.items.filter(function(x){ return x.key === key; })[0];
+    if(hit){
+      if(!favoritesPersist({ items: cur.items.filter(function(x){ return x.key !== key; }) })) return { on:true, count:cur.items.length, changed:false };
+      return { on:false, count:favoritesLoad().items.length, changed:true };
+    }
+    var item = favoriteNorm({ id:'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      key:key, name:name, city:city, area:area, at:new Date().toISOString(), source:'manual' });
+    if(!item || !favoritesPersist({ items: [item].concat(cur.items) })) return { on:false, count:cur.items.length, changed:false };
+    return { on:true, count:favoritesLoad().items.length, changed:true };
+  }
+  function favoriteBackupData(){
+    var st = favoritesLoad();
+    return { version: FAV_VERSION, items: JSON.parse(JSON.stringify(st.items)) };
+  }
+  function favoritesBackupValidate(section, where){
+    if(section == null) return null;
+    if(typeof section !== 'object' || Array.isArray(section)) throw new Error('备份里的收藏段格式不正确（' + where + '）');
+    var arr = section.items == null ? [] : section.items;
+    if(!Array.isArray(arr)) throw new Error('备份里的收藏段 items 不是数组（' + where + '）');
+    var out = [], seen = {};
+    for(var i = 0; i < arr.length; i++){
+      var n = favoriteNorm(arr[i]);
+      if(!n) throw new Error('备份里的收藏第 ' + (i + 1) + ' 项缺少店名（' + where + '）');
+      if(seen[n.key]) continue;
+      seen[n.key] = 1;
+      out.push(n);
+    }
+    return { version: num(section.version) || FAV_VERSION, items: out };
+  }
+  function applyBackupFavorites(section, mode){
+    var incoming = favoritesBackupValidate(section, '恢复');
+    if(!incoming) return { applied:false, legacy:true, count:favoritesLoad().items.length, added:0 };
+    var cur = favoritesLoad(), next = [], added = 0;
+    if(mode === 'replace'){
+      next = incoming.items.slice();
+      added = next.length;
+    }else{
+      next = cur.items.slice();
+      incoming.items.forEach(function(it){
+        if(!next.some(function(x){ return x.key === it.key; })){ next.push(it); added++; }
+      });
+    }
+    if(!favoritesPersist({ items: next })) return { applied:false, legacy:false, count:cur.items.length, added:0 };
+    return { applied:true, legacy:false, count:next.length, added:added };
+  }
+  function favoriteStores(){
+    return favoritesLoad().items.map(function(it){
+      return {
+        key: 'f|' + it.key, name: it.name, city: it.city, area: it.area,
+        address: '', distanceKm: null, openStart:'', openEnd:'', fitMeals:[], dayType:'any',
+        travelMode:'', travelMin:null, fromPlace:'', perPrice:0, category:'', tags:[],
+        ratings:{}, rating:null, maxPeople:1, lastVisit:'', days:999,
+        nutrition:{ kcal:null, protein:null, n:0 }, friendly:false,
+        isWish:false, isFav:true, fav:it, records:[], visits:0
+      };
+    });
+  }
+  function favoritePickStores(){
+    var all = getStores().concat(wishStores());
+    var out = [], seen = {};
+    favoritesLoad().items.forEach(function(it){
+      var hit = all.filter(function(s){ return favoriteKeyOf(s.name, s.city) === it.key; })[0];
+      var s = hit || favoriteStores().filter(function(x){ return x.fav.key === it.key; })[0];
+      if(!s || seen[s.key]) return;
+      seen[s.key] = 1;
+      out.push(s);
+    });
+    return out;
+  }
+  /* 阶段④店铺合并钩子：fromKey/toKey 都是 keyOf 归一后的「城市|店名」。
+     收藏必须跟着店走，不能因为合并丢掉；目标店已在收藏里时只去掉源项。 */
+  function favoritesMigrateKey(fromKey, toKey, toInfo){
+    var from = String(fromKey || ''), to = String(toKey || '');
+    if(!from || !to || from === to) return { moved:0, count:favoriteCount() };
+    var st = favoritesLoad();
+    var src = st.items.filter(function(x){ return x.key === from; })[0];
+    if(!src) return { moved:0, count:st.items.length };
+    var dst = st.items.filter(function(x){ return x.key === to; })[0];
+    var items = st.items.filter(function(x){ return x.key !== from; });
+    if(!dst){
+      var sp = to.split('|');
+      var name = (toInfo && toInfo.name) ? String(toInfo.name) : src.name;
+      var city = (toInfo && toInfo.city != null) ? String(toInfo.city) : (sp[0] || src.city);
+      items.push({ id:src.id, key:to, name:name, city:city, area:src.area, at:new Date().toISOString(), source:src.source });
+    }
+    if(!favoritesPersist({ items: items })) return { moved:0, count:st.items.length };
+    return { moved:1, count:items.length };
+  }
   function isBlack(store){
     return db.blacklist.some(function(b){ return b.key === store.key; });
   }
@@ -9723,7 +9883,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     var totalW = 0;
     for(var i=0;i<candidates.length;i++) totalW += candidates[i].w;
-    /* Epsilon-Greedy：固定 15% 从「想去 / 收藏但从未到店」里抽，池空则照常加权 */
+    /* Epsilon-Greedy：固定 15% 从「想去但从未到店」里抽（收藏是独立状态，不并进这个池），池空则照常加权 */
     var explore = null;
     if(!(opts && opts.noExplore) && Math.random() < DRAW_EXPLORE_RATE){
       var expPool = drawExplorePool(min, max, opts);
@@ -10815,6 +10975,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '<div class="actions rec-actions">'+
         '<button class="btn btn-sm" data-act="edit" data-id="'+esc(r.id)+'">'+icon('edit')+'编辑</button>'+
         '<button class="btn btn-sm btn-soft" data-act="storeProfile" data-key="'+esc(keyOf(r))+'" title="查看这家店的档案：时间轴 / 人均与评分 / 疑似同店">店铺档案</button>'+
+        '<button class="btn btn-sm btn-soft" data-act="favToggle" data-name="'+esc(r.name)+'" data-city="'+esc(r.city||'')+'" data-area="'+esc(r.area||'')+'" title="独立收藏，与想去清单互不影响">'+(favoriteHas(r.name,r.city)?'★ 已收藏':'☆ 收藏')+'</button>'+
         '<button class="btn btn-sm btn-soft" data-act="aa" data-id="'+esc(r.id)+'">AA 分账</button>'+
         '<button class="btn btn-sm btn-danger" data-act="del" data-id="'+esc(r.id)+'">删除</button>'+
         '<button class="btn btn-sm btn-soft" data-act="map" data-id="'+esc(r.id)+'" title="点击在高德打开，长按可选高德/百度">'+icon('pin')+'地图</button>'+
@@ -10835,6 +10996,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       $('#catFilter').value || '',
       $('#ratingFilter').value || '',
       $('#priceFilter') ? ($('#priceFilter').value || '') : '',
+      $('#favFilter') ? ($('#favFilter').value || '') : '',
       $('#sort').value || ''
     ].join('\u0001');
   }
@@ -10848,12 +11010,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var cat = $('#catFilter').value;
       var minRate = num($('#ratingFilter').value);
       var band = $('#priceFilter') ? String($('#priceFilter').value || '') : '';
+      var favFilter = $('#favFilter') ? String($('#favFilter').value || '') : '';
       var sort = $('#sort').value;
 
       var items = db.records.filter(function(r){
         if(cat && String(r.category||'') !== cat) return false;
         if(minRate > 0 && (num(r.rating) < minRate)) return false;
         if(!priceBandMatch(perPriceOf(r), band)) return false;
+        if(favFilter){
+          var fav = favoriteHas(r.name, r.city);
+          if(favFilter === 'fav' && !fav) return false;
+          if(favFilter === 'nofav' && fav) return false;
+        }
         if(q){
           var hay = [r.name,r.city,r.area,r.address,r.category,r.note,(r.tags||[]).join(' ')].join(' ').toLowerCase();
           if(hay.indexOf(q) < 0) return false;
@@ -10872,7 +11040,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
 
     var items = listState.items;
-    $('#listCount').textContent = db.records.length+' 条 · 共 '+getStores().length+' 家店';
+    $('#listCount').textContent = db.records.length+' 条 · 共 '+getStores().length+' 家店 · 收藏 '+favoriteCount()+' 家店'+
+      (String($('#favFilter') ? $('#favFilter').value : '') ? '（当前筛选 '+items.length+' 条）' : '');
 
     if(!db.records.length){
       $('#listBox').innerHTML =
@@ -11421,7 +11590,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(f.tags.length) arr.push('品类/标签 '+f.tags.join('、'));
     if(f.openNow) arr.push('现在营业');
     if(f.notVisitedDays > 0) arr.push(f.notVisitedDays+' 天内没去过');
-    arr.push(f.source === 'wish' ? '仅想去清单' : (f.source === 'fav' ? '仅收藏（=想去清单）' : '全部有档案的店'));
+    arr.push(f.source === 'wish' ? '仅想去清单' : (f.source === 'fav' ? '仅收藏（独立收藏夹）' : '全部有档案的店'));
     if(f.tripOnly) arr.push('仅行程内（未跳过）');
     return arr.join(' / ');
   }
@@ -14750,8 +14919,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#wishBox').innerHTML = db.wishlist.map(function(w){
       return '<div class="vote-item">'+
         '<div style="flex:1;min-width:0"><div style="font-size:13px"><b>'+esc(w.name)+'</b></div>'+
-        '<p class="meta">'+esc([w.city,w.area].filter(Boolean).join(' · ')||'未填位置')+(w.budget?' · 预算 '+money(w.budget)+'/人':'')+(w.note?' · '+esc(w.note):'')+'</p></div>'+
+        '<p class="meta">'+esc([w.city,w.area].filter(Boolean).join(' · ')||'未填位置')+(w.budget?' · 预算 '+money(w.budget)+'/人':'')+(w.note?' · '+esc(w.note):'')+(favoriteHas(w.name,w.city)?' · ★ 已收藏':'')+'</p></div>'+
         '<button class="btn btn-sm" data-act="wishMeta" data-id="'+esc(w.id)+'">链接</button>'+
+        '<button class="btn btn-sm btn-soft" data-act="favToggle" data-name="'+esc(w.name)+'" data-city="'+esc(w.city||'')+'" data-area="'+esc(w.area||'')+'" title="独立收藏，与想去清单互不影响">'+(favoriteHas(w.name,w.city)?'★ 已收藏':'☆ 收藏')+'</button>'+
         '<button class="btn btn-sm" data-act="wishEat" data-id="'+esc(w.id)+'">吃过啦</button>'+
         '<button class="btn btn-sm btn-danger" data-act="wishDel" data-id="'+esc(w.id)+'">删除</button>'+
       '</div>';
@@ -15155,6 +15325,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#st-records').textContent = db.records.length;
     $('#st-stores').textContent = getStores().length;
     $('#st-wish').textContent = db.wishlist.length;
+    if($('#st-fav')) $('#st-fav').textContent = favoriteCount();
     $('#verInfo').textContent = '当前数据结构 version '+db.version+'；旧版（v1）数据会自动升级并保留历史记录。';
     $('#storageSize').textContent = fmtBytes(storageBytes());
     renderBackupState();
@@ -15518,7 +15689,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function allPickStores(){
     var seen = {}, out = [];
-    getStores().concat(wishStores()).forEach(function(s){
+    getStores().concat(wishStores(), favoritePickStores()).forEach(function(s){
       if(!s.key || seen[s.key]) return;
       seen[s.key] = 1; out.push(s);
     });
@@ -15552,7 +15723,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         .slice(0, 6);
     }
     if(tab === 'fav'){
-      return all.filter(function(s){ return s.isWish; }).slice(0, 8);
+      return favoritePickStores().slice(0, 8);
     }
     if(tab === 'query'){
       var terms = db.settings.recentQueries || [], out = [], seen = {};
@@ -15585,6 +15756,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function storeMetaText(s){
     var bits = [];
     if(s.isWish) bits.push('想去');
+    if(favoriteHas(s.name, s.city)) bits.push('收藏');
     var c = storeCatSafe(s);
     if(c) bits.push(c);
     if(num(s.perPrice) > 0) bits.push('¥' + Math.round(num(s.perPrice)) + '/人');
@@ -16605,6 +16777,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     points: [], missing: [], clusters: [], labels: [],
     branches: null, nearKm: 0,
     wishPoints: [], wishClusters: [], wishMissing: [], wishAll: 0,
+    favPoints: [], favClusters: [], favMissing: [], favAll: 0,
     selected: '', sheetKey: '', lastHit: null,
     tripSet: null, tripLabel: '',
     drawMs: 0, firstDrawMs: null, lastFitMs: 0, lastRenderMs: 0
@@ -16651,8 +16824,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return true;
     });
   }
-  /* 想去 / 收藏：项目里「收藏」就是想去清单（记录表单的选择器 fav 与 wishlist 共用 isWish），
-     没有第三种数据，因此地图只画两种标记：实心=已吃过，空心=想去/收藏。 */
+  /* 三态标记：已吃过 / 想去 / 收藏。
+     收藏是独立键 fandazi.favorites，不并入 db.wishlist；同一家店可以同时想去和收藏。
+     地图上一家店只画一个主标记，优先级 已吃过 > 收藏 > 想去；统计仍按三份集合分别计数。 */
   function wishCoord(w){
     if(!w) return null;
     var loc = shopLocationOf(shopIdOf(w.name, w.city));
@@ -16666,6 +16840,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!me || !c) return null;
     var d = haversineKm(me.lat, me.lng, c.lat, c.lng);
     return isFinite(d) ? Math.round(d*10)/10 : null;
+  }
+  function favoriteCoord(f){
+    return wishCoord(f);
+  }
+  function favoriteKmOf(f){
+    return wishKmOf(f);
   }
   function mapWishFiltered(ignoreNear){
     var qEl = $('#q'), cEl = $('#catFilter'), rEl = $('#ratingFilter'), pEl = $('#priceFilter');
@@ -16697,10 +16877,51 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return all.map(function(w){
       var c = wishCoord(w);
       if(!c) return null;
+      /* 收藏优先于想去：同一家店已收藏时，地图只画收藏标记，避免两个点叠在一起 */
+      if(favoriteHas(w.name, w.city)) return null;
       return {
         key: w.key, name: w.name, city: w.city, area: w.area, address: '',
         lat: c.lat, lng: c.lng, visits: 0, rating: 0,
-        store: w, kind: 'wish', km: wishKmOf(w)
+        store: w, kind: 'wish', km: wishKmOf(w), nk: favoriteKeyOf(w.name, w.city)
+      };
+    }).filter(Boolean);
+  }
+  function mapFavFiltered(ignoreNear){
+    var qEl = $('#q'), cEl = $('#catFilter'), rEl = $('#ratingFilter'), pEl = $('#priceFilter');
+    var q = String(qEl ? qEl.value : '').trim().toLowerCase();
+    var cat = cEl ? cEl.value : '';
+    var minRate = rEl ? num(rEl.value) : 0;
+    var band = pEl ? String(pEl.value || '') : '';
+    var near = ignoreNear ? 0 : num(mapView.nearKm);
+    return favoriteStores().filter(function(f){
+      if(cat) return false;            /* 收藏店本身不带菜系，不虚构分类 */
+      if(minRate > 0) return false;    /* 收藏店本身不带评分，不虚构评分 */
+      if(!priceBandMatch(f.perPrice, band)) return false;
+      if(near){
+        var km = favoriteKmOf(f.fav);
+        if(km == null || km > near + 1e-9) return false;
+      }
+      if(q){
+        var hay = [f.name, f.city, f.area].join(' ').toLowerCase();
+        if(hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+  }
+  function mapFavPoints(){
+    mapView.favAll = favoriteCount();
+    mapView.favMissing = mapFavFiltered(true).filter(function(f){ return !favoriteCoord(f.fav); });
+    var visitedKeys = {};
+    getStores().forEach(function(s){ visitedKeys[keyOf(s)] = 1; });
+    return mapFavFiltered().map(function(f){
+      /* 已吃过 > 收藏：有到店记录的店只画实心点，收藏状态留给列表 / 档案 / 统计 */
+      if(visitedKeys[f.fav.key]) return null;
+      var c = favoriteCoord(f.fav);
+      if(!c) return null;
+      return {
+        key: f.key, name: f.name, city: f.city, area: f.area, address: '',
+        lat: c.lat, lng: c.lng, visits: 0, rating: 0,
+        store: f, kind: 'fav', km: favoriteKmOf(f.fav), nk: f.fav.key
       };
     }).filter(Boolean);
   }
@@ -16711,7 +16932,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return {
         key: s.key, name: s.name, city: s.city, area: s.area, address: s.address,
         lat: c.lat, lng: c.lng, visits: num(s.visits), rating: num(s.rating), store: s,
-        kind: 'visited', km: storeKm(s)
+        kind: 'visited', km: storeKm(s), nk: keyOf(s)
       };
     }).filter(Boolean);
   }
@@ -16782,7 +17003,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       mapView.lastFitMs = nowMs() - t0;
       return mapView.cam;
     }
-    var pts = mapView.points.concat(mapView.wishPoints);
+    var pts = mapView.points.concat(mapView.wishPoints, mapView.favPoints || []);
     var box = null;
     pts.forEach(function(p){
       var d = mapDisplayLL(p.lat, p.lng);
@@ -16861,12 +17082,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         : clamp((c.visits - 1)/5, 0, 1);
       c.r = Math.max(9, c.maxR) + (c.count > 1 ? 3 : 0);
       c.id = prefix + c.pts.map(function(p){ return p.key; }).sort().join('|');
-      c.kind = c.pts[0] && c.pts[0].kind === 'wish' ? 'wish' : 'visited';
+      c.kind = (c.pts[0] && c.pts[0].kind) || 'visited';
     });
     return list;
   }
   function mapComputeClusters(){ return mapClusterize(mapView.points, ''); }
   function mapComputeWishClusters(){ return mapClusterize(mapView.wishPoints, 'w:'); }
+  function mapComputeFavClusters(){ return mapClusterize(mapView.favPoints || [], 'f:'); }
   function mapDraw(){
     var t0 = nowMs();
     var cv = $('#mapCanvas');
@@ -16877,6 +17099,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!mapView.cam.fitted) mapFit();
     mapView.clusters = mapComputeClusters();
     mapView.wishClusters = mapComputeWishClusters();
+    mapView.favClusters = mapComputeFavClusters();
     var size = mapView.size, cam = mapView.cam;
     var ctx = cv.getContext('2d');
     if(!ctx) return mapView;
@@ -16972,7 +17195,42 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     });
     mapView.labels = labels;
 
-    /* 想去 / 收藏：空心圈 + 蓝点，与实心“已吃过”一眼可分；聚合仍按屏幕距离单独聚簇 */
+    /* 收藏：金色菱形，与实心「已吃过」、空心「想去」三态分开 */
+    var favCol = mapThemeColor('--map-fav', '#b7791f');
+    mapView.favClusters.forEach(function(c){
+      if(!c) return;
+      var r = Math.max(7.5, c.r - 1) + (c.count > 1 ? 2 : 0);
+      var d = r * 0.78;
+      ctx.beginPath();
+      ctx.moveTo(c.x, c.y - d); ctx.lineTo(c.x + d, c.y); ctx.lineTo(c.x, c.y + d); ctx.lineTo(c.x - d, c.y);
+      ctx.closePath();
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = favCol;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 1.8;
+      ctx.strokeStyle = favCol;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 2.2, 0, Math.PI*2);
+      ctx.fillStyle = favCol;
+      ctx.fill();
+      if(mapView.selected === c.id || mapView.selected === c.pts[0].key){
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, r + 4, 0, Math.PI*2);
+        ctx.strokeStyle = mapThemeColor('--accent', '#e8590c');
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      if(c.count > 1){
+        ctx.fillStyle = favCol;
+        ctx.font = '600 11px -apple-system, "PingFang SC", sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(c.count), c.x, c.y - d - 6);
+      }
+    });
+
+    /* 想去：空心圈 + 蓝点，与实心「已吃过」、金色「收藏」一眼可分 */
     var wishCol = mapThemeColor('--map-wish', '#2f7fd6');
     mapView.wishClusters.forEach(function(c){
       var r = Math.max(7.5, c.r - 1) + (c.count > 1 ? 2 : 0);
@@ -17004,7 +17262,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       }
     });
 
-    if(!mapView.points.length && !mapView.wishPoints.length){
+    if(!mapView.points.length && !mapView.wishPoints.length && !(mapView.favPoints || []).length){
       ctx.fillStyle = mapThemeColor('--map-ink', 'rgba(107,97,90,.8)');
       ctx.font = '13px -apple-system, "PingFang SC", sans-serif';
       ctx.textAlign = 'center';
@@ -17041,6 +17299,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     scan(mapView.clusters, null);
     scan(mapView.wishClusters, function(c){ return Math.max(7.5, c.r - 1); });
+    scan(mapView.favClusters || [], function(c){ return Math.max(7.5, c.r - 1); });
     mapView.lastHit = best;
     return best;
   }
@@ -17084,11 +17343,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var pts = mapView.points.length;
     var miss = mapView.missing.length;
     var wish = mapView.wishPoints.length;
+    var fav = (mapView.favPoints || []).length;
+    var favAll = mapView.favAll == null ? favoriteCount() : mapView.favAll;
     var near = num(mapView.nearKm);
     var clusters = mapView.clusters.length;
     var multi = mapView.clusters.filter(function(c){ return c.count > 1; }).length;
     var trip = mapView.tripSet ? '旅行「'+mapView.tripLabel+'」内 '+mapStoresFiltered().length+' 家有档案的店 · ' : '';
-    return trip+'共 '+total+' 家 · 有坐标 '+pts+' 家 · 未填坐标 '+miss+' 家 · 想去/收藏 '+wish+' 家'+
+    return trip+'共 '+total+' 家 · 有坐标 '+pts+' 家 · 未填坐标 '+miss+' 家 · 想去 '+wish+' 家 · 收藏 '+fav+' 家（共 '+favAll+' 家收藏）'+
       (near ? ' · 附近 '+nearKmLabel(near)+' 内 '+mapStoresFiltered().length+' 家（直线）' : '')+
       ' · '+clusters+' 个标记'+(multi ? '（其中 '+multi+' 个为合并簇）' : '')+
       ' · 首绘 '+(mapView.firstDrawMs == null ? '—' : fmtMs(mapView.firstDrawMs))+
@@ -17112,7 +17373,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '<span class="lg">小<i style="background:'+mapColorOf(0, pal)+'"></i><i style="background:'+mid+'"></i><i style="background:'+mapColorOf(1, pal)+'"></i>大</span>'+
       '<span class="lg">'+(mapView.measure === 'rating' ? '颜色/大小 = 综合评分（暂无评分最浅）' : '颜色/大小 = 到访次数（1 次最浅）')+'</span>'+
       '<span class="lg">实心 = 已吃过</span>'+
-      '<span class="lg lg-wish"><i></i>想去 / 收藏（同一份数据）</span>';
+      '<span class="lg lg-fav"><i></i>收藏（独立收藏夹）</span>'+
+      '<span class="lg lg-wish"><i></i>想去（未收藏）</span>'+
+      '<span class="lg">三态分开计数；同一家店按 已吃过 &gt; 收藏 &gt; 想去 只画一个主标记，画布/高德/内嵌三套路径同一口径</span>';
     $('#mapLegend').innerHTML = html;
   }
   function renderMapMissing(){
@@ -17120,8 +17383,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#mapMissingCount').textContent = String(list.length);
     var box = $('#mapMissingList');
     var wishNote = mapView.wishMissing.length
-      ? '<p class="muted">想去/收藏中另有 '+mapView.wishMissing.length+' 家没有坐标（可在店铺档案里定位），不虚构位置。</p>'
+      ? '<p class="muted">想去中另有 '+mapView.wishMissing.length+' 家没有坐标（可在店铺档案里定位），不虚构位置。</p>'
       : '';
+    if((mapView.favMissing || []).length){
+      wishNote += '<p class="muted">收藏中另有 '+mapView.favMissing.length+' 家没有坐标（可在店铺档案里定位），不虚构位置。</p>';
+    }
     if(!list.length){
       box.innerHTML = '<p class="muted">全部店铺都填了坐标，没有虚构位置。</p>' + wishNote;
       return;
@@ -17189,6 +17455,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     mapView.branches = mapBranchStores();
     mapView.points = mapPoints();
     mapView.wishPoints = mapWishPoints();
+    mapView.favPoints = mapFavPoints();
     mapView.missing = mapMissingStores();
     mapSyncFilterUI();
     var changed = mapResize();
@@ -17199,7 +17466,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     renderMapMissing();
     if(mapView.mode === 'list'){
       $('#mapStatLine').textContent = '共 '+mapView.branches.length+' 家 · 有坐标 '+mapView.points.length+
-        ' 家 · 未填坐标 '+mapView.missing.length+' 家 · 想去/收藏 '+mapView.wishPoints.length+' 家 · 列表视图';
+        ' 家 · 未填坐标 '+mapView.missing.length+' 家 · 想去 '+mapView.wishPoints.length+
+        ' 家 · 收藏 '+mapView.favPoints.length+' 家 · 列表视图';
       renderMapList();
     }else{
       renderMapStat();
@@ -17256,8 +17524,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     else if(hint) hint.textContent = '以中心点画圆，只算直线距离（球面 haversine），不是道路距离；档位边界含本数（500 m 档含 0.5 km）。';
     var wn = $('#mapWishNote');
     if(wn){
-      wn.textContent = '想去/收藏共 '+mapView.wishAll+' 家；本屏已画 '+mapView.wishPoints.length+
-        ' 家'+(mapView.wishMissing.length ? ('；'+mapView.wishMissing.length+' 家没有坐标未画（不虚构位置）') : '')+'。';
+      wn.textContent = '想去 '+mapView.wishAll+' 家（本屏已画 '+mapView.wishPoints.length+
+        ' 家）· 收藏 '+mapView.favAll+' 家（本屏已画 '+mapView.favPoints.length+
+        ' 家）'+(mapView.wishMissing.length ? ('；想去有 '+mapView.wishMissing.length+' 家没有坐标未画（不虚构位置）') : '')+
+        ((mapView.favMissing || []).length ? ('；收藏有 '+mapView.favMissing.length+' 家没有坐标未画') : '')+
+        '。三份数据分开计数，地图上同一家店按 已吃过 > 收藏 > 想去 只画一个主标记。';
     }
     var la = $('#mapCenterLat'), ln = $('#mapCenterLng');
     if(me && la && document.activeElement !== la) la.value = me.lat;
@@ -17285,9 +17556,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function mapFocusStore(key){
     var s = mapStoreByKey(key);
     if(!s) return { ok:false, reason:'missing' };
-    var c = s.isWish ? wishCoord(s.wish) : storeCoord(s);
+    var c = s.isWish ? wishCoord(s.wish) : (s.isFav ? favoriteCoord(s.fav) : storeCoord(s));
     if(!c){
       if(s.isWish) openMapWishSheet(s.wish);
+      else if(s.isFav) openMapFavSheet(s.fav);
       else openMapStoreSheet(key);
       toast('这家店还没有坐标：地图无法定位，已在卡片里提供补坐标入口');
       return { ok:false, reason:'no-coord' };
@@ -17297,13 +17569,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var sc = 18000;
     mapView.cam = { cx: d.lng * mapView.cos, cy: -d.lat, scale: sc, baseScale: sc, fitted: true };
     mapSetMode('map');
-    var all = mapView.clusters.concat(mapView.wishClusters);
+    var all = mapView.clusters.concat(mapView.wishClusters, mapView.favClusters || []);
     var cl = all.filter(function(x){
       return x.pts.some(function(p){ return p.key === key; });
     })[0];
     mapView.selected = cl ? cl.id : key;
     mapDraw();
     if(s.isWish) openMapWishSheet(s.wish);
+    else if(s.isFav) openMapFavSheet(s.fav);
     else openMapStoreSheet(key);
     return { ok:true, key:key, selected:mapView.selected, scale:mapView.cam.scale };
   }
@@ -17314,7 +17587,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var list = mapView.branches || mapBranchStores();
     var hit = list.filter(function(s){ return s.key === k; })[0];
     if(hit) return hit;
-    return wishStores().filter(function(s){ return s.key === k; })[0] || null;
+    var w = wishStores().filter(function(s){ return s.key === k; })[0];
+    if(w) return w;
+    return favoriteStores().filter(function(s){ return s.key === k; })[0] || null;
   }
   function mapSheetOpen(){
     return !$('#mapStoreMask').classList.contains('hidden');
@@ -17632,9 +17907,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       renderAll();
       return { ok:false, error:'店铺补充信息写入失败，已回滚本次合并' };
     }
+    /* 阶段④钩子：收藏跟着店铺走。合并后源店不再存在，收藏项迁到目标店（目标已有则只去重）。 */
+    var favMove = favoritesMigrateKey(fromKey, toKey, { name: to.name, city: to.city || '' });
     invalidateStores();
     renderAll();
-    return { ok:true, moved:moving.length, fromId:fromId, toId:toId, fromName:from.name, toName:to.name };
+    return { ok:true, moved:moving.length, fromId:fromId, toId:toId, fromName:from.name, toName:to.name,
+      favoritesMigrated:favMove.moved };
   }
   function shopRelateKeys(fromKey, toKey){
     var from = mapStoreByKey(fromKey), to = mapStoreByKey(toKey);
@@ -17723,9 +18001,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     mapView.selected = '';
     var body =
       '<p class="map-sheet-sub">'+esc([w.city, w.area].filter(Boolean).join(' · ') || '未填位置')+
-        ' · <span class="tag">想去 / 收藏</span>'+(c ? '' : ' · <span class="tag warn">未填坐标</span>')+'</p>'+
+        ' · <span class="tag">想去</span>'+(favoriteHas(w.name, w.city) ? ' · <span class="tag">★ 已收藏</span>' : '')+(c ? '' : ' · <span class="tag warn">未填坐标</span>')+'</p>'+
       '<div class="card flat" style="padding:4px 12px;margin-bottom:12px">'+
-        diaryKv('类型', '想去清单（与「收藏」同一份数据，没有第三种状态）')+
+        diaryKv('类型', '想去清单（独立状态；收藏是另一个开关，二者互不覆盖）')+
+        diaryKv('收藏', favoriteHas(w.name, w.city) ? '★ 已收藏（独立于想去）' : '未收藏（可单独收藏）')+
         diaryKv('预算', w.perPrice > 0 ? money(w.perPrice) : '未填')+
         diaryKv('备注', esc((w.wish && w.wish.note) || '暂无备注'))+
         diaryKv('距离', wishKmOf(w) != null ? esc('直线 '+distText(wishKmOf(w))+(geoLast() && geoLast().manual ? '（手填中心）' : '（定位）')) : '暂无（需要中心点 + 店铺档案坐标）')+
@@ -17734,6 +18013,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       (c ? '' : '<div class="fb-note" style="margin-bottom:8px">想去店没有坐标：可在店铺档案里定位，地图不会凭店名编造位置。</div>')+
       '<div class="actions" style="margin-top:0">'+
         '<button type="button" class="btn" data-act="wishEat" data-key="'+esc(w.key)+'">记一餐</button>'+
+        '<button type="button" class="btn btn-soft" data-act="favToggle" data-name="'+esc(w.name)+'" data-city="'+esc(w.city||'')+'" data-area="'+esc(w.area||'')+'">'+(favoriteHas(w.name,w.city)?'★ 已收藏（点此取消）':'☆ 收藏（独立于想去）')+'</button>'+
         '<a class="btn btn-soft" href="'+esc('https://uri.amap.com/search?keyword=' + encodeURIComponent(w.name + (w.city ? ' ' + w.city : '')))+'" target="_blank" rel="noopener noreferrer">高德搜索</a>'+
         '<button type="button" class="btn" data-shop-meta="'+esc(sid)+'" data-shop-meta-title="'+esc(w.name)+'">店铺档案</button>'+
         '<button type="button" class="btn" data-map-close="1">关闭</button>'+
@@ -17743,10 +18023,38 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#mapStoreMask').classList.remove('hidden');
     return mapSheetInfo();
   }
+  /* 收藏专属档案：独立收藏夹里、可能还没有任何到店记录的店 */
+  function openMapFavSheet(fav){
+    if(!fav) return null;
+    var c = favoriteCoord(fav), sid = shopIdOf(fav.name, fav.city);
+    mapView.sheetKey = 'f|' + fav.key;
+    mapView.selected = '';
+    var body =
+      '<p class="map-sheet-sub">'+esc([fav.city, fav.area].filter(Boolean).join(' · ') || '未填位置')+
+        ' · <span class="tag">★ 收藏</span>'+(favoriteHas(fav.name, fav.city) ? '' : ' · <span class="tag warn">已取消</span>')+(c ? '' : ' · <span class="tag warn">未填坐标</span>')+'</p>'+
+      '<div class="card flat" style="padding:4px 12px;margin-bottom:12px">'+
+        diaryKv('类型', '收藏（独立收藏夹，与想去清单分开存储、分开读写）')+
+        diaryKv('想去', '本店是否在想去清单由「想去」数据单独决定，这里不联动')+
+        diaryKv('收藏时间', esc(fav.at || '未记录'))+
+        diaryKv('距离', favoriteKmOf(fav) != null ? esc('直线 '+distText(favoriteKmOf(fav))) : '暂无（需要中心点 + 店铺档案坐标）')+
+        diaryKv('坐标', c ? esc(c.lng + ', ' + c.lat + '（店铺档案）') : '未填（不画到图上）')+
+      '</div>'+
+      '<div class="actions" style="margin-top:0">'+
+        '<button type="button" class="btn btn-soft" data-act="favToggle" data-name="'+esc(fav.name)+'" data-city="'+esc(fav.city||'')+'" data-area="'+esc(fav.area||'')+'">★ 已收藏（点此取消）</button>'+
+        '<a class="btn btn-soft" href="'+esc('https://uri.amap.com/search?keyword=' + encodeURIComponent(fav.name + (fav.city ? ' ' + fav.city : '')))+'" target="_blank" rel="noopener noreferrer">高德搜索</a>'+
+        '<button type="button" class="btn" data-shop-meta="'+esc(sid)+'" data-shop-meta-title="'+esc(fav.name)+'">店铺档案</button>'+
+        '<button type="button" class="btn" data-map-close="1">关闭</button>'+
+      '</div>';
+    $('#mapStoreTitle').textContent = fav.name;
+    $('#mapStoreBody').innerHTML = body;
+    $('#mapStoreMask').classList.remove('hidden');
+    return mapSheetInfo();
+  }
   function openMapStoreSheet(key){
     var s = mapStoreByKey(key);
     if(!s){ toast('这家店的数据已变化，请刷新地图'); return null; }
     if(s.isWish) return openMapWishSheet(s.wish);
+    if(s.isFav) return openMapFavSheet(s.fav);
     var c = storeCoord(s);
     var info = mapInfoOf(s || {});
     if(c){ info.lng = c.lng; info.lat = c.lat; }
@@ -17766,7 +18074,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var linkCount = shopMetaLinksCount(sid);
     var body =
       '<p class="map-sheet-sub">'+esc([s.city, s.area].filter(Boolean).join(' · ') || '未填位置')+
-        ' · 到访 '+s.visits+' 次'+(c ? '' : ' · <span class="tag warn">未填坐标</span>')+'</p>'+
+        ' · 到访 '+s.visits+' 次'+(favoriteHas(s.name, s.city) ? ' · ★ 已收藏' : '')+(c ? '' : ' · <span class="tag warn">未填坐标</span>')+'</p>'+
       '<div class="card flat" style="padding:4px 12px;margin-bottom:12px">'+
         diaryKv('地址', esc(s.address || '暂无地址'))+
         diaryKv('综合评分', num(s.rating) > 0 ? esc(s.rating) : '暂无评分')+
@@ -17779,6 +18087,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         diaryKv('菜系 / 标签', esc([s.category, (s.tags||[]).join('、')].filter(Boolean).join(' · ') || '未填'))+
         diaryKv('平台链接', linkCount ? esc(linkCount + ' 条（点下方「链接 / 补充」管理）') : '暂无数据')+
         diaryKv('补充信息', esc(shopMetaSummary(sid)))+
+        diaryKv('收藏', favoriteHas(s.name, s.city) ? '★ 已收藏（独立于想去清单）' : '未收藏（可单独收藏）')+
       '</div>'+
       coordHistoryHtml(s, sid)+
       '<div class="card flat" style="padding:10px 12px;margin-bottom:12px">'+
@@ -17798,6 +18107,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<a class="btn" href="'+esc(mapLinkOf(info, 'baidu', false, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">百度搜索</a>'+
         (c ? '<a class="btn" href="'+esc(amapNavUrl(info, info.fromPlace))+'" target="_blank" rel="noopener noreferrer"'+(linkUncertain ? ' title="坐标系来源未知，按记录原值拼链接，可能偏移"' : '')+'>导航</a>' : '')+
         '<button type="button" class="btn" data-shop-meta="'+esc(sid)+'" data-shop-meta-title="'+esc(s.name)+'">链接 / 补充</button>'+
+        '<button type="button" class="btn btn-soft" data-act="favToggle" data-name="'+esc(s.name)+'" data-city="'+esc(s.city||'')+'" data-area="'+esc(s.area||'')+'">'+(favoriteHas(s.name,s.city)?'★ 已收藏（点此取消）':'☆ 收藏（独立于想去）')+'</button>'+
         '<button type="button" class="btn" data-trip-join="'+esc(sid)+'" style="min-height:44px">加入旅行计划</button>'+
         '<button type="button" class="btn" data-map-fix="'+esc(recs[0] ? recs[0].id : '')+'">'+(c?'改坐标':'补坐标')+'</button>'+
         '<button type="button" class="btn" data-map-close="1">关闭</button>'+
@@ -17814,8 +18124,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var rows = cluster.pts.map(function(p){
       var s = p.store;
       var meta = p.kind === 'wish'
-        ? '想去 / 收藏 · 未到访'
-        : ('到访 '+p.visits+' 次 · '+(num(p.rating)>0 ? '评分 '+p.rating : '暂无评分'));
+        ? '想去 · 未到访'
+        : (p.kind === 'fav'
+          ? '收藏 · 独立收藏夹'
+          : ('到访 '+p.visits+' 次 · '+(num(p.rating)>0 ? '评分 '+p.rating : '暂无评分')));
       return '<div class="map-list-row" data-map-open="'+esc(p.key)+'">'+
         '<div class="mm"><b>'+esc(p.name)+'</b><p class="meta">'+
           esc([p.city, p.area].filter(Boolean).join(' · ') || '未填位置')+' · '+esc(meta)+'</p></div><span class="muted">›</span></div>';
@@ -18616,10 +18928,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return { id:c.id, lat:ll.lat, lng:ll.lng, n:c.count,
         r:Math.max(4, Math.min(18, Math.round(c.r))), col:mapColorOf(c.norm, pal) };
     });
-    /* 内嵌页只认颜色，不认形状：想去/收藏统一用蓝色（画布回退里另有空心圈，两者都不伪造坐标） */
+    /* 内嵌页只认颜色，不认形状：已吃过用热度色、收藏用金色、想去用蓝色（三者同一优先级，不伪造坐标） */
     mapView.wishClusters.forEach(function(c){
       var ll = mapUnproject(c.x, c.y);
       out.push({ id:c.id, lat:ll.lat, lng:ll.lng, n:1, r:7, col:'#2f7fd6' });
+    });
+    (mapView.favClusters || []).forEach(function(c){
+      var ll = mapUnproject(c.x, c.y);
+      out.push({ id:c.id, lat:ll.lat, lng:ll.lng, n:c.count, r:8, col:'#b7791f' });
     });
     return out;
   }
@@ -22813,6 +23129,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       settings: db.settings,
       blacklist: db.blacklist,
       wishlist: db.wishlist,
+      favorites: favoriteBackupData(),
       votes: db.votes,
       places: db.places,
       gathers: db.gathers,
@@ -22852,6 +23169,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       tripList.forEach(function(t){ tripStops += t.stops.length; });
       return {
         records: db.records.length, stores: getStores().length, wishlist: db.wishlist.length,
+        favorites: favoriteCount(),
         trips: tripList.length, tripStops: tripStops,
         dishes: dishesLoad().items.length,
         feedback: feedbackStore.items.length,
@@ -22916,6 +23234,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           stats: {
             records: payload.records.length, stores: getStores().length,
             wishlist: payload.wishlist.length, blacklist: payload.blacklist.length,
+            favorites: payload.favorites.items.length,
             votes: payload.votes.length, places: payload.places.length,
             dishes: payload.dishes.items.length,
             feedback: payload.feedback.items.length,
@@ -22992,6 +23311,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     /* 在家吃第二阶段：食材 / 制作记录段，同样允许旧备份缺失（缺失时保持本机现状） */
     pantryBackupValidate(obj.payload.pantry, '恢复');
     homeCookBackupValidate(obj.payload.cooklog, '恢复');
+    /* 收藏段：独立于想去；旧备份缺失（v7 及更早）时保持本机现状，存在则严格校验 */
+    favoritesBackupValidate(obj.payload.favorites, '恢复');
     if(!obj.checksum || !obj.checksum.value) throw new Error('备份文件缺少校验值，无法确认完整性');
     if(!Array.isArray(obj.photos)) obj.photos = [];
     for(var i = 0; i < obj.photos.length; i++){
@@ -23266,6 +23587,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       try{ ptPrevRaw = localStorage.getItem(PANTRY_KEY); ckPrevRaw = localStorage.getItem(COOKLOG_KEY); }catch(e){ ptPrevRaw = null; ckPrevRaw = null; }
       var ptResult = { applied:false, items:pantryLoad().items.length };
       var ckResult = { applied:false, items:homeCookLoad().items.length };
+      var fvPrevRaw = null, fvPrevStore = JSON.parse(JSON.stringify(favoritesLoad()));
+      try{ fvPrevRaw = localStorage.getItem(FAV_KEY); }catch(e){ fvPrevRaw = null; }
+      function rollbackFavorites(){
+        favStore = fvPrevStore;
+        try{
+          if(fvPrevRaw == null) localStorage.removeItem(FAV_KEY);
+          else localStorage.setItem(FAV_KEY, fvPrevRaw);
+        }catch(_e){}
+      }
+      var fvResult = { applied:false, legacy:true, count:favoritesLoad().items.length, added:0 };
       var committed;
       try{
         pmResult = applyBackupProfile(obj.payload.profile);
@@ -23277,6 +23608,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         hcResult = applyBackupHome(obj.payload.recipes, obj.payload.homefb, mode);
         ptResult = applyBackupPantry(obj.payload.pantry, mode);
         ckResult = applyBackupCookLog(obj.payload.cooklog, mode);
+        fvResult = applyBackupFavorites(obj.payload.favorites, mode);
         /* v2 模式下写 v2（读回校验），v1 模式下沿用 commitDbString */
         committed = commitDbNext(next);
       }catch(e){
@@ -23288,6 +23620,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         rollbackDishes(dsPrevRaw, dsPrevStore);
         rollbackHome(hcPrevRaw, hcPrevStore, hfPrevRaw, hfPrevStore);
         homeCookRollback(ptPrevRaw, ptPrevStore, ckPrevRaw, ckPrevStore);
+        rollbackFavorites();
         throw e;
       }
       db = next;
@@ -23310,6 +23643,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         recipesApplied:!!hcResult.applied, recipes:hcResult.recipes, recipeFav:hcResult.favorites, homeFeedback:hcResult.feedback,
         pantryApplied:!!ptResult.applied, pantry:ptResult.items,
         cooklogApplied:!!ckResult.applied, cooklog:ckResult.items,
+        favoritesApplied:!!fvResult.applied, favorites:favoriteCount(), favoritesAdded:fvResult.added,
+        favoritesLegacy:!!fvResult.legacy,
         missingPhotos:countMissingPhotos(norm, photoMap), ms:Math.round(nowMs() - t0),
         snapshotId:snapRef ? snapRef.id : null
       };
@@ -24613,6 +24948,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     else if(act === 'fbUndo'){ if(fbKey && fbPrev) undoFeedback(fbKey, fbPrev); }
     else if(act === 'fbWish'){ var sw = findStore(key); if(sw) wishAddStore(sw); }
+    else if(act === 'favToggle'){
+      var fvName = actEl.getAttribute('data-name') || '';
+      var fvCity = actEl.getAttribute('data-city') || '';
+      var fvArea = actEl.getAttribute('data-area') || '';
+      if(!fvName){ toast('缺少店名，无法收藏'); }
+      else{
+        var fvRes = favoriteToggle(fvName, fvCity, fvArea);
+        if(fvRes.changed) toast(fvRes.on ? '已收藏「'+fvName+'」（独立于想去清单）' : '已取消收藏「'+fvName+'」');
+        renderAll();
+        if(mapView.active && mapView.sheetKey) shopProfileRefresh(mapView.sheetKey);
+      }
+    }
     else if(act === 'profBoost'){ toggleProfileBoost(actEl.getAttribute('data-cat')); }
     else if(act === 'profBlock'){ toggleProfileBlock(actEl.getAttribute('data-cat')); }
     else if(act === 'profBudget'){
@@ -25003,7 +25350,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
   /* 列表筛选：输入 300ms 防抖，避免每次按键都全量过滤重排 DOM */
   $('#q').addEventListener('input', debounce(function(){ renderList(true); mapSyncFilterUI(); if(mapView.active) safeRender('renderMap', function(){ renderMap(false); }); }, 300));
-  ['#sort','#catFilter','#ratingFilter','#priceFilter'].forEach(function(sel){
+  ['#sort','#catFilter','#ratingFilter','#priceFilter','#favFilter'].forEach(function(sel){
     $(sel).addEventListener('change', function(){
       renderList(true);
       mapSyncFilterUI();
@@ -28667,12 +29014,34 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           if(opts.pantry !== undefined){ obj.payload.pantry = JSON.parse(JSON.stringify(opts.pantry)); }
           if(opts.dropCooklog){ try{ delete obj.payload.cooklog; }catch(e){} }
           if(opts.cooklog !== undefined){ obj.payload.cooklog = JSON.parse(JSON.stringify(opts.cooklog)); }
+          if(opts.dropFavorites){ try{ delete obj.payload.favorites; }catch(e){} }
+          if(opts.favorites !== undefined){ obj.payload.favorites = JSON.parse(JSON.stringify(opts.favorites)); }
           return backupChecksum(obj.payload, obj.photos).then(function(sum){
             obj.checksum.value = sum;
             return JSON.stringify(obj);
           });
         });
       }
+    },
+    favorites: {
+      list: function(){ return favoritesLoad().items.slice(); },
+      raw: function(){ try{ return localStorage.getItem(FAV_KEY); }catch(e){ return null; } },
+      has: favoriteHas,
+      count: favoriteCount,
+      toggle: favoriteToggle,
+      add: function(name, city, area){
+        if(favoriteHas(name, city)) return { on:true, count:favoriteCount(), changed:false };
+        return favoriteToggle(name, city, area);
+      },
+      remove: function(name, city){
+        if(!favoriteHas(name, city)) return { on:false, count:favoriteCount(), changed:false };
+        return favoriteToggle(name, city);
+      },
+      migrate: favoritesMigrateKey,
+      clear: function(){ favoritesPersist({ items:[] }); return true; },
+      backup: favoriteBackupData,
+      validate: favoritesBackupValidate,
+      apply: applyBackupFavorites
     },
     photoCenter: {
       records: function(){
@@ -28941,6 +29310,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           missing: mapView.missing.length, clusters: mapView.clusters.length,
           branches: mapView.branches ? mapView.branches.length : 0,
           wish: mapView.wishPoints.length, wishClusters: mapView.wishClusters.length,
+          fav: mapView.favPoints.length, favClusters: mapView.favClusters.length, favAll: favoriteCount(),
           drawMs: mapView.drawMs, firstDrawMs: mapView.firstDrawMs, ms: mapView.lastRenderMs
         };
       },
@@ -29035,6 +29405,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       wishState: function(){
         return { all:mapView.wishAll, drawn:mapView.wishPoints.length, missing:mapView.wishMissing.length };
       },
+      favPoints: function(){
+        return (mapView.favPoints || []).map(function(p){
+          var xy = mapProjectDisplay(p.lat, p.lng);
+          return { key:p.key, name:p.name, lat:p.lat, lng:p.lng, km:p.km, x:Math.round(xy.x*10)/10, y:Math.round(xy.y*10)/10 };
+        });
+      },
+      favState: function(){
+        return { all:mapView.favAll, drawn:(mapView.favPoints || []).length, missing:(mapView.favMissing || []).length };
+      },
+      openFav: function(name, city){
+        var f = favoriteOf(name, city);
+        return openMapFavSheet(f);
+      },
       nearState: function(){
         return { km:num(mapView.nearKm), count:mapStoresFiltered().length, center:geoLast(), label:nearKmLabel(num(mapView.nearKm)) };
       },
@@ -29059,7 +29442,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       },
       clusterKinds: function(){
         return mapView.clusters.map(function(c){ return c.kind || 'visited'; })
-          .concat(mapView.wishClusters.map(function(c){ return c.kind || 'wish'; }));
+          .concat(mapView.wishClusters.map(function(c){ return c.kind || 'wish'; }))
+          .concat((mapView.favClusters || []).map(function(c){ return c.kind || 'fav'; }));
+      },
+      kinds: function(){
+        var out = {};
+        mapView.points.forEach(function(p){ out[p.kind || 'visited'] = (out[p.kind || 'visited'] || 0) + 1; });
+        mapView.wishPoints.forEach(function(p){ out[p.kind || 'wish'] = (out[p.kind || 'wish'] || 0) + 1; });
+        (mapView.favPoints || []).forEach(function(p){ out[p.kind || 'fav'] = (out[p.kind || 'fav'] || 0) + 1; });
+        return out;
       },
       listRows: function(){ return $('#mapListBox').querySelectorAll('.map-list-row').length; },
       setSort: function(v){ mapView.sort = ['dist','visits','rating'].indexOf(v) >= 0 ? v : 'dist'; renderMapList(); return mapView.sort; },
