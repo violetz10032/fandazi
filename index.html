@@ -39,7 +39,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     --map-ink:rgba(107,97,90,.8); --map-ink2:rgba(154,143,134,.9);
     --map-ring1:rgba(232,89,12,.42); --map-ring2:rgba(232,89,12,.20);
     --map-dot-stroke:rgba(255,255,255,.85); --map-label:rgba(140,110,85,.75);
-    --map-scale:rgba(107,97,90,.55); --map-me-label:#b8460a;
+    --map-scale:rgba(107,97,90,.55); --map-me-label:#b8460a; --map-wish:#2f7fd6;
     --chart-axis:#e8ded2; --chart-grid:#f1eae0; --chart-text:#9a8f86;
     --chart-1:#e8590c; --chart-2:#2f8c5a; --chart-3:#6b5bd6; --chart-4:#b7791f; --chart-5:#3d7ea6; --chart-6:#9a8f86;
     --green:#2f8c5a; --amber:#b7791f; --danger:#b42318;
@@ -79,7 +79,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     --map-ink:rgba(242,235,227,.8); --map-ink2:rgba(242,235,227,.6);
     --map-ring1:rgba(255,122,47,.50); --map-ring2:rgba(255,122,47,.24);
     --map-dot-stroke:rgba(20,17,14,.85); --map-label:rgba(242,235,227,.72);
-    --map-scale:rgba(242,235,227,.55); --map-me-label:#ffb27a;
+    --map-scale:rgba(242,235,227,.55); --map-me-label:#ffb27a; --map-wish:#6bb6ff;
     --chart-axis:#4a4038; --chart-grid:#332c25; --chart-text:#9d9184;
     --chart-1:#ff7a2f; --chart-2:#4cc08a; --chart-3:#8b7dff; --chart-4:#e8b34e; --chart-5:#5aa5cc; --chart-6:#9d9184;
     --green:#4cc08a; --amber:#e8b34e; --danger:#ff7a70;
@@ -729,6 +729,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .map-diag summary{cursor:pointer;font-size:11px;font-weight:600;color:var(--warn-ink)}
   .map-diag pre{margin:6px 0 0;white-space:pre-wrap;word-break:break-all;font:11px/1.55 ui-monospace,Menlo,Consolas,monospace;color:var(--ink2)}
   .map-diag .btn{margin-top:6px;padding:3px 8px;font-size:11px;border-radius:8px}
+  /* 附近店铺：档位 / 四类筛选 / 手动中心（全部复用列表筛选口径） */
+  .map-near{padding:12px}
+  .map-near-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .map-near-head b{font-size:14px}
+  .map-near-state{font-size:11px;color:var(--ink3);text-align:right;flex:1;min-width:120px}
+  .map-near .chips{margin-top:9px}
+  .map-near-hint{margin:7px 0 0;font-size:11px;line-height:1.6;color:var(--ink3)}
+  .map-center-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .map-center-row .input{flex:1;min-width:96px;max-width:150px;font-size:12px;padding:7px 9px}
+  .map-center-row .btn{flex:none;padding:6px 10px;font-size:11.5px}
+  .map-filters{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+  .map-filters select{flex:1;min-width:104px;font-size:12px;padding:7px 9px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+  .map-legend .lg-wish i{width:9px;height:9px;border-radius:50%;display:inline-block;background:transparent;border:2px solid var(--map-wish, #2f7fd6)}
   /* 店铺定位：高德搜索候选 + 地图选点 */
   .poi-row{display:flex;gap:8px;align-items:center}
   .poi-row .input{flex:1;min-width:0}
@@ -1252,6 +1265,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
               <option value="4.5">评分 ≥ 4.5</option>
             </select>
           </div>
+          <div class="frow" style="margin-top:10px">
+            <select class="input" id="priceFilter">
+              <option value="">全部人均</option>
+              <option value="0-30">人均 ≤ 30</option>
+              <option value="30-60">人均 30–60</option>
+              <option value="60-100">人均 60–100</option>
+              <option value="100-">人均 100+</option>
+            </select>
+            <span class="hint" style="flex:1;align-self:center">人均与菜系/评分同口径；未填人均不计入价格档</span>
+          </div>
         </div>
         <div class="section-head">
           <h2>我的美食记录</h2>
@@ -1320,7 +1343,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           </div>
           <div class="map-legend" id="mapLegend"></div>
         </div>
-        <div class="map-canvas-wrap" id="mapCanvasWrap">
+<div class="map-canvas-wrap" id="mapCanvasWrap">
           <div id="amapLayer" class="hidden" aria-hidden="true"></div>
           <canvas id="mapCanvas" aria-label="店铺散点地图"></canvas>
           <div class="map-tools">
@@ -1343,7 +1366,42 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             </details>
           </div>
         </div>
-        <div id="mapListBox" class="hidden"></div>
+                <div class="card map-near" id="mapNearCard">
+          <div class="map-near-head">
+            <b>附近店铺</b>
+            <span class="map-near-state" id="mapNearState">未指定中心：点「定位我」，或填一个中心点</span>
+          </div>
+          <div class="chips" id="mapNearChips">
+            <button type="button" class="chip-toggle on" data-near-km="0">全部</button>
+            <button type="button" class="chip-toggle" data-near-km="0.5">500 m</button>
+            <button type="button" class="chip-toggle" data-near-km="1">1 km</button>
+            <button type="button" class="chip-toggle" data-near-km="3">3 km</button>
+            <button type="button" class="chip-toggle" data-near-km="5">5 km</button>
+          </div>
+          <p class="map-near-hint" id="mapNearHint">以中心点画圆，只算直线距离（球面 haversine），不是道路距离；档位边界含本数（500 m 档含 0.5 km）。</p>
+          <p class="map-near-hint" id="mapWishNote"></p>
+          <div class="map-center-row">
+            <input class="input" id="mapCenterLat" inputmode="decimal" placeholder="中心纬度" aria-label="手动中心纬度">
+            <input class="input" id="mapCenterLng" inputmode="decimal" placeholder="中心经度" aria-label="手动中心经度">
+            <button type="button" class="btn btn-sm btn-soft" id="mapCenterGo">手动中心</button>
+          </div>
+          <div class="map-filters">
+            <select id="mapCatFilter" aria-label="按菜系筛选"><option value="">全部菜系</option></select>
+            <select id="mapRatingFilter" aria-label="按评分筛选">
+              <option value="0">全部评分</option>
+              <option value="4">评分 ≥ 4.0</option>
+              <option value="4.5">评分 ≥ 4.5</option>
+            </select>
+            <select id="mapPriceFilter" aria-label="按人均筛选">
+              <option value="">全部人均</option>
+              <option value="0-30">人均 ≤ 30</option>
+              <option value="30-60">人均 30–60</option>
+              <option value="60-100">人均 60–100</option>
+              <option value="100-">人均 100+</option>
+            </select>
+          </div>
+        </div>
+<div id="mapListBox" class="hidden"></div>
         <div class="card" id="mapMissingCard">
           <div class="section-head" style="margin:0 0 6px">
             <h2>未填坐标 <span id="mapMissingCount">0</span> 家</h2>
@@ -3492,6 +3550,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   /* 店铺级定位元数据：只存“这家店在哪、来源是什么”，不替代记录里的 lat/lng。
      字段白名单 + 长度限制 + 坐标范围校验；旧数据没有 location 时按无定位元数据读取。 */
   var SHOP_LOCATION_SOURCES = { amap_poi:'高德 POI', amap_map:'高德地图选点', manual:'手动填写', device:'当前定位', imported:'导入' };
+  var SHOP_LOCATION_HISTORY_MAX = 20;
   /* 坐标来源对应的真实坐标系：POI / 地图选点为 GCJ-02；手填 / 设备定位为 WGS84；导入沿用历史默认 */
   function shopCoordSysOfSource(src){
     if(src === 'amap_poi' || src === 'amap_map') return 'GCJ02';
@@ -3524,8 +3583,24 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var n = shopLocationNorm(loc);
     if(!n) return null;
     n.updatedAt = new Date().toISOString();
-    var saved = shopMetaTouch(shopId, function(m){ m.location = n; });
+    var prev = shopLocationOf(shopId);
+    var changed = !!prev && (prev.lat !== n.lat || prev.lng !== n.lng ||
+      String(prev.source || '') !== String(n.source || '') ||
+      String(prev.coordinateSystem || '') !== String(n.coordinateSystem || ''));
+    var saved = shopMetaTouch(shopId, function(m){
+      if(changed){
+        var hist = (Array.isArray(m.locationHistory) ? m.locationHistory : []).slice();
+        hist.push(JSON.parse(JSON.stringify(prev)));
+        if(hist.length > SHOP_LOCATION_HISTORY_MAX) hist = hist.slice(hist.length - SHOP_LOCATION_HISTORY_MAX);
+        m.locationHistory = hist;
+      }
+      m.location = n;
+    });
     return saved ? saved.location : null;
+  }
+  function shopLocationHistoryOf(shopId){
+    var h = shopMetaGet(shopId).locationHistory;
+    return Array.isArray(h) ? h.slice() : [];
   }
   /* 同店引用（合并 / 关联 / 忽略）的最小结构：只存店铺标识，不复制记录或照片 */
   function shopMetaRefNorm(x){
@@ -3541,6 +3616,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var out = { updatedAt: String(m.updatedAt || ''), links: [], fields: {} };
     var loc = shopLocationNorm(m.location);
     if(loc) out.location = loc;
+    var locHist = (Array.isArray(m.locationHistory) ? m.locationHistory : [])
+      .map(shopLocationNorm).filter(Boolean);
+    if(locHist.length) out.locationHistory = locHist.slice(-SHOP_LOCATION_HISTORY_MAX);
     var aliases = (Array.isArray(m.aliases) ? m.aliases : []).map(shopMetaRefNorm).filter(Boolean).slice(0, 50);
     if(aliases.length) out.aliases = aliases;
     var related = (Array.isArray(m.relatedShops) ? m.relatedShops : []).map(shopMetaRefNorm).filter(Boolean).slice(0, 50);
@@ -6836,15 +6914,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return r > 0 ? clamp(r/5, 0, 1) : 0.55;
   }
 
-  function buildStores(){
-    var groups = {};
-    db.records.forEach(function(r){
-      var k = keyOf(r);
-      (groups[k] || (groups[k] = [])).push(r);
-    });
-    var out = [];
-    Object.keys(groups).forEach(function(k){
-      var recs = groups[k].slice().sort(function(a,b){ return String(b.visitDate||'').localeCompare(String(a.visitDate||'')); });
+  function storeFromRecords(recsIn, k){
+      var recs = recsIn.slice().sort(function(a,b){ return String(b.visitDate||'').localeCompare(String(a.visitDate||'')); });
       var latest = recs[0];
       var tags = [];
       recs.forEach(function(r){ if(Array.isArray(r.tags)) tags = tags.concat(r.tags); });
@@ -6856,7 +6927,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var dayRec = recs.filter(function(r){ return r.dayType && r.dayType !== 'any'; })[0];
       var fitMeals = [];
       recs.forEach(function(r){ if(Array.isArray(r.fitMeals)) fitMeals = fitMeals.concat(r.fitMeals); });
-      out.push({
+      return {
         key: k, name: latest.name, city: latest.city, area: latest.area, address: latest.address,
         latest: latest, records: recs, visits: recs.length,
         lat: coordRec ? coordRec.lat : null,
@@ -6882,7 +6953,71 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         nutrition: { kcal: avgNum(recs, 'kcal'), protein: avgNum(recs, 'protein'), n: nutritionN },
         friendly: recs.some(function(r){ return r.fitnessFriendly === true; }),
         isWish: false
+      };
+  }
+  function buildStores(){
+    var groups = {};
+    db.records.forEach(function(r){
+      var k = keyOf(r);
+      (groups[k] || (groups[k] = [])).push(r);
+    });
+    return Object.keys(groups).map(function(k){ return storeFromRecords(groups[k], k); });
+  }
+  /* 分店独立（仅地图/附近使用）：同名同城不直接合并。
+     判断顺序：地址不同即拆；无地址则按坐标 200 m 聚类；地址与坐标都缺失时不猜，并入已有分支。
+     单分支仍沿用原 key，避免影响黑名单/档案等既有引用。 */
+  var MAP_BRANCH_RADIUS_KM = 0.2;
+  function normBranchAddr(v){
+    return String(v == null ? '' : v).trim().toLowerCase().replace(/[\s，,。.;；、\-—_()（）]/g, '');
+  }
+  function mapBranchStores(){
+    var groups = {};
+    db.records.forEach(function(r){
+      var k = keyOf(r);
+      (groups[k] || (groups[k] = [])).push(r);
+    });
+    var out = [];
+    Object.keys(groups).forEach(function(base){
+      var recs = groups[base], branches = [];
+      recs.forEach(function(r){
+        var addr = normBranchAddr(r.address);
+        var c = mapHasCoords(r) ? { lat:num(r.lat), lng:num(r.lng) } : null;
+        var hit = null;
+        if(addr){
+          hit = branches.filter(function(b){ return b.addr === addr; })[0] || null;
+        }
+        if(!hit && c){
+          var best = null, bestD = 1e9;
+          branches.forEach(function(b){
+            if(!b.center) return;
+            var d = haversineKm(c.lat, c.lng, b.center.lat, b.center.lng);
+            if(d < bestD){ bestD = d; best = b; }
+          });
+          if(best && bestD <= MAP_BRANCH_RADIUS_KM) hit = best;
+        }
+        if(!hit && !addr && !c) hit = branches[0] || null;
+        if(!hit){
+          hit = { addr: addr, recs: [], center: null, cn: 0 };
+          branches.push(hit);
+        }
+        hit.recs.push(r);
+        if(c){
+          if(hit.center){
+            hit.center = {
+              lat: (hit.center.lat * hit.cn + c.lat) / (hit.cn + 1),
+              lng: (hit.center.lng * hit.cn + c.lng) / (hit.cn + 1)
+            };
+          }else{
+            hit.center = { lat:c.lat, lng:c.lng };
+          }
+          hit.cn++;
+        }
       });
+      if(branches.length <= 1){
+        out.push(storeFromRecords(recs, base));
+      }else{
+        branches.forEach(function(b, i){ out.push(storeFromRecords(b.recs, base + '#' + (i + 1))); });
+      }
     });
     return out;
   }
@@ -7031,13 +7166,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     try{
       var o = JSON.parse(localStorage.getItem('fandazi.geo.last') || 'null');
       if(o && isFinite(num(o.lat)) && isFinite(num(o.lng)) && num(o.lat) !== 0 && num(o.lng) !== 0){
-        _geoMemo = { lat:num(o.lat), lng:num(o.lng), acc:num(o.acc), at:num(o.at) };
+        _geoMemo = { lat:num(o.lat), lng:num(o.lng), acc:num(o.acc), at:num(o.at), manual:o.manual === true };
       }
     }catch(e){}
     return _geoMemo;
   }
-  function geoSet(lat, lng, acc){
-    var o = { lat:+num(lat).toFixed(5), lng:+num(lng).toFixed(5), acc:Math.round(num(acc)), at:Date.now() };
+  function geoSet(lat, lng, acc, manual){
+    var o = { lat:+num(lat).toFixed(5), lng:+num(lng).toFixed(5), acc:Math.round(num(acc)), at:Date.now(), manual:manual === true };
     _geoMemo = o; _geoMemoLoaded = true;
     try{ localStorage.setItem('fandazi.geo.last', JSON.stringify(o)); }catch(e){}
     var b = $('#btnGeoOpenSettings');
@@ -7079,7 +7214,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function hasKm(s){ return storeKm(s) != null; }
   function kmSrcText(s){
     var src = storeKmSrc(s);
-    return src === 'geo' ? '定位' : (src === 'manual' ? '手填' : '');
+    if(src === 'geo') return geoLast() && geoLast().manual ? '手填中心' : '定位';
+    return src === 'manual' ? '手填' : '';
   }
   function kmLine(s){
     var d = storeKm(s);
@@ -9041,6 +9177,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       $('#q').value || '',
       $('#catFilter').value || '',
       $('#ratingFilter').value || '',
+      $('#priceFilter') ? ($('#priceFilter').value || '') : '',
       $('#sort').value || ''
     ].join('\u0001');
   }
@@ -9053,11 +9190,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var q = String($('#q').value||'').trim().toLowerCase();
       var cat = $('#catFilter').value;
       var minRate = num($('#ratingFilter').value);
+      var band = $('#priceFilter') ? String($('#priceFilter').value || '') : '';
       var sort = $('#sort').value;
 
       var items = db.records.filter(function(r){
         if(cat && String(r.category||'') !== cat) return false;
         if(minRate > 0 && (num(r.rating) < minRate)) return false;
+        if(!priceBandMatch(perPriceOf(r), band)) return false;
         if(q){
           var hay = [r.name,r.city,r.area,r.address,r.category,r.note,(r.tags||[]).join(' ')].join(' ').toLowerCase();
           if(hay.indexOf(q) < 0) return false;
@@ -13406,6 +13545,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var cf = $('#catFilter'), keep1 = cf.value;
     cf.innerHTML = '<option value="">全部品类</option>' + names.map(function(c){ return '<option value="'+esc(c)+'">'+esc(c)+'</option>'; }).join('');
     if(names.indexOf(keep1) >= 0) cf.value = keep1;
+    var mcf = $('#mapCatFilter');
+    if(mcf){
+      mcf.innerHTML = cf.innerHTML.replace('全部品类', '全部菜系');
+      mcf.value = cf.value;
+    }
     $('#catList').innerHTML = CAT_LIST.map(function(c){ return '<option value="'+c+'">'; }).join('');
 
     var areas = {};
@@ -14272,6 +14416,23 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var old = db.records.filter(function(x){ return x.id === editingId; })[0];
       if(old){
         rec.createdAt = old.createdAt || now;
+        /* 坐标纠错：旧坐标/来源/坐标系/时间只追加到 coordHistory，当前 lat/lng 仍是唯一读取源（向后兼容） */
+        var oldHasCoord = mapHasCoords(old);
+        var coordChanged = num(old.lat) !== num(rec.lat) || num(old.lng) !== num(rec.lng) ||
+          String(old.locationSource || '') !== String(rec.locationSource || '');
+        if(oldHasCoord && coordChanged){
+          var ch = (Array.isArray(old.coordHistory) ? old.coordHistory : []).slice();
+          ch.push({
+            lat: old.lat, lng: old.lng,
+            locationSource: String(old.locationSource || ''),
+            coordinateSystem: String(old.coordinateSystem || ''),
+            at: String(old.updatedAt || old.createdAt || now)
+          });
+          if(ch.length > 20) ch = ch.slice(ch.length - 20);
+          rec.coordHistory = ch;
+        }else if(Array.isArray(old.coordHistory) && old.coordHistory.length){
+          rec.coordHistory = old.coordHistory.slice();
+        }
         /* 旧记录的 r.dishes 只透传保留，不迁入新键、也不丢失 */
         if(old.dishes !== undefined) rec.dishes = old.dishes;
         /* 移除的照片不在这里删：保存后统一按「是否还有记录引用」判断 */
@@ -14782,22 +14943,46 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     cam: { cx:0, cy:0, scale:300, baseScale:300, fitted:false },
     size: { w:0, h:0, dpr:1 }, cos: 1,
     points: [], missing: [], clusters: [], labels: [],
+    branches: null, nearKm: 0,
+    wishPoints: [], wishClusters: [], wishMissing: [], wishAll: 0,
     selected: '', sheetKey: '', lastHit: null,
     tripSet: null, tripLabel: '',
     drawMs: 0, firstDrawMs: null, lastFitMs: 0, lastRenderMs: 0
   };
   var mapPtr = { ids:[], pos:{}, down:false, sx:0, sy:0, moved:0, dragging:false, pinch:null, pinched:false };
 
+  /* 人均档位：列表页 / 地图共用同一套边界（含本数：≤30、30–60、60–100、100+） */
+  function priceBandMatch(v, band){
+    if(!band) return true;
+    var n = num(v);
+    if(!(n > 0)) return false; /* 未填人均不计入任何价格档，不猜 */
+    if(band === '0-30') return n <= 30;
+    if(band === '30-60') return n > 30 && n <= 60;
+    if(band === '60-100') return n > 60 && n <= 100;
+    if(band === '100-') return n > 100;
+    return true;
+  }
+  function nearKmLabel(km){ return km < 1 ? Math.round(km * 1000) + ' m' : km + ' km'; }
+  function mapNearKmOf(s){
+    var km = num(mapView.nearKm);
+    if(!km) return true;
+    var v = storeKm(s);
+    return v != null && v <= km + 1e-9;
+  }
   function mapStoresFiltered(){
-    var qEl = $('#q'), cEl = $('#catFilter'), rEl = $('#ratingFilter');
+    var qEl = $('#q'), cEl = $('#catFilter'), rEl = $('#ratingFilter'), pEl = $('#priceFilter');
     var q = String(qEl ? qEl.value : '').trim().toLowerCase();
     var cat = cEl ? cEl.value : '';
     var minRate = rEl ? num(rEl.value) : 0;
+    var band = pEl ? String(pEl.value || '') : '';
     var tripSet = mapView.tripSet;
-    return getStores().filter(function(s){
+    var list = mapView.branches || mapBranchStores();
+    return list.filter(function(s){
       if(tripSet && !tripSet[shopIdOf(s.name, s.city)]) return false;
       if(cat && String(s.category || '') !== cat) return false;
       if(minRate > 0 && num(s.rating) < minRate) return false;
+      if(!priceBandMatch(s.perPrice, band)) return false;
+      if(!mapNearKmOf(s)) return false;
       if(q){
         var hay = [s.name, s.city, s.area, s.address, s.category, (s.tags||[]).join(' '), s.latest ? s.latest.note : '']
           .join(' ').toLowerCase();
@@ -14806,13 +14991,67 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return true;
     });
   }
+  /* 想去 / 收藏：项目里「收藏」就是想去清单（记录表单的选择器 fav 与 wishlist 共用 isWish），
+     没有第三种数据，因此地图只画两种标记：实心=已吃过，空心=想去/收藏。 */
+  function wishCoord(w){
+    if(!w) return null;
+    var loc = shopLocationOf(shopIdOf(w.name, w.city));
+    if(loc && isFinite(num(loc.lat)) && isFinite(num(loc.lng)) && num(loc.lat) !== 0 && num(loc.lng) !== 0){
+      return { lat:num(loc.lat), lng:num(loc.lng), fromShopMeta:true };
+    }
+    return null;
+  }
+  function wishKmOf(w){
+    var me = geoLast(), c = wishCoord(w);
+    if(!me || !c) return null;
+    var d = haversineKm(me.lat, me.lng, c.lat, c.lng);
+    return isFinite(d) ? Math.round(d*10)/10 : null;
+  }
+  function mapWishFiltered(ignoreNear){
+    var qEl = $('#q'), cEl = $('#catFilter'), rEl = $('#ratingFilter'), pEl = $('#priceFilter');
+    var q = String(qEl ? qEl.value : '').trim().toLowerCase();
+    var cat = cEl ? cEl.value : '';
+    var minRate = rEl ? num(rEl.value) : 0;
+    var band = pEl ? String(pEl.value || '') : '';
+    var near = ignoreNear ? 0 : num(mapView.nearKm);
+    return wishStores().filter(function(w){
+      if(cat) return false;            /* 想去店没有菜系，不虚构分类 */
+      if(minRate > 0) return false;    /* 想去店没有评分，不虚构评分 */
+      if(!priceBandMatch(w.perPrice, band)) return false;
+      if(near){
+        var km = wishKmOf(w);
+        if(km == null || km > near + 1e-9) return false;
+      }
+      if(q){
+        var hay = [w.name, w.city, w.area, w.wish ? w.wish.note : ''].join(' ').toLowerCase();
+        if(hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+  }
+  function mapWishPoints(){
+    var all = mapWishFiltered();
+    mapView.wishAll = wishStores().length;
+    /* 缺坐标的想去店不受距离档位影响：没有坐标本来就无法判断远近，单独如实提示，不假装在附近。 */
+    mapView.wishMissing = mapWishFiltered(true).filter(function(w){ return !wishCoord(w); });
+    return all.map(function(w){
+      var c = wishCoord(w);
+      if(!c) return null;
+      return {
+        key: w.key, name: w.name, city: w.city, area: w.area, address: '',
+        lat: c.lat, lng: c.lng, visits: 0, rating: 0,
+        store: w, kind: 'wish', km: wishKmOf(w)
+      };
+    }).filter(Boolean);
+  }
   function mapPoints(){
     return mapStoresFiltered().map(function(s){
       var c = storeCoord(s);
       if(!c) return null;
       return {
         key: s.key, name: s.name, city: s.city, area: s.area, address: s.address,
-        lat: c.lat, lng: c.lng, visits: num(s.visits), rating: num(s.rating), store: s
+        lat: c.lat, lng: c.lng, visits: num(s.visits), rating: num(s.rating), store: s,
+        kind: 'visited', km: storeKm(s)
       };
     }).filter(Boolean);
   }
@@ -14869,7 +15108,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function mapFit(){
     var t0 = nowMs();
     mapView.cos = mapCos();
-    var pts = mapView.points;
+    /* 附近档位：镜头落在中心点，按档位半径缩放，而不是把全部点塞进屏幕 */
+    var near = num(mapView.nearKm), center = geoLast();
+    if(near && center){
+      var cdd = mapDisplayLL(center.lat, center.lng);
+      var ww = mapView.size.w, hh = mapView.size.h;
+      var s0 = Math.min(ww, hh) / 2 / (near / MAP_KM_PER_DEG) * 0.9;
+      s0 = clamp(s0, 20, 250000);
+      mapView.cam = {
+        cx: cdd.lng * mapView.cos, cy: -cdd.lat,
+        scale: s0, baseScale: s0, fitted: true
+      };
+      mapView.lastFitMs = nowMs() - t0;
+      return mapView.cam;
+    }
+    var pts = mapView.points.concat(mapView.wishPoints);
     var box = null;
     pts.forEach(function(p){
       var d = mapDisplayLL(p.lat, p.lng);
@@ -14919,10 +15172,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       Math.round(a[2] + (b[2]-a[2])*t) + ')';
   }
   /* 屏幕空间贪心聚簇：同坐标或 ≤26px 的店合并，保证可点中 */
-  function mapComputeClusters(){
+  function mapClusterize(points, prefix){
     var th = MAP_CLUSTER_PX;
     var list = [];
-    mapView.points.forEach(function(p){
+    points.forEach(function(p){
       var xy = mapProjectDisplay(p.lat, p.lng);
       var found = null;
       for(var i=0;i<list.length;i++){
@@ -14947,10 +15200,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         ? (c.ratings.length ? clamp((c.ratings.reduce(function(a,b){ return a+b; }, 0)/c.ratings.length)/5, 0, 1) : 0.1)
         : clamp((c.visits - 1)/5, 0, 1);
       c.r = Math.max(9, c.maxR) + (c.count > 1 ? 3 : 0);
-      c.id = c.pts.map(function(p){ return p.key; }).sort().join('|');
+      c.id = prefix + c.pts.map(function(p){ return p.key; }).sort().join('|');
+      c.kind = c.pts[0] && c.pts[0].kind === 'wish' ? 'wish' : 'visited';
     });
     return list;
   }
+  function mapComputeClusters(){ return mapClusterize(mapView.points, ''); }
+  function mapComputeWishClusters(){ return mapClusterize(mapView.wishPoints, 'w:'); }
   function mapDraw(){
     var t0 = nowMs();
     var cv = $('#mapCanvas');
@@ -14960,6 +15216,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     mapView.cos = mapCos();
     if(!mapView.cam.fitted) mapFit();
     mapView.clusters = mapComputeClusters();
+    mapView.wishClusters = mapComputeWishClusters();
     var size = mapView.size, cam = mapView.cam;
     var ctx = cv.getContext('2d');
     if(!ctx) return mapView;
@@ -15007,7 +15264,23 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       ctx.fillStyle = mapThemeColor('--map-me-label', '#b8460a');
       ctx.font = '600 10px -apple-system, "PingFang SC", sans-serif';
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      ctx.fillText('我', mp.x + 8, mp.y);
+      ctx.fillText(geoLast() && geoLast().manual ? '中心' : '我', mp.x + 8, mp.y);
+      /* 附近档位：把“直线距离”画成圆，不让用户误以为是道路距离 */
+      var near = num(mapView.nearKm);
+      if(near){
+        var nr = near * pxPerKm;
+        ctx.beginPath();
+        ctx.arc(mp.x, mp.y, nr, 0, Math.PI*2);
+        ctx.strokeStyle = mapThemeColor('--map-wish', '#2f7fd6');
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([6, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = mapThemeColor('--map-wish', '#2f7fd6');
+        ctx.font = '600 10px -apple-system, "PingFang SC", sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText('附近 '+nearKmLabel(near)+'（直线）', mp.x, mp.y + nr + 4);
+      }
     }
 
     var pal = MAP_PAL[mapView.measure] || MAP_PAL.visits;
@@ -15039,15 +15312,47 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     });
     mapView.labels = labels;
 
-    if(!mapView.points.length){
+    /* 想去 / 收藏：空心圈 + 蓝点，与实心“已吃过”一眼可分；聚合仍按屏幕距离单独聚簇 */
+    var wishCol = mapThemeColor('--map-wish', '#2f7fd6');
+    mapView.wishClusters.forEach(function(c){
+      var r = Math.max(7.5, c.r - 1) + (c.count > 1 ? 2 : 0);
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r, 0, Math.PI*2);
+      ctx.globalAlpha = 0.12;
+      ctx.fillStyle = wishCol;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 1.8;
+      ctx.strokeStyle = wishCol;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 2.2, 0, Math.PI*2);
+      ctx.fillStyle = wishCol;
+      ctx.fill();
+      if(mapView.selected === c.id || mapView.selected === c.pts[0].key){
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, r + 4, 0, Math.PI*2);
+        ctx.strokeStyle = mapThemeColor('--accent', '#e8590c');
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      if(c.count > 1){
+        ctx.fillStyle = wishCol;
+        ctx.font = '600 11px -apple-system, "PingFang SC", sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(c.count), c.x, c.y - r - 6);
+      }
+    });
+
+    if(!mapView.points.length && !mapView.wishPoints.length){
       ctx.fillStyle = mapThemeColor('--map-ink', 'rgba(107,97,90,.8)');
       ctx.font = '13px -apple-system, "PingFang SC", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(db.records.length ? '当前筛选下没有填了坐标的店铺' : '还没有记录', size.w/2, size.h/2 - 8);
+      ctx.fillText(db.records.length || db.wishlist.length ? '当前筛选下没有可画的店铺' : '还没有记录', size.w/2, size.h/2 - 8);
       ctx.fillStyle = mapThemeColor('--map-ink2', 'rgba(154,143,134,.9)');
       ctx.font = '11px -apple-system, "PingFang SC", sans-serif';
-      ctx.fillText('坐标只来自记录手填或你点「定位我」取到的一次位置', size.w/2, size.h/2 + 14);
+      ctx.fillText('坐标只来自记录手填、店铺档案定位或你点「定位我」取到的一次位置', size.w/2, size.h/2 + 14);
     }
     mapEmbedSyncPts();
     mapAmapSyncCam();
@@ -15058,7 +15363,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function mapClusterInfo(c){
     if(!c) return null;
     return {
-      id: c.id, count: c.count, x: Math.round(c.x*10)/10, y: Math.round(c.y*10)/10,
+      id: c.id, count: c.count, kind: c.kind || 'visited',
+      x: Math.round(c.x*10)/10, y: Math.round(c.y*10)/10,
       r: Math.round(c.r*10)/10, visits: c.visits,
       keys: c.pts.map(function(p){ return p.key; }),
       names: c.pts.map(function(p){ return p.name; })
@@ -15066,11 +15372,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function mapHitAt(x, y){
     var best = null, bestD = 1e9;
-    mapView.clusters.forEach(function(c){
-      var dx = c.x - x, dy = c.y - y;
-      var d = Math.sqrt(dx*dx + dy*dy);
-      if(d <= c.r + 7 && d < bestD){ bestD = d; best = c; }
-    });
+    function scan(list, rr){
+      list.forEach(function(c){
+        var dx = c.x - x, dy = c.y - y;
+        var d = Math.sqrt(dx*dx + dy*dy);
+        if(d <= (rr ? rr(c) : c.r) + 7 && d < bestD){ bestD = d; best = c; }
+      });
+    }
+    scan(mapView.clusters, null);
+    scan(mapView.wishClusters, function(c){ return Math.max(7.5, c.r - 1); });
     mapView.lastHit = best;
     return best;
   }
@@ -15110,14 +15420,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
 
   function mapStatText(){
-    var total = getStores().length;
+    var total = mapView.branches ? mapView.branches.length : getStores().length;
     var pts = mapView.points.length;
     var miss = mapView.missing.length;
+    var wish = mapView.wishPoints.length;
+    var near = num(mapView.nearKm);
     var clusters = mapView.clusters.length;
     var multi = mapView.clusters.filter(function(c){ return c.count > 1; }).length;
     var trip = mapView.tripSet ? '旅行「'+mapView.tripLabel+'」内 '+mapStoresFiltered().length+' 家有档案的店 · ' : '';
-    return trip+'共 '+total+' 家 · 有坐标 '+pts+' 家 · 未填坐标 '+miss+' 家 · '+
-      clusters+' 个标记'+(multi ? '（其中 '+multi+' 个为合并簇）' : '')+
+    return trip+'共 '+total+' 家 · 有坐标 '+pts+' 家 · 未填坐标 '+miss+' 家 · 想去/收藏 '+wish+' 家'+
+      (near ? ' · 附近 '+nearKmLabel(near)+' 内 '+mapStoresFiltered().length+' 家（直线）' : '')+
+      ' · '+clusters+' 个标记'+(multi ? '（其中 '+multi+' 个为合并簇）' : '')+
       ' · 首绘 '+(mapView.firstDrawMs == null ? '—' : fmtMs(mapView.firstDrawMs))+
       ' / 重绘 '+fmtMs(mapView.drawMs);
   }
@@ -15137,15 +15450,20 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '<button type="button" class="chip-toggle'+(mapView.measure === 'visits' ? ' on' : '')+'" data-map-measure="visits">到访次数</button>'+
       '<button type="button" class="chip-toggle'+(mapView.measure === 'rating' ? ' on' : '')+'" data-map-measure="rating">综合评分</button>'+
       '<span class="lg">小<i style="background:'+mapColorOf(0, pal)+'"></i><i style="background:'+mid+'"></i><i style="background:'+mapColorOf(1, pal)+'"></i>大</span>'+
-      '<span class="lg">'+(mapView.measure === 'rating' ? '颜色/大小 = 综合评分（暂无评分最浅）' : '颜色/大小 = 到访次数（1 次最浅）')+'</span>';
+      '<span class="lg">'+(mapView.measure === 'rating' ? '颜色/大小 = 综合评分（暂无评分最浅）' : '颜色/大小 = 到访次数（1 次最浅）')+'</span>'+
+      '<span class="lg">实心 = 已吃过</span>'+
+      '<span class="lg lg-wish"><i></i>想去 / 收藏（同一份数据）</span>';
     $('#mapLegend').innerHTML = html;
   }
   function renderMapMissing(){
     var list = mapView.missing;
     $('#mapMissingCount').textContent = String(list.length);
     var box = $('#mapMissingList');
+    var wishNote = mapView.wishMissing.length
+      ? '<p class="muted">想去/收藏中另有 '+mapView.wishMissing.length+' 家没有坐标（可在店铺档案里定位），不虚构位置。</p>'
+      : '';
     if(!list.length){
-      box.innerHTML = '<p class="muted">全部店铺都填了坐标，没有虚构位置。</p>';
+      box.innerHTML = '<p class="muted">全部店铺都填了坐标，没有虚构位置。</p>' + wishNote;
       return;
     }
     var shown = list.slice(0, 60);
@@ -15157,7 +15475,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<button type="button" class="btn btn-sm btn-soft" data-map-fix="'+esc(rec ? rec.id : '')+'">补坐标</button></div>';
     }).join('') + (list.length > shown.length
       ? '<p class="muted" style="margin-top:8px">另有 '+(list.length - shown.length)+' 家未列出；可用列表页搜索后补坐标，或稍后再看。</p>'
-      : '');
+      : '') + wishNote;
   }
   function mapListRows(){
     var list = mapStoresFiltered();
@@ -15184,7 +15502,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<button type="button" class="chip-toggle'+(mapView.sort==='visits'?' on':'')+'" data-map-sort="visits">按到访</button>'+
         '<button type="button" class="chip-toggle'+(mapView.sort==='rating'?' on':'')+'" data-map-sort="rating">按评分</button>'+
       '</div>'+
-      '<p class="muted" style="margin-top:8px">筛选沿用列表页的搜索 / 品类 / 评分；距离只有「我的位置 + 店铺坐标」同时存在才按实距，否则标注手填。</p>'+
+      '<p class="muted" style="margin-top:8px">筛选沿用列表页的搜索 / 菜系 / 评分 / 人均；距离档位与「我的位置/手动中心 + 店铺坐标」同口径，只有直线距离，没有道路距离。</p>'+
     '</div>';
     if(!rows.length){
       box.innerHTML = head + '<div class="empty card flat"><h3>没有匹配的店铺</h3><p>换个关键词，或清空列表页的筛选条件。</p></div>';
@@ -15199,17 +15517,20 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         km != null ? ('距我约 '+distText(km)+'（'+(src === 'geo' ? '定位' : '手填')+'）') : '未填距离',
         coord ? '有坐标' : '未填坐标'
       ].join(' · ');
-      return '<div class="map-list-row" data-map-open="'+esc(s.key)+'">'+
+      return '<div class="map-list-row" data-map-focus="'+esc(s.key)+'" data-map-open="'+esc(s.key)+'">'+
         '<div class="mm"><b>'+esc(s.name)+'</b><p class="meta">'+esc(meta)+'</p></div>'+
-        '<span class="muted">›</span></div>';
+        '<span class="muted">定位 ›</span></div>';
     }).join('');
     box.innerHTML = head + html + (rows.length > 300
       ? '<p class="muted" style="text-align:center">共 '+rows.length+' 家，列表按排序显示前 300 家；其余用搜索或地图找。</p>' : '');
   }
   function renderMap(force){
     var t0 = nowMs();
+    mapView.branches = mapBranchStores();
     mapView.points = mapPoints();
+    mapView.wishPoints = mapWishPoints();
     mapView.missing = mapMissingStores();
+    mapSyncFilterUI();
     var changed = mapResize();
     if(force === true || changed) mapView.cam.fitted = false;
     if(mapView.size.w && mapView.size.h) mapDraw();
@@ -15217,14 +15538,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     renderMapLegend();
     renderMapMissing();
     if(mapView.mode === 'list'){
-      $('#mapStatLine').textContent = '共 '+getStores().length+' 家 · 有坐标 '+mapView.points.length+
-        ' 家 · 未填坐标 '+mapView.missing.length+' 家 · 列表视图';
+      $('#mapStatLine').textContent = '共 '+mapView.branches.length+' 家 · 有坐标 '+mapView.points.length+
+        ' 家 · 未填坐标 '+mapView.missing.length+' 家 · 想去/收藏 '+mapView.wishPoints.length+' 家 · 列表视图';
       renderMapList();
     }else{
       renderMapStat();
     }
     mapView.lastRenderMs = nowMs() - t0;
     renderMapLayerUI();
+    renderMapNear();
     /* 只有用户此前显式选择过高德、且本会话还没失败过，才在进入地图时按需加载 */
     if(mapView.active && mapView.mode === 'map' && mapLayerPref() === 'amap' &&
        !amapState.map && !amapState.embed && !amapState.loading && !amapState.err){
@@ -15237,9 +15559,102 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     };
   }
 
+  /* 四类筛选共用列表页的 DOM 值：菜系 / 评分 / 人均；距离档位只影响地图与附近统计 */
+  function mapSyncFilterUI(){
+    var lc = $('#catFilter'), mc = $('#mapCatFilter');
+    if(mc && lc){
+      if(mc.options.length !== lc.options.length){
+        mc.innerHTML = lc.innerHTML.replace('全部品类', '全部菜系');
+      }
+      mc.value = lc.value;
+    }
+    var lr = $('#ratingFilter'), mr = $('#mapRatingFilter');
+    if(mr && lr) mr.value = lr.value;
+    var lp = $('#priceFilter'), mp = $('#mapPriceFilter');
+    if(mp && lp) mp.value = lp.value;
+  }
+  function renderMapNear(){
+    var near = num(mapView.nearKm), me = geoLast();
+    document.querySelectorAll('#mapNearChips [data-near-km]').forEach(function(b){
+      var v = num(b.getAttribute('data-near-km'));
+      var on = (v === near) || (v === 0 && near === 0);
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    var st = $('#mapNearState');
+    if(st){
+      if(!me){
+        st.textContent = near ? ('已选 '+nearKmLabel(near)+'，但还没有中心：点「定位我」或填中心点') : '未指定中心：点「定位我」，或填一个中心点';
+      }else{
+        var cnt = mapStoresFiltered().length;
+        st.textContent = (me.manual ? '手动中心' : '定位中心')+' · '+
+          (near ? ('附近 '+nearKmLabel(near)+' 内 '+cnt+' 家（直线）') : ('全范围 '+cnt+' 家 · 可切 500 m / 1 km / 3 km / 5 km'));
+      }
+    }
+    var hint = $('#mapNearHint');
+    if(hint && near && !me) hint.textContent = '没有中心点就不算距离：先定位或手动填中心；其它筛选、列表与店铺档案不受影响。';
+    else if(hint) hint.textContent = '以中心点画圆，只算直线距离（球面 haversine），不是道路距离；档位边界含本数（500 m 档含 0.5 km）。';
+    var wn = $('#mapWishNote');
+    if(wn){
+      wn.textContent = '想去/收藏共 '+mapView.wishAll+' 家；本屏已画 '+mapView.wishPoints.length+
+        ' 家'+(mapView.wishMissing.length ? ('；'+mapView.wishMissing.length+' 家没有坐标未画（不虚构位置）') : '')+'。';
+    }
+    var la = $('#mapCenterLat'), ln = $('#mapCenterLng');
+    if(me && la && document.activeElement !== la) la.value = me.lat;
+    if(me && ln && document.activeElement !== ln) ln.value = me.lng;
+  }
+  function mapSetNearKm(km){
+    mapView.nearKm = num(km) || 0;
+    mapView.cam.fitted = false;
+    safeRender('renderMap', function(){ renderMap(false); });
+    return mapView.nearKm;
+  }
+  function mapSetManualCenter(lat, lng, silent){
+    var a = num(lat), b = num(lng);
+    if(!isFinite(a) || !isFinite(b) || Math.abs(a) > 90 || Math.abs(b) > 180 || a === 0 || b === 0){
+      toast('中心点经纬度不合法：纬度 -90~90，经度 -180~180');
+      return false;
+    }
+    geoSet(a, b, 0, true);
+    mapView.cam.fitted = false;
+    safeRender('renderMap', function(){ renderMap(true); });
+    if(!silent) toast('已用手动中心（只在本机保存）');
+    return true;
+  }
+  /* 列表行 → 地图定位：切回地图视图、镜头落到该店、选中并弹卡片 */
+  function mapFocusStore(key){
+    var s = mapStoreByKey(key);
+    if(!s) return { ok:false, reason:'missing' };
+    var c = s.isWish ? wishCoord(s.wish) : storeCoord(s);
+    if(!c){
+      if(s.isWish) openMapWishSheet(s.wish);
+      else openMapStoreSheet(key);
+      toast('这家店还没有坐标：地图无法定位，已在卡片里提供补坐标入口');
+      return { ok:false, reason:'no-coord' };
+    }
+    mapView.cos = mapCos();
+    var d = mapDisplayLL(c.lat, c.lng);
+    var sc = 18000;
+    mapView.cam = { cx: d.lng * mapView.cos, cy: -d.lat, scale: sc, baseScale: sc, fitted: true };
+    mapSetMode('map');
+    var all = mapView.clusters.concat(mapView.wishClusters);
+    var cl = all.filter(function(x){
+      return x.pts.some(function(p){ return p.key === key; });
+    })[0];
+    mapView.selected = cl ? cl.id : key;
+    mapDraw();
+    if(s.isWish) openMapWishSheet(s.wish);
+    else openMapStoreSheet(key);
+    return { ok:true, key:key, selected:mapView.selected, scale:mapView.cam.scale };
+  }
+
   /* 店铺 / 簇详情 sheet */
   function mapStoreByKey(key){
-    return getStores().filter(function(s){ return s.key === key; })[0] || null;
+    var k = String(key || '');
+    var list = mapView.branches || mapBranchStores();
+    var hit = list.filter(function(s){ return s.key === k; })[0];
+    if(hit) return hit;
+    return wishStores().filter(function(s){ return s.key === k; })[0] || null;
   }
   function mapSheetOpen(){
     return !$('#mapStoreMask').classList.contains('hidden');
@@ -15613,9 +16028,65 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }).join('') : '<p class="muted" style="margin:0">暂无数据</p>';
     return '<div class="card flat" style="padding:10px 12px;margin-bottom:12px"><p class="muted" style="margin-bottom:6px">同店菜品（按菜名汇总，金额仅参考）</p><div class="dish-sum">'+rows+'</div></div>';
   }
+  /* 坐标纠错：旧坐标/来源/时间只追加到历史，当前 lat/lng 仍是唯一读取源 */
+  function coordHistoryRowsOf(s, sid){
+    var rows = [];
+    (s && s.records ? s.records : []).forEach(function(r){
+      (Array.isArray(r.coordHistory) ? r.coordHistory : []).forEach(function(h){
+        rows.push({ lat:h.lat, lng:h.lng, src:String(h.locationSource || h.src || ''), sys:String(h.coordinateSystem || ''), at:String(h.at || r.updatedAt || r.createdAt || '') });
+      });
+    });
+    shopLocationHistoryOf(sid).forEach(function(h){
+      rows.push({ lat:h.lat, lng:h.lng, src:String(h.source || ''), sys:String(h.coordinateSystem || ''), at:String(h.updatedAt || '') });
+    });
+    rows.sort(function(a, b){ return String(b.at || '').localeCompare(String(a.at || '')); });
+    return rows;
+  }
+  function coordHistoryHtml(s, sid){
+    var rows = coordHistoryRowsOf(s, sid);
+    if(!rows.length) return '';
+    var shown = rows.slice(0, 5).map(function(h){
+      var src = SHOP_LOCATION_SOURCES[h.src] || h.src || '来源未知';
+      var when = String(h.at || '').replace('T', ' ').slice(0, 16) || '时间未知';
+      return '<div class="store-tl-row"><span class="d">'+esc(when)+'</span><span class="m">旧坐标 '+
+        esc(h.lng + ', ' + h.lat)+' · '+esc(src)+'</span></div>';
+    }).join('');
+    return '<div class="card flat" style="padding:10px 12px;margin-bottom:12px">'+
+      '<div class="store-block-title"><span>坐标变更历史</span><span>只追加 '+rows.length+' 条，不覆盖原坐标字段</span></div>'+
+      shown+ (rows.length > shown.length ? '<p class="muted" style="margin:6px 0 0">仅显示最近 5 条；旧值仍保留在记录/档案历史里。</p>' : '')+
+      '</div>';
+  }
+  function openMapWishSheet(w){
+    if(!w) return null;
+    var c = wishCoord(w), sid = shopIdOf(w.name, w.city);
+    mapView.sheetKey = w.key;
+    mapView.selected = '';
+    var body =
+      '<p class="map-sheet-sub">'+esc([w.city, w.area].filter(Boolean).join(' · ') || '未填位置')+
+        ' · <span class="tag">想去 / 收藏</span>'+(c ? '' : ' · <span class="tag warn">未填坐标</span>')+'</p>'+
+      '<div class="card flat" style="padding:4px 12px;margin-bottom:12px">'+
+        diaryKv('类型', '想去清单（与「收藏」同一份数据，没有第三种状态）')+
+        diaryKv('预算', w.perPrice > 0 ? money(w.perPrice) : '未填')+
+        diaryKv('备注', esc((w.wish && w.wish.note) || '暂无备注'))+
+        diaryKv('距离', wishKmOf(w) != null ? esc('直线 '+distText(wishKmOf(w))+(geoLast() && geoLast().manual ? '（手填中心）' : '（定位）')) : '暂无（需要中心点 + 店铺档案坐标）')+
+        diaryKv('坐标', c ? esc(c.lng + ', ' + c.lat + '（店铺档案）') : '未填（不画到图上）')+
+      '</div>'+
+      (c ? '' : '<div class="fb-note" style="margin-bottom:8px">想去店没有坐标：可在店铺档案里定位，地图不会凭店名编造位置。</div>')+
+      '<div class="actions" style="margin-top:0">'+
+        '<button type="button" class="btn" data-act="wishEat" data-key="'+esc(w.key)+'">记一餐</button>'+
+        '<a class="btn btn-soft" href="'+esc('https://uri.amap.com/search?keyword=' + encodeURIComponent(w.name + (w.city ? ' ' + w.city : '')))+'" target="_blank" rel="noopener noreferrer">高德搜索</a>'+
+        '<button type="button" class="btn" data-shop-meta="'+esc(sid)+'" data-shop-meta-title="'+esc(w.name)+'">店铺档案</button>'+
+        '<button type="button" class="btn" data-map-close="1">关闭</button>'+
+      '</div>';
+    $('#mapStoreTitle').textContent = w.name;
+    $('#mapStoreBody').innerHTML = body;
+    $('#mapStoreMask').classList.remove('hidden');
+    return mapSheetInfo();
+  }
   function openMapStoreSheet(key){
     var s = mapStoreByKey(key);
     if(!s){ toast('这家店的数据已变化，请刷新地图'); return null; }
+    if(s.isWish) return openMapWishSheet(s.wish);
     var c = storeCoord(s);
     var info = mapInfoOf(s || {});
     if(c){ info.lng = c.lng; info.lat = c.lat; }
@@ -15649,6 +16120,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         diaryKv('平台链接', linkCount ? esc(linkCount + ' 条（点下方「链接 / 补充」管理）') : '暂无数据')+
         diaryKv('补充信息', esc(shopMetaSummary(sid)))+
       '</div>'+
+      coordHistoryHtml(s, sid)+
       '<div class="card flat" style="padding:10px 12px;margin-bottom:12px">'+
         '<div class="store-block-title"><span>到店时间轴</span><span>共 '+esc(s.visits)+' 次 · 点开看该次详情</span></div>'+
         shopTimelineHtml(s)+
@@ -15681,10 +16153,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     mapView.selected = cluster.id;
     var rows = cluster.pts.map(function(p){
       var s = p.store;
+      var meta = p.kind === 'wish'
+        ? '想去 / 收藏 · 未到访'
+        : ('到访 '+p.visits+' 次 · '+(num(p.rating)>0 ? '评分 '+p.rating : '暂无评分'));
       return '<div class="map-list-row" data-map-open="'+esc(p.key)+'">'+
         '<div class="mm"><b>'+esc(p.name)+'</b><p class="meta">'+
-          esc([p.city, p.area].filter(Boolean).join(' · ') || '未填位置')+' · 到访 '+p.visits+' 次 · '+
-          (num(p.rating)>0 ? '评分 '+p.rating : '暂无评分')+'</p></div><span class="muted">›</span></div>';
+          esc([p.city, p.area].filter(Boolean).join(' · ') || '未填位置')+' · '+esc(meta)+'</p></div><span class="muted">›</span></div>';
     }).join('');
     $('#mapStoreTitle').textContent = '同一位置 '+cluster.count+' 家店';
     $('#mapStoreBody').innerHTML =
@@ -16477,11 +16951,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function mapEmbedPoints(){
     var pal = MAP_PAL[mapView.measure] || MAP_PAL.visits;
-    return mapView.clusters.map(function(c){
+    var out = mapView.clusters.map(function(c){
       var ll = mapUnproject(c.x, c.y);   /* cam 里已是 GCJ 显示坐标 */
       return { id:c.id, lat:ll.lat, lng:ll.lng, n:c.count,
         r:Math.max(4, Math.min(18, Math.round(c.r))), col:mapColorOf(c.norm, pal) };
     });
+    /* 内嵌页只认颜色，不认形状：想去/收藏统一用蓝色（画布回退里另有空心圈，两者都不伪造坐标） */
+    mapView.wishClusters.forEach(function(c){
+      var ll = mapUnproject(c.x, c.y);
+      out.push({ id:c.id, lat:ll.lat, lng:ll.lng, n:1, r:7, col:'#2f7fd6' });
+    });
+    return out;
   }
   function mapEmbedSyncPts(){
     if(!amapState.embedReady || !amapState.embed) return;
@@ -22828,9 +23308,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   });
 
   /* 列表筛选：输入 300ms 防抖，避免每次按键都全量过滤重排 DOM */
-  $('#q').addEventListener('input', debounce(function(){ renderList(true); }, 300));
-  ['#sort','#catFilter','#ratingFilter'].forEach(function(sel){
-    $(sel).addEventListener('change', function(){ renderList(true); });
+  $('#q').addEventListener('input', debounce(function(){ renderList(true); mapSyncFilterUI(); if(mapView.active) safeRender('renderMap', function(){ renderMap(false); }); }, 300));
+  ['#sort','#catFilter','#ratingFilter','#priceFilter'].forEach(function(sel){
+    $(sel).addEventListener('change', function(){
+      renderList(true);
+      mapSyncFilterUI();
+      if(mapView.active) safeRender('renderMap', function(){ renderMap(false); });
+    });
   });
 
   /* 日历 */
@@ -22957,8 +23441,31 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   $('#mapListBox').addEventListener('click', function(e){
     var s = e.target.closest ? e.target.closest('[data-map-sort]') : null;
     if(s){ mapView.sort = s.getAttribute('data-map-sort') || 'dist'; renderMapList(); return; }
+    var focus = e.target.closest ? e.target.closest('[data-map-focus]') : null;
+    if(focus){ mapFocusStore(focus.getAttribute('data-map-focus')); return; }
     var row = e.target.closest ? e.target.closest('[data-map-open]') : null;
-    if(row) openMapStoreSheet(row.getAttribute('data-map-open'));
+    if(row) mapFocusStore(row.getAttribute('data-map-open'));
+  });
+  /* 附近档位 / 手动中心 / 地图侧四类筛选（菜系、评分、人均写回列表同一套 DOM，距离只作用于地图） */
+  $('#mapNearChips').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-near-km]') : null;
+    if(!b) return;
+    mapSetNearKm(b.getAttribute('data-near-km'));
+  });
+  $('#mapCenterGo').addEventListener('click', function(){
+    mapSetManualCenter($('#mapCenterLat').value, $('#mapCenterLng').value, false);
+  });
+  ['#mapCatFilter','#mapRatingFilter','#mapPriceFilter'].forEach(function(sel){
+    $(sel).addEventListener('change', function(){
+      var mc = $('#mapCatFilter'), lc = $('#catFilter');
+      if(mc && lc) lc.value = mc.value;
+      var mr = $('#mapRatingFilter'), lr = $('#ratingFilter');
+      if(mr && lr) lr.value = mr.value;
+      var mp = $('#mapPriceFilter'), lp = $('#priceFilter');
+      if(mp && lp) lp.value = mp.value;
+      renderList(true);
+      safeRender('renderMap', function(){ renderMap(false); });
+    });
   });
   $('#mapStoreClose').addEventListener('click', closeMapStoreSheet);
   $('#mapStoreMask').addEventListener('click', function(e){ if(e.target === this) closeMapStoreSheet(); });
@@ -22967,6 +23474,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(visit){ var id = visit.getAttribute('data-map-visit'); closeMapStoreSheet(); diaryOpenDetail(id); return; }
     var open = e.target.closest ? e.target.closest('[data-map-open]') : null;
     if(open){ openMapStoreSheet(open.getAttribute('data-map-open')); return; }
+    var wishEat = e.target.closest ? e.target.closest('[data-act="wishEat"]') : null;
+    if(wishEat){
+      var wk = wishEat.getAttribute('data-key') || '';
+      var ws = wishStores().filter(function(x){ return x.key === wk; })[0];
+      if(ws){
+        closeMapStoreSheet();
+        openForm(null, { name:ws.name, city:ws.city, area:ws.area, scene:'daily' });
+      }
+      return;
+    }
     var again = e.target.closest ? e.target.closest('[data-act="shopAgain"]') : null;
     if(again){
       var ak = again.getAttribute('data-key') || '';
@@ -26632,6 +27149,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         return {
           active: mapView.active, mode: mapView.mode, points: mapView.points.length,
           missing: mapView.missing.length, clusters: mapView.clusters.length,
+          branches: mapView.branches ? mapView.branches.length : 0,
+          wish: mapView.wishPoints.length, wishClusters: mapView.wishClusters.length,
           drawMs: mapView.drawMs, firstDrawMs: mapView.firstDrawMs, ms: mapView.lastRenderMs
         };
       },
@@ -26708,6 +27227,50 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       list: function(){
         return mapListRows().map(function(s){ return { key:s.key, name:s.name, km:storeKm(s), src:storeKmSrc(s), coord:!!storeCoord(s) }; });
       },
+      branches: function(){
+        return (mapView.branches || mapBranchStores()).map(function(s){
+          return {
+            key:s.key, name:s.name, city:s.city, address:s.address, category:s.category,
+            visits:s.visits, rating:s.rating, perPrice:s.perPrice, coord:!!storeCoord(s), km:storeKm(s)
+          };
+        });
+      },
+      filtered: function(){ return mapStoresFiltered().map(function(s){ return s.key; }); },
+      wishPoints: function(){
+        return mapView.wishPoints.map(function(p){
+          var xy = mapProjectDisplay(p.lat, p.lng);
+          return { key:p.key, name:p.name, lat:p.lat, lng:p.lng, km:p.km, x:Math.round(xy.x*10)/10, y:Math.round(xy.y*10)/10 };
+        });
+      },
+      wishState: function(){
+        return { all:mapView.wishAll, drawn:mapView.wishPoints.length, missing:mapView.wishMissing.length };
+      },
+      nearState: function(){
+        return { km:num(mapView.nearKm), count:mapStoresFiltered().length, center:geoLast(), label:nearKmLabel(num(mapView.nearKm)) };
+      },
+      setNear: function(v){ mapSetNearKm(v); return num(mapView.nearKm); },
+      setCenter: function(lat, lng){ return mapSetManualCenter(lat, lng, true); },
+      setFilters: function(o){
+        o = o || {};
+        if(o.cat != null && $('#catFilter')) $('#catFilter').value = String(o.cat);
+        if(o.rating != null && $('#ratingFilter')) $('#ratingFilter').value = String(o.rating);
+        if(o.price != null && $('#priceFilter')) $('#priceFilter').value = String(o.price);
+        if(o.q != null && $('#q')) $('#q').value = String(o.q);
+        mapSyncFilterUI();
+        renderList(true);
+        renderMap(false);
+        return { keys:mapStoresFiltered().map(function(s){ return s.key; }), near:num(mapView.nearKm) };
+      },
+      focus: function(key){ return mapFocusStore(key); },
+      coordHistory: function(key){
+        var s = mapStoreByKey(key);
+        if(!s) return null;
+        return coordHistoryRowsOf(s, shopIdOf(s.name, s.city));
+      },
+      clusterKinds: function(){
+        return mapView.clusters.map(function(c){ return c.kind || 'visited'; })
+          .concat(mapView.wishClusters.map(function(c){ return c.kind || 'wish'; }));
+      },
       listRows: function(){ return $('#mapListBox').querySelectorAll('.map-list-row').length; },
       setSort: function(v){ mapView.sort = ['dist','visits','rating'].indexOf(v) >= 0 ? v : 'dist'; renderMapList(); return mapView.sort; },
       setMode: function(m){ return mapSetMode(m); },
@@ -26740,7 +27303,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       fix: function(id){ openForm(id); return true; },
       geo: {
         get: function(){ return geoLast(); },
-        set: function(lat, lng, acc){ return geoSet(lat, lng, acc); },
+        set: function(lat, lng, acc, manual){ return geoSet(lat, lng, acc, manual); },
         clear: function(){ geoClear(); }
       },
       setLayer: mapSetBaseLayer
@@ -26758,6 +27321,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       status: function(shopId, linkId, st){ return shopLinkStatusSet(shopId, linkId, st); },
       remove: function(shopId, linkId){ return shopLinkRemove(shopId, linkId); },
       setField: function(shopId, key, value){ return shopFieldSet(shopId, key, value); },
+      locationSet: function(shopId, loc){ return shopLocationSet(shopId, loc); },
+      locationOf: function(shopId){ return shopLocationOf(shopId); },
+      locationHistory: function(shopId){ return shopLocationHistoryOf(shopId); },
       field: function(shopId, key){ return shopFieldOf(shopId, key); },
       fieldText: function(shopId, key){ return shopFieldText(shopId, key); },
       linkUrl: shopLinkUrl,
