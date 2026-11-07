@@ -1231,6 +1231,31 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .home-detail-meta{display:flex;gap:6px;flex-wrap:wrap}
   .home-src{font-size:11px;color:var(--ink3);margin-top:10px}
   .home-fb-hist{font-size:11px;color:var(--ink3);margin-top:6px}
+  .home-add3{display:grid;grid-template-columns:1fr 82px 64px auto;gap:6px}
+  .home-pantry{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .home-pchip{display:inline-flex;align-items:center;gap:6px;padding:6px 8px;border-radius:999px;border:1px solid var(--line);background:var(--panel-2);font-size:12px}
+  .home-pchip button{border:0;background:transparent;color:var(--ink3);font-size:14px;line-height:1;padding:0 2px;cursor:pointer}
+  .home-match-group{margin-top:10px}
+  .home-match-group h4{font-size:12px;margin:0 0 6px;color:var(--ink2)}
+  .home-match-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;font-size:12.5px;cursor:pointer}
+  .home-match-row .grow{flex:1;min-width:0}
+  .home-match-row b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .home-match-row span{font-size:11px;color:var(--ink3)}
+  .home-filters{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+  .home-log-stats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .home-log-row{display:flex;gap:8px;padding:10px;border:1px solid var(--line);border-radius:12px;align-items:flex-start}
+  .home-log-row .grow{flex:1;min-width:0}
+  .home-log-row b{display:block;font-size:13.5px}
+  .home-log-row .hl-sub{font-size:11px;color:var(--ink3);display:block;margin-top:2px}
+  .home-log-note{font-size:11px;color:var(--ink2);display:block;margin-top:4px;line-height:1.5}
+  .home-log-acts{display:flex;flex-direction:column;gap:4px;flex:none}
+  .home-log-acts button{font-size:11px;padding:5px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink2);cursor:pointer;white-space:nowrap}
+  .home-log-form .frow{margin-bottom:8px}
+  .home-log-ing{display:grid;grid-template-columns:1fr 64px 52px auto;gap:6px;margin-bottom:6px}
+  .home-log-photos{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .home-log-photos .ph{position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+  .home-log-photos .ph img{width:100%;height:100%;object-fit:cover;display:block}
+  .home-log-photos .ph button{position:absolute;top:2px;right:2px;border:0;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;width:18px;height:18px;line-height:16px;font-size:11px;padding:0;cursor:pointer}
 </style>
 </head>
 <body>
@@ -1788,6 +1813,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <button class="on" data-hpanel="reco">今天做啥</button>
         <button data-hpanel="lib">菜谱库</button>
         <button data-hpanel="fav">收藏</button>
+        <button data-hpanel="pantry">食材</button>
+        <button data-hpanel="log">记录</button>
       </div>
       <div id="homePanelReco">
         <div class="card">
@@ -1808,6 +1835,35 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       </div>
       <div id="homePanelFav" class="hidden">
         <div class="home-list" id="homeFavList"></div>
+      </div>
+      <div id="homePanelPantry" class="hidden">
+        <div class="card">
+          <div class="section-head" style="margin:0 0 10px"><h2>我的食材</h2><span class="hint" id="homePantryMeta"></span></div>
+          <div class="home-add3">
+            <input class="input" id="hpName" placeholder="食材名，如 番茄" maxlength="40" autocomplete="off">
+            <input class="input" id="hpAmount" placeholder="数量" maxlength="12" inputmode="decimal" autocomplete="off">
+            <input class="input" id="hpUnit" placeholder="单位" maxlength="6" autocomplete="off">
+            <button class="btn" id="hpAdd">加入</button>
+          </div>
+          <div class="home-pantry" id="homePantryList"></div>
+          <p class="home-src">第一版只记「有没有」和大致数量：不做精确克数、保质期与库存流水。</p>
+        </div>
+        <div class="card">
+          <div class="section-head" style="margin:0 0 10px"><h2>按食材找菜谱</h2><span class="hint" id="homeMatchMeta"></span></div>
+          <div id="homeMatchList"></div>
+        </div>
+      </div>
+      <div id="homePanelLog" class="hidden">
+        <div class="card">
+          <div class="home-filters">
+            <input class="input" id="hlQ" placeholder="菜品关键词" maxlength="40" autocomplete="off">
+            <input class="input" id="hlMonth" type="month" aria-label="按月份筛选">
+            <select class="input" id="hlCat" aria-label="按菜系筛选"><option value="">全部菜系</option></select>
+            <button type="button" class="btn btn-soft" id="hlReset">清空筛选</button>
+          </div>
+          <div class="home-log-stats" id="homeLogStats"></div>
+          <div class="home-list" id="homeLogList"></div>
+        </div>
       </div>
     </section>
 
@@ -2309,6 +2365,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <button type="button" class="icon-btn" id="homeDetailClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
     </div>
     <div id="homeDetailBody"></div>
+  </div>
+</div>
+
+<!-- 在家吃：实际制作记录表单 -->
+<div class="sheet-mask hidden" id="homeLogMask">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="homeLogTitle">记录这次制作</h2>
+      <button type="button" class="icon-btn" id="homeLogClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
+    </div>
+    <div id="homeLogBody" class="home-log-form"></div>
   </div>
 </div>
 
@@ -5191,24 +5258,402 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return (nowMs - t) < days * 86400000;
   }
 
+  /* ================= 第二阶段：家庭食材 / 实际制作记录 =================
+   * 独立键 fandazi.pantry / fandazi.cooklog，与餐厅数据完全隔离；
+   * 制作照片沿用 fandazi.media（cat='home'），必须纳入 photoRefIndex 的有效引用。
+   * 制作记录保存菜名/食材快照，菜谱资料后续更新不会覆盖历史记录。
+   */
+  var PANTRY_KEY = 'fandazi.pantry';
+  var COOKLOG_KEY = 'fandazi.cooklog';
+  var HOME_EXT_VERSION = 2;
+  var HOME_MAX_PANTRY = 400;
+  var HOME_MAX_COOKLOG = 2000;
+  var HOME_PHOTO_CAT = 'home';
+  var pantryStore = null;
+  var cookStore = null;
+  var homeLogState = { draft:null, photos:[], addedPhotos:[] };
+
+  /* 常见等价写法：只做名称级替换，不做克数/营养换算；数组内含双向写法 */
+  var HOME_ALIASES = {
+    '番茄':['西红柿'], '西红柿':['番茄'],
+    '土豆':['马铃薯'], '马铃薯':['土豆'],
+    '鸡蛋':['蛋','土鸡蛋'], '蛋':['鸡蛋'], '土鸡蛋':['鸡蛋'],
+    '葱':['小葱','大葱','香葱'], '小葱':['葱'], '大葱':['葱'], '香葱':['葱'],
+    '蒜':['大蒜','蒜瓣','蒜头'], '大蒜':['蒜'], '蒜瓣':['蒜'], '蒜头':['蒜'],
+    '姜':['生姜','姜片'], '生姜':['姜'], '姜片':['姜'],
+    '食用油':['油','花生油','菜籽油','玉米油'], '油':['食用油'], '花生油':['食用油'], '菜籽油':['食用油'],
+    '盐':['食盐'], '食盐':['盐'],
+
+    '醋':['陈醋','米醋','香醋'], '陈醋':['醋'], '米醋':['醋'], '香醋':['醋'],
+    '糖':['白糖','砂糖','冰糖'], '白糖':['糖'], '砂糖':['糖'], '冰糖':['糖'],
+    '面条':['挂面','面'], '挂面':['面条'], '米饭':['大米','饭'], '大米':['米饭'],
+    '青菜':['小白菜','上海青','油菜'], '小白菜':['青菜'], '上海青':['青菜'], '油菜':['青菜'],
+    '包菜':['卷心菜','圆白菜'], '卷心菜':['包菜'], '圆白菜':['包菜'],
+    '五花肉':['猪肉'], '猪肉':['五花肉','里脊肉'], '里脊肉':['猪肉','瘦肉'], '瘦肉':['里脊肉'],
+    '肉末':['猪肉馅','肉馅'], '猪肉馅':['肉末'], '肉馅':['肉末'],
+    '鸡胸肉':['鸡肉'], '鸡腿肉':['鸡肉','鸡腿'], '鸡肉':['鸡胸肉','鸡腿肉'], '鸡腿':['鸡腿肉'],
+    '排骨':['猪排'], '猪排':['排骨'],
+    '豆腐':['嫩豆腐','老豆腐'], '嫩豆腐':['豆腐'], '老豆腐':['豆腐'],
+    '木耳':['黑木耳'], '黑木耳':['木耳'],
+    '香菇':['蘑菇'], '蘑菇':['香菇'],
+    '花生米':['花生'], '花生':['花生米'],
+    '白胡椒':['胡椒粉'], '胡椒粉':['白胡椒'],
+    '葱油':['葱']
+  };
+  /* 真正的替代关系：有它也能做，但算「可替代」而不是「已有」 */
+  var HOME_SUBSTITUTES = {
+    '生抽':['酱油','味极鲜','老抽'],
+    '老抽':['生抽','酱油'],
+    '蒸鱼豉油':['豉油','酱油','生抽'],
+    '豉油':['蒸鱼豉油','酱油'],
+    '料酒':['黄酒','米酒','白酒'],
+    '黄酒':['料酒','米酒'],
+    '淀粉':['生粉','玉米淀粉','土豆淀粉'],
+    '生粉':['淀粉','玉米淀粉','土豆淀粉'],
+    '香油':['芝麻油'],
+    '芝麻油':['香油'],
+    '蚝油':['鲍鱼汁'],
+    '辣椒':['干辣椒'],
+    '干辣椒':['辣椒'],
+    '花椒':['花椒粉'],
+    '花椒粉':['花椒'],
+    '鸡精':['味精'],
+    '味精':['鸡精']
+  };
+  function homeKeyName(v){ return String(v == null ? '' : v).replace(/[\s　]/g, '').toLowerCase(); }
+  function homeNewId(prefix){
+    return String(prefix || '') + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  function pantryItemNorm(x, fallbackId){
+    if(!x || typeof x !== 'object' || Array.isArray(x)) return null;
+    var name = homeNormName(x.name, 40);
+    if(!name) return null;
+    var id = String(x.id == null ? (fallbackId || '') : x.id).trim().slice(0, 40);
+    if(!id) return null;
+    return {
+      id: id, name: name,
+      amount: String(x.amount == null ? '' : x.amount).trim().slice(0, 12),
+      unit: String(x.unit == null ? '' : x.unit).trim().slice(0, 6),
+      createdAt: String(x.createdAt || ''), updatedAt: String(x.updatedAt || '')
+    };
+  }
+  function pantryLoad(){
+    if(pantryStore) return pantryStore;
+    var out = { version:HOME_EXT_VERSION, items:[] };
+    try{
+      var raw = JSON.parse(localStorage.getItem(PANTRY_KEY) || 'null');
+      if(raw && typeof raw === 'object' && Array.isArray(raw.items)){
+        raw.items.forEach(function(x){
+          var n = pantryItemNorm(x, null);
+          if(n && out.items.length < HOME_MAX_PANTRY) out.items.push(n);
+        });
+      }
+    }catch(e){ logError('食材读取', e); }
+    pantryStore = out;
+    return out;
+  }
+  function pantryPersist(next){
+    try{
+      localStorage.setItem(PANTRY_KEY, JSON.stringify(next));
+      pantryStore = next;
+      return true;
+    }catch(e){ logError('食材保存', e); return false; }
+  }
+  function pantryAdd(name, amount, unit){
+    var nm = homeNormName(name, 40);
+    if(!nm) return null;
+    var st = pantryLoad();
+    var key = homeKeyName(nm);
+    var hit = null;
+    st.items.forEach(function(p){ if(!hit && homeKeyName(p.name) === key) hit = p; });
+    var next = { version:HOME_EXT_VERSION, items: st.items.map(function(p){ return JSON.parse(JSON.stringify(p)); }) };
+    var now = new Date().toISOString();
+    if(hit){
+      for(var i=0;i<next.items.length;i++){
+        if(next.items[i].id !== hit.id) continue;
+        next.items[i].amount = String(amount == null ? '' : amount).trim().slice(0, 12);
+        next.items[i].unit = String(unit == null ? '' : unit).trim().slice(0, 6);
+        next.items[i].updatedAt = now;
+        if(!pantryPersist(next)) return null;
+        return next.items[i];
+      }
+    }
+    var item = { id:homeNewId('pa'), name:nm, amount:String(amount == null ? '' : amount).trim().slice(0, 12), unit:String(unit == null ? '' : unit).trim().slice(0, 6), createdAt:now, updatedAt:now };
+    next.items.push(item);
+    if(next.items.length > HOME_MAX_PANTRY) next.items = next.items.slice(next.items.length - HOME_MAX_PANTRY);
+    if(!pantryPersist(next)) return null;
+    return item;
+  }
+  function pantryRemove(id){
+    var st = pantryLoad();
+    var next = { version:HOME_EXT_VERSION, items: st.items.filter(function(p){ return p.id !== id; }).map(function(p){ return JSON.parse(JSON.stringify(p)); }) };
+    if(next.items.length === st.items.length) return false;
+    return pantryPersist(next);
+  }
+  function pantryBackupData(){ return { version:HOME_EXT_VERSION, items: JSON.parse(JSON.stringify(pantryLoad().items)) }; }
+  function pantryBackupValidate(payload, where){
+    if(payload == null) return;
+    if(typeof payload !== 'object' || !Array.isArray(payload.items)) throw new Error(where + '：食材段格式不正确');
+    payload.items.forEach(function(x, i){
+      if(!x || typeof x !== 'object' || typeof x.name !== 'string' || !x.name.trim()) throw new Error(where + '：第 ' + (i + 1) + ' 条食材缺少名称');
+      if(typeof x.id !== 'string' || !x.id.trim()) throw new Error(where + '：第 ' + (i + 1) + ' 条食材缺少 id');
+    });
+  }
+  function applyBackupPantry(payload, mode){
+    if(payload == null) return { applied:false, items:pantryLoad().items.length };
+    var base = { version:HOME_EXT_VERSION, items: mode === 'replace' ? [] : pantryLoad().items.map(function(p){ return JSON.parse(JSON.stringify(p)); }) };
+    var idx = {};
+    base.items.forEach(function(p, i){ idx[p.id] = i; });
+    payload.items.forEach(function(x){
+      var n = pantryItemNorm(x, null);
+      if(!n) return;
+      if(idx[n.id] !== undefined) base.items[idx[n.id]] = n;
+      else { idx[n.id] = base.items.length; base.items.push(n); }
+    });
+    if(base.items.length > HOME_MAX_PANTRY) base.items = base.items.slice(base.items.length - HOME_MAX_PANTRY);
+    if(!pantryPersist(base)) throw new Error('食材写入失败：本机存储空间不足');
+    return { applied:true, items:base.items.length };
+  }
+
+  function homeCookIngNorm(x){
+    if(!x) return null;
+    var name = homeNormName(typeof x === 'string' ? x : x.name, 40);
+    if(!name) return null;
+    return {
+      name: name,
+      amount: String((x && x.amount) == null ? '' : x.amount).trim().slice(0, 12),
+      unit: String((x && x.unit) == null ? '' : x.unit).trim().slice(0, 6)
+    };
+  }
+  /* 制作记录字段白名单；title 是保存当时的菜名快照，不随菜谱改名而变化 */
+  function homeCookNorm(x, fallbackId){
+    if(!x || typeof x !== 'object' || Array.isArray(x)) return null;
+    var title = homeNormName(x.title || x.name, 60);
+    if(!title) return null;
+    var id = String(x.id == null ? (fallbackId || '') : x.id).trim().slice(0, 40);
+    if(!id) return null;
+    var date = String(x.date || '').slice(0, 10);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) date = todayStr();
+    var ing = [];
+    (Array.isArray(x.ingredients) ? x.ingredients : []).forEach(function(v){
+      var n = homeCookIngNorm(v);
+      if(n && ing.length < 40) ing.push(n);
+    });
+    var photos = [];
+    (Array.isArray(x.photos) ? x.photos : []).forEach(function(p){
+      var pid = String((p && p.id) || p || '').trim();
+      if(pid && photos.length < 9) photos.push({ id: pid.slice(0, 60), cat: HOME_PHOTO_CAT });
+    });
+    var rating = homeNumOrNull(x.rating, 5);
+    if(rating != null && rating < 0) rating = null;
+    return {
+      id: id,
+      recipeId: String(x.recipeId || '').trim().slice(0, 40),
+      title: title,
+      date: date,
+      people: Math.min(99, Math.max(1, Math.round(num(x.people) || 2))),
+      ingredients: ing,
+      cost: homeNumOrNull(x.cost, 1000000),
+      minutes: homeNumOrNull(x.minutes, 1440),
+      photos: photos,
+      rating: rating,
+      note: homeNormName(x.note, 200),
+      again: x.again === true ? true : (x.again === false ? false : null),
+      createdAt: String(x.createdAt || ''),
+      updatedAt: String(x.updatedAt || '')
+    };
+  }
+  function homeCookLoad(){
+    if(cookStore) return cookStore;
+    var out = { version:HOME_EXT_VERSION, items:[] };
+    try{
+      var raw = JSON.parse(localStorage.getItem(COOKLOG_KEY) || 'null');
+      if(raw && typeof raw === 'object' && Array.isArray(raw.items)){
+        raw.items.forEach(function(x){
+          var n = homeCookNorm(x, null);
+          if(n && out.items.length < HOME_MAX_COOKLOG) out.items.push(n);
+        });
+      }
+    }catch(e){ logError('制作记录读取', e); }
+    cookStore = out;
+    return out;
+  }
+  function homeCookPersist(next){
+    try{
+      localStorage.setItem(COOKLOG_KEY, JSON.stringify(next));
+      cookStore = next;
+      return true;
+    }catch(e){ logError('制作记录保存', e); return false; }
+  }
+  function homeCookBy(id){
+    var items = homeCookLoad().items;
+    for(var i=0;i<items.length;i++){ if(items[i].id === id) return items[i]; }
+    return null;
+  }
+  /* 保存一次实际制作：写 fandazi.cooklog；同步更新菜谱统计与家庭反馈（仍走 fandazi.homefb） */
+  function homeCookAdd(input){
+    input = input || {};
+    var now = new Date().toISOString();
+    var item = homeCookNorm(Object.assign({}, input, { id: homeNewId('ck'), createdAt:now, updatedAt:now }), null);
+    if(!item) return null;
+    var st = homeCookLoad();
+    var next = { version:HOME_EXT_VERSION, items: st.items.concat([JSON.parse(JSON.stringify(item))]) };
+    if(next.items.length > HOME_MAX_COOKLOG) next.items = next.items.slice(next.items.length - HOME_MAX_COOKLOG);
+    if(!homeCookPersist(next)) return null;
+    if(item.recipeId){
+      homeRecipeWrite(function(n){
+        for(var i=0;i<n.items.length;i++){
+          if(n.items[i].id !== item.recipeId) continue;
+          n.items[i].cookedCount = Math.max(0, num(n.items[i].cookedCount)) + 1;
+          n.items[i].lastCookedAt = now;
+          n.items[i].updatedAt = now;
+        }
+      });
+      homeFbAdd(item.recipeId, 'cooked');
+    }
+    return item;
+  }
+  function homeCookRemove(id){
+    var st = homeCookLoad();
+    var next = { version:HOME_EXT_VERSION, items: st.items.filter(function(c){ return c.id !== id; }).map(function(c){ return JSON.parse(JSON.stringify(c)); }) };
+    if(next.items.length === st.items.length) return false;
+    return homeCookPersist(next);
+  }
+  function homeCookBackupData(){ return { version:HOME_EXT_VERSION, items: JSON.parse(JSON.stringify(homeCookLoad().items)) }; }
+  function homeCookBackupValidate(payload, where){
+    if(payload == null) return;
+    if(typeof payload !== 'object' || !Array.isArray(payload.items)) throw new Error(where + '：制作记录段格式不正确');
+    payload.items.forEach(function(x, i){
+      if(!x || typeof x !== 'object' || typeof x.title !== 'string' || !x.title.trim()) throw new Error(where + '：第 ' + (i + 1) + ' 条制作记录缺少菜名');
+      if(typeof x.id !== 'string' || !x.id.trim()) throw new Error(where + '：第 ' + (i + 1) + ' 条制作记录缺少 id');
+    });
+  }
+  function applyBackupCookLog(payload, mode){
+    if(payload == null) return { applied:false, items:homeCookLoad().items.length };
+    var base = { version:HOME_EXT_VERSION, items: mode === 'replace' ? [] : homeCookLoad().items.map(function(c){ return JSON.parse(JSON.stringify(c)); }) };
+    var idx = {};
+    base.items.forEach(function(c, i){ idx[c.id] = i; });
+    payload.items.forEach(function(x){
+      var n = homeCookNorm(x, null);
+      if(!n) return;
+      if(idx[n.id] !== undefined) base.items[idx[n.id]] = n;
+      else { idx[n.id] = base.items.length; base.items.push(n); }
+    });
+    if(base.items.length > HOME_MAX_COOKLOG) base.items = base.items.slice(base.items.length - HOME_MAX_COOKLOG);
+    if(!homeCookPersist(base)) throw new Error('制作记录写入失败：本机存储空间不足');
+    return { applied:true, items:base.items.length };
+  }
+  function homeCookRollback(pantryRaw, pantrySnap, cookRaw, cookSnap){
+    pantryStore = pantrySnap;
+    cookStore = cookSnap;
+    try{
+      if(pantryRaw == null) localStorage.removeItem(PANTRY_KEY); else localStorage.setItem(PANTRY_KEY, pantryRaw);
+      if(cookRaw == null) localStorage.removeItem(COOKLOG_KEY); else localStorage.setItem(COOKLOG_KEY, cookRaw);
+    }catch(_e){}
+  }
+
+  /* 制作次数 / 上次评分 / 最近一次，用于推荐降权；只读 fandazi.cooklog */
+  function homeCookStats(nowMs){
+    var now = nowMs || Date.now();
+    var out = { byId:{}, total:0, rated:0, sum:0, avg:null, againKnown:0, againYes:0 };
+    homeCookLoad().items.forEach(function(c){
+      if(!c) return;
+      var key = c.recipeId || ('title:' + homeKeyName(c.title));
+      var s = out.byId[key] || (out.byId[key] = { count:0, lastAt:'', lastDate:'', lastRating:null, lastAgain:null, recent:false });
+      s.count++;
+      if(c.date && (!s.lastDate || c.date > s.lastDate)) s.lastDate = c.date;
+      if(c.rating != null){ s.lastRating = c.rating; out.rated++; out.sum += c.rating; }
+      if(c.again === true || c.again === false){ out.againKnown++; if(c.again) out.againYes++; s.lastAgain = c.again; }
+      out.total++;
+      var t = c.date ? Date.parse(c.date + 'T12:00:00') : Date.parse(c.at || '');
+      if(isFinite(t) && (now - t) < 7 * 86400000) s.recent = true;
+    });
+    if(out.rated) out.avg = Math.round((out.sum / out.rated) * 10) / 10;
+    return out;
+  }
+
+  /* 食材匹配：直接做 / 缺少量 / 需额外采购较多；可替代食材单独列出 */
+  function homePantryIndex(){
+    var idx = {};
+    pantryLoad().items.forEach(function(p){
+      var k = homeKeyName(p.name);
+      if(k) idx[k] = p.name;
+      (HOME_ALIASES[k] || []).forEach(function(a){
+        var ak = homeKeyName(a);
+        if(ak && !idx[ak]) idx[ak] = p.name;
+      });
+    });
+    return idx;
+  }
+  function homeIngLookup(ing, idx){
+    var k = homeKeyName(ing && ing.name);
+    if(!k) return { state:'miss', via:null };
+    if(idx[k]) return { state:'have', via:idx[k] };
+    var al = HOME_ALIASES[k] || [];
+    for(var i=0;i<al.length;i++){
+      if(idx[homeKeyName(al[i])]) return { state:'have', via:idx[homeKeyName(al[i])] };
+    }
+    var sb = HOME_SUBSTITUTES[k] || [];
+    for(var j=0;j<sb.length;j++){
+      if(idx[homeKeyName(sb[j])]) return { state:'sub', via:idx[homeKeyName(sb[j])] };
+    }
+    return { state:'miss', via:null };
+  }
+  function homePantryMatch(recipe){
+    var idx = homePantryIndex();
+    var out = { have:[], subs:[], missing:[], optMissing:[], level:'ready', needShopping:false, total:0, needed:0 };
+    if(!recipe) return out;
+    (recipe.ingredients || []).forEach(function(x){
+      var ing = homeCookIngNorm(x);
+      if(!ing) return;
+      out.total++;
+      if(!ing.optional) out.needed++;
+      var r = homeIngLookup(ing, idx);
+      if(r.state === 'have') out.have.push({ ing:ing, via:r.via });
+      else if(r.state === 'sub') out.subs.push({ ing:ing, via:r.via });
+      else if(ing.optional) out.optMissing.push({ ing:ing, via:null });
+      else out.missing.push({ ing:ing, via:null });
+    });
+    out.needShopping = out.missing.length > 0;
+    out.level = out.needShopping ? (out.missing.length <= 2 ? 'near' : 'far') : 'ready';
+    return out;
+  }
+  function homeMatchLevelText(level){
+    if(level === 'ready') return '可直接做';
+    if(level === 'near') return '缺少量';
+    return '需额外采购较多';
+  }
+
   /* 个性化随机推荐：复用画像 boost/block，只用家庭反馈 + 收藏 + 做过次数，不碰餐厅池 */
   function homeRecoCandidates(opts){
     opts = opts || {};
     var items = homeRecipesLoad().items;
     var now = opts.now || Date.now();
+    var stats = homeCookStats(now);
     var out = [];
     items.forEach(function(r){
       if(profileManual.block.indexOf(r.category) >= 0) return;
       if(homeFbCooling(r.id, now)) return;
       if(opts.exclude && opts.exclude.indexOf(r.id) >= 0) return;
+      var cs = stats.byId[r.id];
+      var times = cs ? cs.count : Math.max(0, Math.round(num(r.cookedCount)));
       var w = 1;
       if(r.favorite) w += 0.4;
-      if(r.cookedCount === 0) w += 0.2;
+      if(times > 0) w += Math.min(1.0, 0.12 + times * 0.1);
+      else w += 0.2;
       if(profileManual.boost.indexOf(r.category) >= 0) w += 0.15;
       var last = homeFbLatest(r.id);
       if(last && last.level === 'love') w += 0.3;
       if(last && last.level === 'want') w += 0.15;
       if(last && last.level === 'fail') w += 0.05;
+      if(cs && cs.lastRating != null){
+        if(cs.lastRating >= 4) w += 0.35;
+        else if(cs.lastRating <= 2) w -= 0.25;
+      }
+      /* 最近 7 天内刚做过：降权，避免连续重复 */
+      if(cs && cs.recent) w *= 0.55;
+      if(w < 0.05) w = 0.05;
       out.push({ recipe:r, w:w });
     });
     return out;
@@ -5364,11 +5809,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function homeRecoReason(pick){
     if(!pick) return '菜谱库为空';
     var r = pick.recipe, reasons = [];
+    var cs = homeCookStats(Date.now()).byId[r.id];
+    var times = cs ? cs.count : Math.max(0, Math.round(num(r.cookedCount)));
     if(r.favorite) reasons.push('已收藏');
-    if(r.cookedCount === 0) reasons.push('还没做过');
+    if(times === 0) reasons.push('还没做过');
+    else if(cs && cs.lastRating != null) reasons.push('做过 ' + times + ' 次 · 上次 ' + cs.lastRating + ' 分');
+    else reasons.push('做过 ' + times + ' 次');
     if(profileManual.boost.indexOf(r.category) >= 0) reasons.push('合口味偏好');
     var last = homeFbLatest(r.id);
     if(last && last.level === 'love') reasons.push('上次觉得好吃');
+    if(cs && cs.recent) reasons.push('最近刚做过，降权');
     return reasons.length ? reasons.join(' · ') : '随机换换口味';
   }
   function homeRenderReco(force){
@@ -5400,13 +5850,320 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function renderHome(){
     homeCatOptions();
     var panel = homeState.panel || 'reco';
-    if($('#homePanelReco')) $('#homePanelReco').classList.toggle('hidden', panel !== 'reco');
-    if($('#homePanelLib')) $('#homePanelLib').classList.toggle('hidden', panel !== 'lib');
-    if($('#homePanelFav')) $('#homePanelFav').classList.toggle('hidden', panel !== 'fav');
+    ['reco','lib','fav','pantry','log'].forEach(function(k){
+      var el = $('#homePanel' + k.charAt(0).toUpperCase() + k.slice(1));
+      if(el) el.classList.toggle('hidden', panel !== k);
+    });
     $$('#homeSeg button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-hpanel') === panel); });
     if(panel === 'reco') homeRenderReco(false);
     if(panel === 'lib') renderHomeLib();
     if(panel === 'fav') renderHomeFav();
+    if(panel === 'pantry') renderHomePantry();
+    if(panel === 'log') renderHomeLog();
+  }
+
+  /* ---------- 第二阶段 UI：食材 / 匹配 / 制作记录 ---------- */
+  function homePantryListHtml(){
+    var items = pantryLoad().items;
+    if(!items.length) return '<div class="home-empty" style="padding:16px">还没有食材<br><span style="font-size:11px">输入名称后点「加入」</span></div>';
+    return items.map(function(p){
+      return '<span class="home-pchip">' + esc(p.name) + (p.amount ? (' ' + esc(p.amount) + esc(p.unit)) : '') +
+        '<button type="button" data-hpdel="' + esc(p.id) + '" aria-label="移除">×</button></span>';
+    }).join('');
+  }
+  function homeMatchRowHtml(r, m){
+    var tail = m.missing.length ? (' · 缺 ' + m.missing.length) : (m.subs.length ? (' · 可替代 ' + m.subs.length) : '');
+    return '<div class="home-match-row" data-hopen="' + esc(r.id) + '"><div class="grow">' +
+      '<b>' + esc(r.emoji || '🍽️') + ' ' + esc(r.name) + '</b>' +
+      '<span>已有 ' + m.have.length + ' / ' + m.total + tail + '</span></div></div>';
+  }
+  function renderHomePantry(){
+    var box = $('#homePantryList');
+    if(box) box.innerHTML = homePantryListHtml();
+    if($('#homePantryMeta')) $('#homePantryMeta').textContent = '共 ' + pantryLoad().items.length + ' 种';
+    var list = $('#homeMatchList');
+    if(!list) return;
+    var groups = { ready:[], near:[], far:[] };
+    homeRecipesLoad().items.forEach(function(r){
+      var m = homePantryMatch(r);
+      groups[m.level].push({ r:r, m:m });
+    });
+    var html = '';
+    ['ready','near','far'].forEach(function(k){
+      var arr = groups[k];
+      if(!arr.length) return;
+      html += '<div class="home-match-group"><h4>' + esc(homeMatchLevelText(k)) + '（' + arr.length + '）</h4>' +
+        arr.slice(0, k === 'far' ? 12 : 30).map(function(x){ return homeMatchRowHtml(x.r, x.m); }).join('') + '</div>';
+    });
+    list.innerHTML = html || '<div class="home-empty">菜谱库为空</div>';
+    if($('#homeMatchMeta')) $('#homeMatchMeta').textContent = '可直接做 ' + groups.ready.length + ' · 缺少量 ' + groups.near.length + ' · 需采购 ' + groups.far.length;
+  }
+  function homeLogCatOptions(){
+    var sel = $('#hlCat');
+    if(!sel) return;
+    var cats = [];
+    homeCookLoad().items.forEach(function(c){
+      var r = c.recipeId ? homeRecipeBy(c.recipeId) : null;
+      if(r && cats.indexOf(r.category) < 0) cats.push(r.category);
+    });
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">全部菜系</option>' + cats.map(function(c){ return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join('');
+    if(cats.indexOf(cur) >= 0) sel.value = cur;
+  }
+  function homeLogFiltered(){
+    var q = $('#hlQ') ? $('#hlQ').value.trim().toLowerCase() : '';
+    var month = $('#hlMonth') ? $('#hlMonth').value : '';
+    var cat = $('#hlCat') ? $('#hlCat').value : '';
+    var list = homeCookLoad().items.filter(function(c){
+      if(month && String(c.date).slice(0, 7) !== month) return false;
+      if(q){
+        var hay = (c.title + ' ' + (c.note || '') + ' ' + c.ingredients.map(function(x){ return x.name; }).join(' ')).toLowerCase();
+        if(hay.indexOf(q) < 0) return false;
+      }
+      if(cat){
+        var r = c.recipeId ? homeRecipeBy(c.recipeId) : null;
+        if(!r || r.category !== cat) return false;
+      }
+      return true;
+    });
+    return list.sort(function(a, b){
+      if(a.date !== b.date) return a.date > b.date ? -1 : 1;
+      return (b.createdAt || '') > (a.createdAt || '') ? 1 : -1;
+    });
+  }
+  function homeLogRowHtml(c){
+    var sub = esc(c.date) + (c.people ? (' · ' + c.people + ' 人') : '') +
+      (c.cost != null ? (' · ¥' + c.cost) : '') +
+      (c.minutes != null ? (' · ' + c.minutes + ' 分钟') : '') +
+      (c.rating != null ? (' · ★' + c.rating) : '') +
+      (c.photos.length ? (' · ' + c.photos.length + ' 张照片') : '');
+    return '<div class="home-log-row"><div class="grow">' +
+      '<b>' + esc(c.title) + '</b><span class="hl-sub">' + sub + '</span>' +
+      (c.note ? ('<span class="home-log-note">' + esc(c.note) + '</span>') : '') +
+      '<span class="hl-sub">' + (c.again === true ? '愿意再做' : (c.again === false ? '不想再做' : '是否再做未记录')) + '</span></div>' +
+      '<div class="home-log-acts">' +
+        '<button type="button" data-hlog-again="' + esc(c.id) + '">再做</button>' +
+        '<button type="button" data-hlog-adjust="' + esc(c.id) + '">调用量</button>' +
+        '<button type="button" data-hlog-recipe="' + esc(c.id) + '">生成菜谱</button>' +
+      '</div></div>';
+  }
+  function renderHomeLog(){
+    homeLogCatOptions();
+    var list = homeLogFiltered();
+    var box = $('#homeLogList');
+    if(box) box.innerHTML = list.length ? list.map(homeLogRowHtml).join('') :
+      '<div class="home-empty">还没有制作记录<br><span style="font-size:11px">打开菜谱详情，点「记录这次制作」</span></div>';
+    var stats = $('#homeLogStats');
+    if(!stats) return;
+    var all = homeCookStats();
+    var agg = {};
+    list.forEach(function(c){
+      var a = agg[c.title] || (agg[c.title] = { n:0, rated:0, sum:0 });
+      a.n++;
+      if(c.rating != null){ a.rated++; a.sum += c.rating; }
+    });
+    var chips = ['共 ' + all.total + ' 次', all.avg != null ? ('平均 ' + all.avg + ' 分') : '还没有评分'];
+    if(all.againKnown) chips.push('愿意再做 ' + Math.round((all.againYes / all.againKnown) * 100) + '%');
+    Object.keys(agg).sort(function(a, b){ return agg[b].n - agg[a].n; }).slice(0, 6).forEach(function(k){
+      var a = agg[k];
+      chips.push(k + ' ×' + a.n + (a.rated ? (' · 均 ' + Math.round((a.sum / a.rated) * 10) / 10 + ' 分') : ''));
+    });
+    stats.innerHTML = chips.map(function(t){ return '<span class="home-pill">' + esc(t) + '</span>'; }).join('');
+  }
+  /* 再次制作 / 按上次记录调整用量：都从历史记录预填，不修改历史记录本身 */
+  function homeLogOpen(opts){
+    opts = opts || {};
+    var existing = opts.logId ? homeCookBy(opts.logId) : null;
+    var r = opts.recipeId ? homeRecipeBy(opts.recipeId) : null;
+    var draft;
+    if(existing){
+      draft = {
+        logId: existing.id,
+        recipeId: existing.recipeId,
+        title: existing.title,
+        date: todayStr(),
+        people: existing.people,
+        basePeople: existing.people,
+        cost: existing.cost,
+        minutes: existing.minutes,
+        rating: existing.rating,
+        again: existing.again,
+        note: existing.note,
+        ingredients: existing.ingredients.map(function(x){ return { name:x.name, amount:x.amount, unit:x.unit }; })
+      };
+    }else if(r){
+      draft = {
+        logId: '', recipeId: r.id, title: r.name, date: todayStr(),
+        people: r.servings, basePeople: r.servings,
+        cost: null, minutes: r.minutes, rating: null, again: null, note: '',
+        ingredients: r.ingredients.map(function(x){ return { name:x.name, amount:x.amount, unit:x.unit }; })
+      };
+    }else{
+      draft = { logId:'', recipeId:'', title:'', date:todayStr(), people:2, basePeople:2, cost:null, minutes:null, rating:null, again:null, note:'', ingredients:[] };
+    }
+    homeLogState = { draft:draft, photos:[], addedPhotos:[] };
+    renderHomeLogForm();
+    if($('#homeLogMask')) $('#homeLogMask').classList.remove('hidden');
+  }
+  function homeLogFormHtml(d){
+    var ingRows = d.ingredients.map(function(x, i){
+      return '<div class="home-log-ing" data-hli="' + i + '">' +
+        '<input class="input" data-hlf-ing="name" value="' + esc(x.name) + '" placeholder="食材" maxlength="40">' +
+        '<input class="input" data-hlf-ing="amount" value="' + esc(x.amount) + '" placeholder="数量" maxlength="12">' +
+        '<input class="input" data-hlf-ing="unit" value="' + esc(x.unit) + '" placeholder="单位" maxlength="6">' +
+        '<button type="button" class="btn btn-sm" data-hli-del="' + i + '">×</button></div>';
+    }).join('');
+    var ratingOpts = ['<option value="">未评分</option>'].concat([1,2,3,4,5].map(function(n){
+      return '<option value="' + n + '"' + (d.rating != null && Number(d.rating) === n ? ' selected' : '') + '>' + n + ' 分</option>';
+    })).join('');
+    var photoTiles = homeLogState.photos.map(function(p){
+      return '<div class="ph"><img data-photo="' + esc(p.id) + '" data-thumb="1" alt="成品照片" loading="lazy" decoding="async">' +
+        '<button type="button" data-hl-photo-rm="' + esc(p.id) + '" aria-label="移除">×</button></div>';
+    }).join('');
+    return '<div class="home-detail-sec"><h3>基本信息</h3>' +
+      '<input class="input" data-hlf="title" value="' + esc(d.title) + '" maxlength="60" placeholder="菜品名称">' +
+      '<div class="frow" style="margin-top:6px">' +
+        '<input class="input" type="date" data-hlf="date" value="' + esc(d.date) + '">' +
+        '<input class="input" type="number" data-hlf="people" min="1" max="99" value="' + esc(d.people) + '" placeholder="实际人数">' +
+      '</div>' +
+      '<div class="frow">' +
+        '<input class="input" type="number" data-hlf="cost" min="0" step="0.01" value="' + esc(d.cost == null ? '' : d.cost) + '" placeholder="实际花费（可选）">' +
+        '<input class="input" type="number" data-hlf="minutes" min="0" step="1" value="' + esc(d.minutes == null ? '' : d.minutes) + '" placeholder="实际耗时（分钟）">' +
+      '</div>' +
+      '<div class="frow">' +
+        '<select class="input" data-hlf="rating">' + ratingOpts + '</select>' +
+        '<select class="input" data-hlf="again"><option value="">是否愿意再做</option>' +
+          '<option value="1"' + (d.again === true ? ' selected' : '') + '>愿意再做</option>' +
+          '<option value="0"' + (d.again === false ? ' selected' : '') + '>不想再做</option></select>' +
+      '</div></div>' +
+      '<div class="home-detail-sec"><h3>使用食材</h3><div id="homeLogIngRows">' + (ingRows || '<p class="muted">还没有食材，点下面添加</p>') + '</div>' +
+        '<div class="actions" style="margin-top:6px"><button type="button" class="btn btn-sm btn-soft" data-hl-ing-add>+ 加一种食材</button>' +
+        '<button type="button" class="btn btn-sm" data-hl-scale>按人数换算用量</button></div></div>' +
+      '<div class="home-detail-sec"><h3>成品照片</h3><div class="home-log-photos" id="homeLogPhotos">' +
+        (photoTiles || '<span class="muted" style="font-size:12px">还没有成品照片</span>') + '</div>' +
+        '<div class="actions" style="margin-top:8px"><button type="button" class="btn btn-sm btn-soft" data-hl-photo>+ 添加照片</button></div>' +
+        '<input type="file" id="homeLogPhotoFile" accept="image/*" multiple hidden></div>' +
+      '<div class="home-detail-sec"><h3>制作心得</h3><textarea class="input" data-hlf="note" rows="3" maxlength="200" placeholder="哪里成功 / 哪里要调整（可选）">' + esc(d.note) + '</textarea></div>' +
+      '<p class="home-src">只写本机 <code>fandazi.cooklog</code>，不生成到店记录、不计入消费统计。</p>' +
+      '<div class="actions"><button type="button" class="btn btn-primary btn-block" data-hl-save>保存这次制作</button>' +
+      '<button type="button" class="btn btn-block" data-hl-cancel>取消</button></div>';
+  }
+  function renderHomeLogForm(){
+    var body = $('#homeLogBody');
+    if(!body || !homeLogState.draft) return;
+    if($('#homeLogTitle')) $('#homeLogTitle').textContent = homeLogState.draft.logId ? '再次制作 / 调整用量' : '记录这次制作';
+    body.innerHTML = homeLogFormHtml(homeLogState.draft);
+    hydratePhotos($('#homeLogPhotos'));
+  }
+  function homeLogCollect(){
+    var body = $('#homeLogBody');
+    if(!body || !homeLogState.draft) return null;
+    function val(k){ var el = body.querySelector('[data-hlf="' + k + '"]'); return el ? el.value : ''; }
+    var ing = [];
+    body.querySelectorAll('[data-hli]').forEach(function(row){
+      var name = row.querySelector('[data-hlf-ing="name"]') ? row.querySelector('[data-hlf-ing="name"]').value : '';
+      if(!String(name).trim()) return;
+      ing.push({
+        name: name,
+        amount: row.querySelector('[data-hlf-ing="amount"]') ? row.querySelector('[data-hlf-ing="amount"]').value : '',
+        unit: row.querySelector('[data-hlf-ing="unit"]') ? row.querySelector('[data-hlf-ing="unit"]').value : ''
+      });
+    });
+    return {
+      logId: homeLogState.draft.logId || '',
+      recipeId: homeLogState.draft.recipeId || '',
+      title: val('title'), date: val('date'), people: val('people'),
+      cost: val('cost'), minutes: val('minutes'),
+      rating: val('rating') === '' ? null : val('rating'),
+      again: val('again') === '' ? null : (val('again') === '1'),
+      note: val('note'), ingredients: ing, photos: homeLogState.photos.slice()
+    };
+  }
+  function homeLogSyncDraft(){
+    var d = homeLogCollect();
+    if(d){ d.basePeople = homeLogState.draft.basePeople; homeLogState.draft = d; }
+  }
+  function homeLogAddFiles(files){
+    var list = [].slice.call(files || []);
+    if(!list.length) return;
+    if(!idbSupported()){ toast('当前环境不支持 IndexedDB，成品照片无法保存'); return; }
+    var i = 0;
+    function step(){
+      if(i >= list.length){ homeLogSyncDraft(); renderHomeLogForm(); return; }
+      compressFile(list[i++], function(res){
+        if(photoStatsCache.bytes + res.full.length > PHOTO_MAX_BYTES){
+          toast('照片总量已超 ' + fmtBytes(PHOTO_MAX_BYTES) + '，建议先清理旧照片');
+          step();
+          return;
+        }
+        var pid = homeNewId('p');
+        photoPut(pid, res.full, res.thumb, { w:res.w, h:res.h }).then(function(){
+          homeLogState.photos.push({ id:pid, cat:HOME_PHOTO_CAT });
+          homeLogState.addedPhotos.push(pid);
+          photoStats();
+          step();
+        }).catch(function(e){ logError('成品照片写入', e); toast('照片未能写入 IndexedDB'); step(); });
+      }, function(msg){ toast(msg); step(); });
+    }
+    step();
+  }
+  function homeLogClose(){
+    (homeLogState.addedPhotos || []).forEach(function(pid){ releasePhoto(pid); });
+    if($('#homeLogMask')) $('#homeLogMask').classList.add('hidden');
+    homeLogState = { draft:null, photos:[], addedPhotos:[] };
+  }
+  function homeLogSave(){
+    var d = homeLogCollect();
+    if(!d){ return; }
+    if(!String(d.title || '').trim()){ toast('请填写菜品名称'); return; }
+    var item = homeCookAdd(d);
+    if(!item){ toast('保存失败：本机存储空间不足'); return; }
+    homeLogState.addedPhotos = [];
+    if($('#homeLogMask')) $('#homeLogMask').classList.add('hidden');
+    homeLogState = { draft:null, photos:[], addedPhotos:[] };
+    toast('已记录：' + item.title);
+    homeState.panel = 'log';
+    renderHome();
+  }
+  function homeLogScale(){
+    homeLogSyncDraft();
+    var d = homeLogState.draft;
+    if(!d) return;
+    var base = Number(d.basePeople) || Number(d.people) || 1;
+    var now = Number(d.people) || base;
+    var ratio = now / base;
+    if(ratio === 1){ toast('人数没变，无需换算'); return; }
+    d.ingredients.forEach(function(x){
+      var n = Number(x.amount);
+      if(isFinite(n) && n > 0) x.amount = String(Math.round(n * ratio * 100) / 100);
+    });
+    d.basePeople = now;
+    renderHomeLogForm();
+    toast('已按 ' + base + ' → ' + now + ' 人换算用量（可再手动改）');
+  }
+  /* 从历史记录重新生成菜谱：写独立菜谱条目，不改写原制作记录 */
+  function homeLogRegenRecipe(logId){
+    var c = homeCookBy(logId);
+    if(!c) return null;
+    var src = c.recipeId ? homeRecipeBy(c.recipeId) : null;
+    var now = new Date().toISOString();
+    var steps = (src && src.steps && src.steps.length) ? src.steps.map(function(s){ return { text:s.text, minutes:s.minutes }; }) :
+      [{ text:'按记录中的食材准备。' }, { text:'按上次的做法完成，出锅前尝味调整。' }];
+    var r = homeRecipeNorm({
+      id: homeNewId('user-'), name: c.title, emoji: src ? src.emoji : '🍳',
+      category: src ? src.category : '家常', tags: ['从记录生成'],
+      difficulty: src ? src.difficulty : 1, minutes: c.minutes || (src ? src.minutes : 0),
+      servings: c.people, ingredients: c.ingredients,
+      steps: steps, tips: c.note, source: { type:'user' },
+      createdAt: now, updatedAt: now
+    }, null);
+    if(!r) return null;
+    homeRecipeWrite(function(next){ next.items.push(r); });
+    toast('已从历史记录生成菜谱：' + r.name);
+    homeState.panel = 'lib';
+    renderHome();
+    homeOpenDetail(r.id);
+    return r.id;
   }
   function homeDetailFbHtml(r){
     var last = homeFbLatest(r.id);
@@ -5421,6 +6178,27 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '</div>' +
       '<p class="home-src">家庭烹饪反馈只写本机 <code>fandazi.homefb</code>，不会生成到店记录，也不计入消费统计。</p>' +
       '</div>';
+  }
+  function homeMatchDetailHtml(r){
+    var m = homePantryMatch(r);
+    var out = '<p class="muted">' + esc(homeMatchLevelText(m.level)) +
+      (m.needShopping ? ' · 需要额外采购' : (m.subs.length ? ' · 可用现有食材替代' : ' · 现有食材齐全')) + '</p>' +
+      '<p class="muted" style="font-size:12px">已有 ' + m.have.length + ' / ' + m.total + ' 种食材</p>';
+    if(m.missing.length) out += '<p class="muted" style="font-size:12px">缺少：' + m.missing.map(function(x){ return esc(x.ing.name); }).join('、');
+    if(m.subs.length) out += '<p class="muted" style="font-size:12px">可替代：' + m.subs.map(function(x){ return esc(x.ing.name) + ' → ' + esc(x.via); }).join('、');
+    if(!pantryLoad().items.length) out += '<p class="home-src">还没有录入食材，可先去「食材」页添加。</p>';
+    return out;
+  }
+  function homeCookSummaryHtml(r){
+    var items = homeCookLoad().items.filter(function(c){ return c.recipeId === r.id; });
+    var rated = items.filter(function(c){ return c.rating != null; });
+    var sum = rated.reduce(function(a, c){ return a + c.rating; }, 0);
+    var times = items.length || Math.max(0, Math.round(num(r.cookedCount)));
+    var last = items.slice().sort(function(a, b){ return a.date > b.date ? -1 : 1; })[0];
+    var txt = times ? ('共 ' + times + ' 次' + (rated.length ? (' · 平均 ' + Math.round((sum / rated.length) * 10) / 10 + ' 分') : '') +
+      (last ? (' · 最近 ' + esc(last.date) + (last.rating != null ? ('（' + last.rating + ' 分）') : '')) : '')) : '还没有制作记录';
+    return '<div class="home-detail-sec"><h3>做过的次数</h3><p class="muted">' + txt + '</p>' +
+      '<div class="actions" style="margin-top:8px"><button type="button" class="btn" data-hlog-new="' + esc(r.id) + '">记录这次制作</button></div></div>';
   }
   function homeOpenDetail(id){
     var r = homeRecipeBy(id);
@@ -5444,11 +6222,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<div class="home-detail-sec"><h3>食材（'+r.ingredients.length+'）</h3><ul>' +
           r.ingredients.map(function(x){ return '<li>'+esc(x.name)+(x.amount?(' '+esc(x.amount)+esc(x.unit)):'')+(x.optional?'（可选）':'')+'</li>'; }).join('') +
         '</ul></div>' +
+        '<div class="home-detail-sec"><h3>按我的食材匹配</h3>' + homeMatchDetailHtml(r) + '</div>' +
         '<div class="home-detail-sec"><h3>步骤</h3><ol>' +
           r.steps.map(function(s){ return '<li>'+esc(s.text)+(s.minutes?('（约 '+s.minutes+' 分钟）'):'')+'</li>'; }).join('') +
         '</ol></div>' +
         (r.tips ? '<div class="home-detail-sec"><h3>小贴士</h3><p class="muted">'+esc(r.tips)+'</p></div>' : '') +
-        '<div class="home-detail-sec"><h3>做过的次数</h3><p class="muted">'+(r.cookedCount ? ('共 '+r.cookedCount+' 次 · 最近 ' + esc(String(r.lastCookedAt).slice(0, 10))) : '还没有记录')+'</p></div>' +
+        homeCookSummaryHtml(r) +
         homeDetailFbHtml(r) +
         '<p class="home-src">来源：'+esc(r.source.label) +
           (r.source.type === 'ai' ? '（AI 生成内容，仅作参考）' : (r.source.type === 'local' ? '（内置本地菜谱，离线可用）' : '')) +
@@ -5515,12 +6294,92 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         var wrap = fb.closest('#homeDetailBody');
         var id = wrap ? wrap.getAttribute('data-recipe') : '';
         if(id) homeFeedbackAction(id, fb.getAttribute('data-hfb'));
+        return;
       }
+      var logNew = e.target.closest('[data-hlog-new]');
+      if(logNew){ homeLogOpen({ recipeId: logNew.getAttribute('data-hlog-new') }); return; }
     });
     if($('#homeDetailMask')) $('#homeDetailMask').addEventListener('click', function(e){ if(e.target === this) homeCloseDetail(); });
     if($('#homeDetailClose')) $('#homeDetailClose').addEventListener('click', homeCloseDetail);
     if($('#homeQ')) $('#homeQ').addEventListener('input', renderHomeLib);
     if($('#homeCat')) $('#homeCat').addEventListener('change', renderHomeLib);
+
+    /* 食材录入：手动输入，不做克数/保质期 */
+    function homePantryAddFromForm(){
+      var item = pantryAdd($('#hpName') ? $('#hpName').value : '', $('#hpAmount') ? $('#hpAmount').value : '', $('#hpUnit') ? $('#hpUnit').value : '');
+      if(!item){ toast('请先填写食材名称'); return; }
+      if($('#hpName')) $('#hpName').value = '';
+      if($('#hpAmount')) $('#hpAmount').value = '';
+      if($('#hpUnit')) $('#hpUnit').value = '';
+      toast('已加入：' + item.name);
+      renderHomePantry();
+    }
+    if($('#hpAdd')) $('#hpAdd').addEventListener('click', homePantryAddFromForm);
+    ['hpName','hpAmount','hpUnit'].forEach(function(k){
+      if($( '#' + k)) $( '#' + k).addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); homePantryAddFromForm(); } });
+    });
+    if($('#homePantryList')) $('#homePantryList').addEventListener('click', function(e){
+      var del = e.target.closest('[data-hpdel]');
+      if(!del) return;
+      var id = del.getAttribute('data-hpdel');
+      if(pantryRemove(id)){ toast('已移除食材'); renderHomePantry(); }
+    });
+    if($('#hlQ')) $('#hlQ').addEventListener('input', renderHomeLog);
+    if($('#hlMonth')) $('#hlMonth').addEventListener('change', renderHomeLog);
+    if($('#hlCat')) $('#hlCat').addEventListener('change', renderHomeLog);
+    if($('#hlReset')) $('#hlReset').addEventListener('click', function(){
+      if($('#hlQ')) $('#hlQ').value = '';
+      if($('#hlMonth')) $('#hlMonth').value = '';
+      if($('#hlCat')) $('#hlCat').value = '';
+      renderHomeLog();
+    });
+    if($('#homeLogList')) $('#homeLogList').addEventListener('click', function(e){
+      var again = e.target.closest('[data-hlog-again]');
+      if(again){ homeLogOpen({ logId:again.getAttribute('data-hlog-again') }); return; }
+      var adjust = e.target.closest('[data-hlog-adjust]');
+      if(adjust){ homeLogOpen({ logId:adjust.getAttribute('data-hlog-adjust') }); return; }
+      var regen = e.target.closest('[data-hlog-recipe]');
+      if(regen){ homeLogRegenRecipe(regen.getAttribute('data-hlog-recipe')); return; }
+    });
+    /* 制作记录表单 */
+    if($('#homeLogClose')) $('#homeLogClose').addEventListener('click', homeLogClose);
+    if($('#homeLogMask')) $('#homeLogMask').addEventListener('click', function(e){ if(e.target === this) homeLogClose(); });
+    if($('#homeLogBody')) $('#homeLogBody').addEventListener('click', function(e){
+      if(e.target.closest('[data-hl-save]')){ homeLogSave(); return; }
+      if(e.target.closest('[data-hl-cancel]')){ homeLogClose(); return; }
+      if(e.target.closest('[data-hl-scale]')){ homeLogScale(); return; }
+      var rm = e.target.closest('[data-hl-photo-rm]');
+      if(rm){
+        var pid = rm.getAttribute('data-hl-photo-rm');
+        homeLogState.photos = homeLogState.photos.filter(function(p){ return p.id !== pid; });
+        homeLogState.addedPhotos = (homeLogState.addedPhotos || []).filter(function(x){ return x !== pid; });
+        releasePhoto(pid);
+        homeLogSyncDraft();
+        renderHomeLogForm();
+        return;
+      }
+      if(e.target.closest('[data-hl-photo]')){
+        var input = $('#homeLogPhotoFile');
+        if(input) input.click();
+        return;
+      }
+      var del = e.target.closest('[data-hli-del]');
+      if(del){
+        homeLogSyncDraft();
+        homeLogState.draft.ingredients.splice(Number(del.getAttribute('data-hli-del')), 1);
+        renderHomeLogForm();
+        return;
+      }
+      if(e.target.closest('[data-hl-ing-add]')){
+        homeLogSyncDraft();
+        homeLogState.draft.ingredients.push({ name:'', amount:'', unit:'' });
+        renderHomeLogForm();
+        return;
+      }
+    });
+    if($('#homeLogBody')) $('#homeLogBody').addEventListener('change', function(e){
+      if(e.target && e.target.id === 'homeLogPhotoFile'){ homeLogAddFiles(e.target.files); e.target.value = ''; }
+    });
   }
 
   /* 抽选偏好（独立增量键 fandazi.draw） =================
@@ -6616,8 +7475,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       });
     }).catch(function(){ return []; });
   }
-  /* 有效引用集合：到店记录 + 菜品 + 草稿 + 年度报告 + 所有恢复点快照。
-     清理类操作统一以这里为准，避免只看 db.records 时误删仍被报告/恢复点使用的照片。 */
+  /* 有效引用集合：到店记录 + 菜品 + 草稿 + 年度报告 + 家庭制作记录 + 所有恢复点快照。
+     清理类操作统一以这里为准，避免只看 db.records 时误删仍被报告/恢复点/家庭制作使用的照片。 */
   function photoRefIndex(opts){
     opts = opts || {};
     var used = {}, refs = {};
@@ -6646,6 +7505,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     draftsLoad().forEach(function(d){ add(d && d.photoId, '草稿 · ' + String((d && d.name) || '')); });
     reportAll().items.forEach(function(it){
       if(it && it.highlight && it.highlight.photoId) add(it.highlight.photoId, '年度报告 · ' + String(it.year || ''));
+    });
+    /* 家庭制作记录的成品照片：属于新照片类别，必须算有效引用，否则会被孤立扫描/回收站当垃圾清掉 */
+    (homeCookLoad().items || []).forEach(function(c){
+      (c.photos || []).forEach(function(p){
+        add(p && p.id, '家庭制作 · ' + String(c.title || '') + (c.date ? (' · ' + String(c.date)) : ''));
+      });
     });
     return snapshotAll().then(function(list){
       (list || []).forEach(function(snap){
@@ -6678,6 +7543,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     });
     if(found) return true;
     draftsLoad().forEach(function(d){ if(d && String(d.photoId || '') === pid) found = true; });
+    if(found) return true;
+    (homeCookLoad().items || []).forEach(function(c){
+      if(!found && (c.photos || []).some(function(p){ return String(p && p.id) === pid; })) found = true;
+    });
     if(found) return true;
     return reportAll().items.some(function(it){
       return !!(it && it.highlight && String(it.highlight.photoId || '') === pid);
@@ -6787,6 +7656,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           city: rec ? String(rec.city || '') : String(cur.city || ''),
           date: rec ? String(rec.visitDate || '').slice(0, 10) : String(cur.date || ''),
           dishId: String(d.id || ''), dishName: String(d.name || ''), cat: 'dish'
+        };
+      });
+    });
+    (homeCookLoad().items || []).forEach(function(c){
+      (c.photos || []).forEach(function(p){
+        var pid = String((p && p.id) || '');
+        if(!pid || map[pid]) return;
+        map[pid] = {
+          recordId: '', recordName: '', shopId: '', shopName: '', city: '',
+          date: String(c.date || ''), dishId: '', dishName: '',
+          homeName: '家庭制作 · ' + String(c.title || ''), cat: HOME_PHOTO_CAT
         };
       });
     });
@@ -6948,7 +7828,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         var d = pwDateOf(v);
         var on = !!st.sel[id];
         var refs = st.refs[id] || [];
-        var title = u.dishName || u.recordName || '未关联';
+        var title = u.homeName || u.dishName || u.recordName || '未关联';
         var flag = v.trashAt ? '<span class="pw-flag">回收站</span>'
           : (!refs.length ? '<span class="pw-flag bad">未引用</span>' : '');
         return '<button type="button" class="pw-item' + (on ? ' on' : '') + '" data-pw-item="' + esc(id) + '" aria-pressed="' + (on ? 'true' : 'false') + '">' +
@@ -21945,6 +22825,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       dishes: dishBackupData(),
       recipes: homeRecipesBackupData(),
       homefb: homeFbBackupData(),
+      pantry: pantryBackupData(),
+      cooklog: homeCookBackupData(),
       records: db.records
     };
     /* v2 模式下：records 仍是投影后的 v1 兼容结构（老版本也能读），
@@ -22107,6 +22989,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     dishBackupValidate(obj.payload.dishes, '恢复');
     /* 在家吃：菜谱 / 家庭反馈段，允许旧备份缺失；存在则校验 */
     homeBackupValidate(obj.payload.recipes, obj.payload.homefb, '恢复');
+    /* 在家吃第二阶段：食材 / 制作记录段，同样允许旧备份缺失（缺失时保持本机现状） */
+    pantryBackupValidate(obj.payload.pantry, '恢复');
+    homeCookBackupValidate(obj.payload.cooklog, '恢复');
     if(!obj.checksum || !obj.checksum.value) throw new Error('备份文件缺少校验值，无法确认完整性');
     if(!Array.isArray(obj.photos)) obj.photos = [];
     for(var i = 0; i < obj.photos.length; i++){
@@ -22376,6 +23261,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var hfPrevRaw = null, hfPrevStore = JSON.parse(JSON.stringify(homeFbLoad()));
       try{ hcPrevRaw = localStorage.getItem(RECIPES_KEY); hfPrevRaw = localStorage.getItem(HOMEFB_KEY); }catch(e){ hcPrevRaw = null; hfPrevRaw = null; }
       var hcResult = { applied:false, recipes:0, favorites:0, feedback:0 };
+      var ptPrevRaw = null, ptPrevStore = JSON.parse(JSON.stringify(pantryLoad()));
+      var ckPrevRaw = null, ckPrevStore = JSON.parse(JSON.stringify(homeCookLoad()));
+      try{ ptPrevRaw = localStorage.getItem(PANTRY_KEY); ckPrevRaw = localStorage.getItem(COOKLOG_KEY); }catch(e){ ptPrevRaw = null; ckPrevRaw = null; }
+      var ptResult = { applied:false, items:pantryLoad().items.length };
+      var ckResult = { applied:false, items:homeCookLoad().items.length };
       var committed;
       try{
         pmResult = applyBackupProfile(obj.payload.profile);
@@ -22385,6 +23275,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         tpResult = applyBackupTrips(obj.payload.trips, mode);
         dsResult = applyBackupDishes(obj.payload.dishes, mode, next.records);
         hcResult = applyBackupHome(obj.payload.recipes, obj.payload.homefb, mode);
+        ptResult = applyBackupPantry(obj.payload.pantry, mode);
+        ckResult = applyBackupCookLog(obj.payload.cooklog, mode);
         /* v2 模式下写 v2（读回校验），v1 模式下沿用 commitDbString */
         committed = commitDbNext(next);
       }catch(e){
@@ -22395,6 +23287,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         rollbackTrips(tpPrevRaw, tpPrevStore);
         rollbackDishes(dsPrevRaw, dsPrevStore);
         rollbackHome(hcPrevRaw, hcPrevStore, hfPrevRaw, hfPrevStore);
+        homeCookRollback(ptPrevRaw, ptPrevStore, ckPrevRaw, ckPrevStore);
         throw e;
       }
       db = next;
@@ -22415,6 +23308,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         tripApplied:!!tpResult.applied, trips:tpResult.trips, tripStops:tpResult.stops,
         dishApplied:!!dsResult.applied, dishes:dsResult.dishes, dishesDropped:dsResult.dropped,
         recipesApplied:!!hcResult.applied, recipes:hcResult.recipes, recipeFav:hcResult.favorites, homeFeedback:hcResult.feedback,
+        pantryApplied:!!ptResult.applied, pantry:ptResult.items,
+        cooklogApplied:!!ckResult.applied, cooklog:ckResult.items,
         missingPhotos:countMissingPhotos(norm, photoMap), ms:Math.round(nowMs() - t0),
         snapshotId:snapRef ? snapRef.id : null
       };
@@ -27075,7 +27970,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       panel: function(p){ homeState.panel = p; renderHome(); return p; },
       counts: function(){
         var st = homeRecipesLoad();
-        return { recipes: st.items.length, favorites: st.items.filter(function(r){ return r.favorite; }).length, feedback: homeFbLoad().items.length };
+        return { recipes: st.items.length, favorites: st.items.filter(function(r){ return r.favorite; }).length, feedback: homeFbLoad().items.length, pantry: pantryLoad().items.length, cooklog: homeCookLoad().items.length };
       },
       recipes: function(){
         return homeRecipesLoad().items.map(function(r){
@@ -27107,14 +28002,57 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       fb: function(){ return homeFbLoad().items.slice(); },
       latest: function(id){ return homeFbLatest(id); },
       favors: function(){ return homeRecipesLoad().items.filter(function(r){ return r.favorite; }).map(function(r){ return r.id; }); },
+      pantry: {
+        list: function(){ return pantryLoad().items.slice(); },
+        add: pantryAdd,
+        remove: pantryRemove,
+        clear: function(){ pantryPersist({ version:HOME_EXT_VERSION, items:[] }); return true; },
+        raw: function(){ try{ return localStorage.getItem(PANTRY_KEY); }catch(e){ return null; } }
+      },
+      cook: {
+        list: function(){ return homeCookLoad().items.slice(); },
+        add: homeCookAdd,
+        remove: homeCookRemove,
+        stats: function(){ return homeCookStats(); },
+        clear: function(){ homeCookPersist({ version:HOME_EXT_VERSION, items:[] }); return true; },
+        raw: function(){ try{ return localStorage.getItem(COOKLOG_KEY); }catch(e){ return null; } }
+      },
+      match: function(id){ return homePantryMatch(homeRecipeBy(id)); },
+      candidates: function(opts){
+        return homeRecoCandidates(opts || {}).map(function(c){ return { id:c.recipe.id, w:c.w }; });
+      },
+      openLog: function(opts){
+        homeLogOpen(opts || {});
+        return { open: !$('#homeLogMask').classList.contains('hidden'), title: $('#homeLogTitle') ? $('#homeLogTitle').textContent : '', text: $('#homeLogBody') ? $('#homeLogBody').innerText : '' };
+      },
+      saveLog: function(){
+        homeLogSave();
+        return { open: !$('#homeLogMask').classList.contains('hidden'), count: homeCookLoad().items.length, text: $('#homeLogBody') ? $('#homeLogBody').innerText : '' };
+      },
+      closeLog: homeLogClose,
+      logForm: function(){ return { open: !$('#homeLogMask').classList.contains('hidden'), title: $('#homeLogTitle') ? $('#homeLogTitle').textContent : '', text: $('#homeLogBody') ? $('#homeLogBody').innerText : '' }; },
+      regen: homeLogRegenRecipe,
+      logFilter: function(q, month, cat){
+        if($('#hlQ')) $('#hlQ').value = String(q || '');
+        if($('#hlMonth')) $('#hlMonth').value = String(month || '');
+        if($('#hlCat')) $('#hlCat').value = String(cat || '');
+        renderHomeLog();
+        return homeLogFiltered().map(function(c){ return c.id; });
+      },
+      logRenderText: function(){ return $('#homeLogList') ? $('#homeLogList').innerText : ''; },
+      remote: function(){
+        var out = {};
+        try{ out.pantry = localStorage.getItem(PANTRY_KEY); out.cooklog = localStorage.getItem(COOKLOG_KEY); }catch(e){}
+        return out;
+      },
       raw: function(){
         var out = {};
-        try{ out.recipes = localStorage.getItem(RECIPES_KEY); out.homefb = localStorage.getItem(HOMEFB_KEY); }catch(e){}
+        try{ out.recipes = localStorage.getItem(RECIPES_KEY); out.homefb = localStorage.getItem(HOMEFB_KEY); out.pantry = localStorage.getItem(PANTRY_KEY); out.cooklog = localStorage.getItem(COOKLOG_KEY); }catch(e){}
         return out;
       },
       reset: function(){
-        try{ localStorage.removeItem(RECIPES_KEY); localStorage.removeItem(HOMEFB_KEY); }catch(e){}
-        homeRecipeStore = null; homeFbStore = null; homeState.recoId = '';
+        try{ localStorage.removeItem(RECIPES_KEY); localStorage.removeItem(HOMEFB_KEY); localStorage.removeItem(PANTRY_KEY); localStorage.removeItem(COOKLOG_KEY); }catch(e){}
+        homeRecipeStore = null; homeFbStore = null; pantryStore = null; cookStore = null; homeState.recoId = '';
         return true;
       }
     },
@@ -27725,6 +28663,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           if(opts.trips !== undefined){ obj.payload.trips = JSON.parse(JSON.stringify(opts.trips)); }
           if(opts.dropDishes){ try{ delete obj.payload.dishes; }catch(e){} }
           if(opts.dishes !== undefined){ obj.payload.dishes = JSON.parse(JSON.stringify(opts.dishes)); }
+          if(opts.dropPantry){ try{ delete obj.payload.pantry; }catch(e){} }
+          if(opts.pantry !== undefined){ obj.payload.pantry = JSON.parse(JSON.stringify(opts.pantry)); }
+          if(opts.dropCooklog){ try{ delete obj.payload.cooklog; }catch(e){} }
+          if(opts.cooklog !== undefined){ obj.payload.cooklog = JSON.parse(JSON.stringify(opts.cooklog)); }
           return backupChecksum(obj.payload, obj.photos).then(function(sum){
             obj.checksum.value = sum;
             return JSON.stringify(obj);
@@ -27767,7 +28709,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
               refs:(r[1].refs[String(v.id)] || []).slice(),
               recordId:String(u.recordId || ''), recordName:String(u.recordName || ''),
               shopId:String(u.shopId || ''), dishId:String(u.dishId || ''), dishName:String(u.dishName || ''),
-              cat:String(u.cat || '')
+              homeName:String(u.homeName || ''), cat:String(u.cat || '')
             };
           });
         });
