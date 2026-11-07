@@ -772,3 +772,48 @@ i吃饭 · 分享清单
 | `.tmp/merge-enhance-test.js` | 21/21 | 预览并排、迁移 7 类、源键不残留、去重、撤销逐字节、拒绝覆盖、扫描不自动合并 |
 | `.tmp/trip-multistop-test.js` | 18/18 | 分组、预算、必去/备选、上移下移、直线排序与文案、四筛、随机不落库、展示、打卡、分享、备份、旧数据、375 |
 | `.tmp/arch-audit-test.js` | 5/5 | 监听器不增长、interval 不残留、无重复委托、四类写失败提示、0 异常 |
+
+## 12. 全局 UI 与视觉主题（视觉 3.0）
+
+完整审查报告与设计规范见 [`theme-spec.md`](theme-spec.md)。
+
+### 12.1 三层 token
+
+- **基础层**（`:root`）：颜色（页面 / 卡片 / 文字 / 分割线 / 语义状态 / 地图 / 图表）、间距 `--sp-1..--sp-6`、字阶 `--fs-xs..--fs-2xl`、行高 `--lh-tight/base/loose`、字体 `--font-ui/--font-display`、圆角 `--r-card/--r-btn/--r-tag/--r-field/--r-modal/--r-sheet/--r-toast`、阴影 `--shadow/--shadow-1/--shadow-2/--shadow-btn/--shadow-modal`、动效 `--dur-fast/--dur-base/--ease`。
+- **明暗层**（`html[data-theme="dark"]`）：只覆盖颜色与阴影。
+- **皮肤层**（`html[data-skin="..."]` + `[data-theme="dark"]`）：只覆盖颜色 / 字体 / 圆角 / 阴影 + 少量形态修饰，不改 DOM。
+
+组件接入：`.card` 用 `--r-card/--card-pad/--gap-card`；`.btn/.btn-sm` 用 `--r-btn/--r-tag`；`.input` 用 `--r-field`；`.modal/.guide/.blind-card` 用 `--r-modal/--shadow-modal`；`.sheet` 用 `--r-sheet`；`.toast` 用 `--r-toast`；`.notice` 用 `--r-field` + 语义色。
+
+### 12.2 皮肤取值
+
+| `data-skin` | 名称 | 默认明暗 | 独立语言 |
+| --- | --- | --- | --- |
+| `none` | Warm Living | 跟随系统 | 暖白 + 橙，16px 圆角，柔和阴影 |
+| `cream` | Cream Editorial | 浅色 | 奶油纸 + 砖红，衬线标题，2px 直角，无阴影，行高 1.8 |
+| `p3` | P3 Moonlight | 深色 | 深蓝水面 + 青色，胶囊与圆环，噪点光晕 |
+| `p4` | P4 Golden Days | 浅色 | 亮黄 + 电视方框，粗边与扫描线 |
+| `p5` | P5 Phantom Style | 深色 | 红黑白，2px 硬切角 + 硬投影 + 斜切标题 |
+
+读取白名单 `SKIN_ORDER = ['none','cream','p3','p4','p5']`（`readSkinSetting`），非法值回落 `none`；旧键值 `none/p3/p4/p5` 原样可用。`SKIN_DEFAULT` 提供各皮肤默认明暗，`SKIN_META` / `SKIN_ACCENT` 提供主题中心预览色。
+
+### 12.3 主题中心
+
+- `#themeCard` 内：明暗分段、皮肤分段（5 个）、`#skinPreview`（5 张预览卡，`skinPreviewHtml()` 用 `SKIN_META`/`SKIN_ACCENT` 生成）、`#skinDesc`、`#btnThemeReset`、`#themeNow`。
+- `setSkin(v)`：写 `fandazi.skin` → 非 none 时套 `SKIN_DEFAULT` 明暗 → `applyTheme(); applySkin()`；`applySkin` 同步分段按钮 `.on`/`aria-pressed`、预览卡「当前」与 `themeNowText()`。
+- `resetAppearance()`：`none` + `auto` + 纹理 `on` + 动效 `mid`，只写主题键，不触碰 `fandazi.v2`、`fandazi.feedback`、`fandazi.favorites`、`fandazi.trips`、`fandazi.dishes` 与 IndexedDB。
+- 持久化：`fandazi.theme` / `fandazi.skin` / `fandazi.skinTexture` / `fandazi.motion`；`<head>` 内联脚本在首屏前写入 `data-theme/data-skin/data-skin-texture/data-motion`。
+
+### 12.4 动效
+
+- 令牌：`--dur-fast 140ms` / `--dur-base 180ms` / `--ease`；只动 `transform` 与 `opacity`。
+- 落点：`.view`→`viewIn`、`.card:active`→`scale(.996)`、收藏按钮 `.fav-pop`（`motionFavPop(name)` 在 `renderAll()` 后按 `data-name` 命中新节点）、`.draw-card`→`resultPop`、盲盒 `motionPop($('#blindName'))`、旅行随机 `motionPop(card)`。
+- 关闭：`motionSetting==='reduced'` → `html[data-motion="off"]` 全局压到 0.01ms；未显式设置时跟随 `prefers-reduced-motion`；`document.hidden` → `html[data-page-hidden="1"]`，`animation-play-state:paused`。
+- `motionPop()` 在 reduced 下直接 `return`，不创建动画。
+
+### 12.5 截图验收
+
+- `.tmp/theme-shots.js`：7 套主题 × 5 个一级视图 = 35 张 → `.tmp/theme-shots/<theme>-<view>.png`；再逐主题滚动到 `#themeCard` 截 7 张 `-themecenter.png`。
+- 每张断言 `data-theme/data-skin` 正确、`scrollWidth===375`、无弹层误开；另测切换不重置业务数据、恢复默认、动效开关、5 张预览卡 + 「当前」、重开恢复、0 console error。
+- 实测 **48/48 PASS**（35 张主题 × 视图 + 7 张主题中心截图断言 + 6 项功能断言）。
+

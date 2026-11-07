@@ -1700,13 +1700,13 @@ var MAP_BASE_LAYER = {
 
 ## 风格皮肤（P3 蓝 / P4 黄 / P5 红）
 
-三套皮肤**全部是可选皮肤，默认不启用**。默认外观仍是上一节的浅色 / 深色 / 跟随系统；不选皮肤时，变量与样式与原版完全一致。
+三套皮肤**全部是可选皮肤，默认不启用**。默认外观仍是上一节的浅色 / 深色 / 跟随系统；不选皮肤时，变量与样式与原版完全一致。视觉 3.0 起分段按钮改名为 **Warm / Cream / P3 / P4 / P5**（`none` / `cream` / `p3` / `p4` / `p5`），并新增预览卡、当前标识与「恢复默认外观」，见下文「视觉 3.0」。
 
 ### 入口与开关
 
-- 位置：「我的 → 外观」。第一行仍是明暗三档（**浅色 / 深色 / 跟随系统**）；其下新增一组「风格皮肤」：**无（默认）/ P3 蓝 / P4 黄 / P5 红**，再下面是「减少纹理」开关。
+- 位置：「我的 → 外观」。第一行仍是明暗三档（**浅色 / 深色 / 跟随系统**）；其下是「风格皮肤」分段按钮 **Warm（默认）/ Cream / P3 / P4 / P5**，再下面是预览卡、「恢复默认外观」与「减少纹理」开关。
 - 皮肤自带默认明暗：**P3 默认深色、P4 默认浅色、P5 默认深色**。选中皮肤时只把 `fandazi.theme` 写成对应值，之后仍可用上面三档自由切浅 / 深，甚至「跟随系统」。
-- 存储：皮肤独立键 `fandazi.skin`（`none` / `p3` / `p4` / `p5`），纹理独立键 `fandazi.skinTexture`（`on` / `off`，默认 `on`）；明暗继续由 `fandazi.theme` 管。三个键都**不写入 `fandazi.v1` / `fandazi.v2`**，不改变备份结构。
+- 存储：皮肤独立键 `fandazi.skin`（`none` / `cream` / `p3` / `p4` / `p5`），纹理独立键 `fandazi.skinTexture`（`on` / `off`，默认 `on`）；明暗继续由 `fandazi.theme` 管。这些键都**不写入 `fandazi.v1` / `fandazi.v2`**，不改变备份结构。
 - 首屏防闪：`<head>` 内联脚本在渲染前同时写入 `data-theme`、`data-skin`、`data-skin-texture`，刷新不会闪回默认配色。
 - 非法值（例如手改成 `fandazi.skin = "p9"`）在读取时一律回落 `none`，不抛错；无该键的老用户读到的就是 `none`，外观与行为不变。
 
@@ -1786,6 +1786,43 @@ var MAP_BASE_LAYER = {
 - 不支持自定义皮肤色、皮肤包或跟随壁纸取色；三套皮肤是固定的。
 - 分享图、长图、应用图标固定浅色品牌配色，不随皮肤变化。
 - 皮肤只覆盖应用内 UI；Android 原生启动页与系统状态栏图标不受影响（状态栏底色 `theme-color` 仅随明暗变化）。
+
+## 视觉 3.0：token 收口 / Cream Editorial / 主题中心 / 动效
+
+这一轮把视觉从「一组能用的变量」收成**三层 token + 5 套设计语言 + 一个主题中心 + 一套可关闭的动效**。审查报告与完整规范见 [`docs/theme-spec.md`](docs/theme-spec.md)。
+
+### 三层 token
+
+| 层 | 位置 | 覆盖内容 |
+| --- | --- | --- |
+| 基础层 | `:root` | 颜色（含地图 / 图表 / 语义状态色）、间距 `--sp-1..6`、字阶 `--fs-xs..2xl`、行高 `--lh-tight/base/loose`、字体 `--font-ui/--font-display`、圆角 `--r-card/--r-btn/--r-tag/--r-field/--r-modal/--r-sheet/--r-toast`、阴影 `--shadow/--shadow-1/--shadow-2/--shadow-btn/--shadow-modal`、动效 `--dur-fast/--dur-base/--ease` |
+| 明暗层 | `html[data-theme="dark"]` | 只覆盖颜色与阴影，不改形状与间距 |
+| 皮肤层 | `html[data-skin="..."]` + `[data-theme="dark"]` | 只覆盖颜色 / 字体 / 圆角 / 阴影，再叠加少量形态修饰；不改 DOM |
+
+公共组件已接入：按钮（`.btn/--r-btn`）、卡片（`--r-card/--card-pad/--gap-card`）、表单（`--r-field`）、弹窗（`--r-modal/--shadow-modal`）、抽屉（`--r-sheet`）、空态 / 加载态 / 错误态（语义色 token）、轻提示（`--r-toast`）。token 之外的硬编码颜色从 3 处（`@keyframes flash` 高亮环、输入框聚焦环、盲盒 / logo 阴影）降为 **0 处**（分享图与长图的固定品牌色按设计保留，它们不随主题变化）。
+
+### Cream Editorial（新增第 4 套皮肤）
+
+不是换色，是独立排版语言：奶油纸底 `#F6F1E7`、砖红 `#9B4526`、**衬线标题**（`--font-display` 换成宋体系）、2px 直角、无阴影、顶部 2px 细线、行高放宽到 1.8、字距 1.2px，纹理是极淡的纸纹横线。深色版是「夜间纸张」`#12100D`。
+
+### 主题中心
+
+- **预览**：5 张预览卡，色块直接取 `SKIN_META` / `SKIN_ACCENT`，不写死颜色。
+- **切换**：预览卡与分段按钮走同一个 `setSkin()`；切换会套用该皮肤默认明暗。
+- **当前标识**：预览卡显示「当前」，`#themeNow` 一行写明「皮肤 · 明暗 · 纹理 · 动效」。
+- **恢复默认**：皮肤 `none`、明暗 `auto`、纹理 `on`、动效 `mid`；**不重置任何业务数据**（实测切换 4 套皮肤前后，除主题键外的 `fandazi.*` 键逐字节一致）。
+- **持久化**：`fandazi.theme` / `fandazi.skin` / `fandazi.skinTexture` / `fandazi.motion` 四个独立键；`<head>` 内联脚本在首屏前套用 `data-theme/data-skin/data-skin-texture/data-motion`，刷新与重开不闪白、自动恢复。
+
+### 动效（适中）
+
+- 只用 `transform` 与 `opacity`：页面转场 `viewIn`、卡片按压 `scale(.996)`、收藏按钮 `fav-pop`、抽签 / 纯随机结果卡 `resultPop`、盲盒（既有摇动）、旅行随机选中卡 `pop-in`。
+- 关闭方式：`fandazi.motion = reduced` → `html[data-motion="off"]` 把动画 / 过渡压到 0.01ms；系统 `prefers-reduced-motion: reduce` 且用户未显式选「适中」时自动生效；页面切到后台由 `visibilitychange` 写 `data-page-hidden`，`animation-play-state:paused`。
+
+### 验收（headless Chrome 截图矩阵）
+
+- 7 套主题组合（Warm 浅/深、Cream 浅/深、P3 深、P4 浅、P5 深）× 5 个一级视图（记录 / 推荐 / 抽签 / 照片 / 我的）= **35 张**，另逐主题滚动到外观卡截 7 张主题中心，全部输出到 `.tmp/theme-shots/`。
+- 每张同时断言：`data-theme` / `data-skin` 与预期一致、`scrollWidth === 375`、无抽屉 / 弹窗误开；另测主题切换不重置业务数据、恢复默认、动效开关、5 张预览卡与「当前」标识、重开后恢复、0 console error。
+- 实测 **48/48 PASS**。
 
 ## 架构收口（第二阶段⑥）
 
