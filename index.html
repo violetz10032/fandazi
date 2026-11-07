@@ -13789,17 +13789,22 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     };
   }
   function amapSearchUrl(info){
-    var url = 'https://uri.amap.com/search?keyword=' + encodeURIComponent(info.name);
+    var url = 'https://uri.amap.com/search?keyword=' + encodeURIComponent(info.name) + '&callnative=1';
     if(info.city) url += '&city=' + encodeURIComponent(info.city);
     return url;
   }
   function baiduSearchUrl(info){
     return 'https://map.baidu.com/search/' + encodeURIComponent(info.name || info.city || '');
   }
+  /* 高德链接坐标：记录里存 WGS84，链接需要 GCJ-02；仅用于拼 URL，不回写记录 */
+  function mapLinkPosition(info){
+    var d = wgs2gcj(info.lat, info.lng);
+    return Number(d.lng.toFixed(6)) + ',' + Number(d.lat.toFixed(6));
+  }
   function amapMarkerUrl(info){
     if(!mapHasCoords(info)) return amapSearchUrl(info);
-    return 'https://uri.amap.com/marker?position=' + info.lng + ',' + info.lat +
-      '&name=' + encodeURIComponent(info.name) + '&coordinate=gaode';
+    return 'https://uri.amap.com/marker?position=' + mapLinkPosition(info) +
+      '&name=' + encodeURIComponent(info.name) + '&coordinate=gaode&callnative=1';
   }
   function mapOriginPlace(placeId){
     var list = db.places || [], p = null;
@@ -13817,10 +13822,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return encodeURIComponent(txt);
   }
   function amapNavUrl(info, placeId){
+    /* 统一为高德 marker 深链：callnative=1 优先唤起 App，未安装时落 H5；起点由高德内选择 */
     if(!mapHasCoords(info)) return amapSearchUrl(info);
-    return 'https://uri.amap.com/navigation?from=' + mapOriginParam(placeId) +
-      '&to=' + info.lng + ',' + info.lat + ',' + encodeURIComponent(info.name) +
-      '&mode=car&policy=0&coordinate=gaode';
+    return amapMarkerUrl(info);
   }
   function mapLinkOf(info, platform, nav, placeId){
     if(nav) return amapNavUrl(info, placeId);
