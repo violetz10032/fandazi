@@ -5639,6 +5639,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var items = homeRecipesLoad().items;
     var now = opts.now || Date.now();
     var stats = homeCookStats(now);
+    var pantryIdx = homePantryIndex();
+    var hasPantry = Object.keys(pantryIdx).length > 0;
     var out = [];
     items.forEach(function(r){
       if(profileManual.block.indexOf(r.category) >= 0) return;
@@ -5661,6 +5663,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       }
       /* 最近 7 天内刚做过：降权，避免连续重复 */
       if(cs && cs.recent) w *= 0.55;
+      /* 食材匹配：复用「按食材找菜」的同一套三档判定（可直接做 / 差一两样 / 需采购较多） */
+      if(hasPantry){
+        var pm = homePantryMatch(r);
+        if(pm.level === 'ready') w += 0.35;              /* 食材齐：加权 */
+        else if(pm.level === 'far') w -= 0.3;            /* 需额外采购较多：降权 */
+        /* near（差一两样）：中性，不加不减 */
+      }
       if(w < 0.05) w = 0.05;
       out.push({ recipe:r, w:w });
     });
@@ -5826,6 +5835,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(profileManual.boost.indexOf(r.category) >= 0) reasons.push('合口味偏好');
     var last = homeFbLatest(r.id);
     if(last && last.level === 'love') reasons.push('上次觉得好吃');
+    /* 食材这一项用同一套 homePantryMatch 结果，说清为什么推荐 */
+    if(pantryLoad().items.length){
+      var pm = homePantryMatch(r);
+      if(pm.level === 'ready' && pm.have.length){
+        var haveNames = pm.have.slice(0, 3).map(function(h){ return h.via || h.ing.name; });
+        reasons.push('家里有 ' + haveNames.join('、') + '，这道可以直接做');
+      } else if(pm.level === 'near' && pm.missing.length){
+        reasons.push('只差 ' + pm.missing.slice(0, 2).map(function(h){ return h.ing.name; }).join('、') + '，买齐就能做');
+      } else if(pm.level === 'far'){
+        reasons.push('还差 ' + pm.missing.length + ' 样食材，需采购');
+      }
+    }
     if(cs && cs.recent) reasons.push('最近刚做过，降权');
     return reasons.length ? reasons.join(' · ') : '随机换换口味';
   }
@@ -28365,9 +28386,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         raw: function(){ try{ return localStorage.getItem(COOKLOG_KEY); }catch(e){ return null; } }
       },
       match: function(id){ return homePantryMatch(homeRecipeBy(id)); },
+      reason: function(id){ var r = homeRecipeBy(id); return r ? homeRecoReason({ recipe:r, weight:0, candidates:0, relaxed:false }) : ''; },
       candidates: function(opts){
         return homeRecoCandidates(opts || {}).map(function(c){ return { id:c.recipe.id, w:c.w }; });
       },
+      pickState: function(id){ homeState.recoId = id; renderHome(); return $('#homeRecoBox') ? $('#homeRecoBox').innerText : ''; },
       openLog: function(opts){
         homeLogOpen(opts || {});
         return { open: !$('#homeLogMask').classList.contains('hidden'), title: $('#homeLogTitle') ? $('#homeLogTitle').textContent : '', text: $('#homeLogBody') ? $('#homeLogBody').innerText : '' };
