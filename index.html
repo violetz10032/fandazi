@@ -807,6 +807,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .store-dup-row:first-of-type{border-top:0}
   .store-dup-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
   .store-dup-actions .btn{min-height:36px}
+  .merge-cols{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .merge-side{border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--panel);min-width:0}
+  .merge-side h3{font-size:13px;margin:0 0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .merge-row{display:flex;flex-direction:column;gap:1px;padding:5px 0;border-top:1px dashed var(--line);font-size:11px;line-height:1.45}
+  .merge-row:first-of-type{border-top:0}
+  .merge-row b{font-size:10px;color:var(--ink3);font-weight:600}
+  .merge-row span{color:var(--ink);word-break:break-word}
+  .dup-scan-row{padding:10px 0;border-top:1px dashed var(--line)}
+  .dup-scan-row:first-of-type{border-top:0}
   .fb-note{flex:1 0 100%;font-size:10.5px;color:var(--ink3);margin-top:2px;line-height:1.5}
 
 
@@ -1448,6 +1457,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
               <button data-map-mode="list">列表</button>
             </div>
             <button type="button" class="btn btn-sm btn-soft" id="btnMapLocate">定位我</button>
+            <button type="button" class="btn btn-sm btn-soft" id="btnDupScan">重复店铺扫描</button>
           </div>
           <div class="map-legend" id="mapLegend"></div>
         </div>
@@ -2398,6 +2408,28 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <button type="button" class="icon-btn" id="mapStoreClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
     </div>
     <div id="mapStoreBody"></div>
+  </div>
+</div>
+
+<!-- 合并预览：并排对比双方资料，选择保留哪一方 -->
+<div class="sheet-mask hidden" id="mergeMask">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="mergeTitle">合并店铺</h2>
+      <button type="button" class="icon-btn" id="mergeClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
+    </div>
+    <div id="mergeBody"></div>
+  </div>
+</div>
+
+<!-- 重复店铺主动扫描 -->
+<div class="sheet-mask hidden" id="dupScanMask">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="dupScanTitle">重复店铺扫描</h2>
+      <button type="button" class="icon-btn" id="dupScanClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
+    </div>
+    <div id="dupScanBody"></div>
   </div>
 </div>
 
@@ -19769,6 +19801,275 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     next.items[toId] = shopMetaNormEntry(next.items[toId]);
     return shopMetaWrite(next);
   }
+  /* ================= 阶段⑤：合并预览、迁移、撤销、重复扫描 ================= */
+  var MERGE_UNDO_KEY = 'fandazi.mergeundo';
+  var MERGE_RAW_LABEL = { db:'到店记录', meta:'店铺补充信息', trips:'旅行计划', fav:'收藏', fb:'推荐反馈' };
+  var mergeCtx = null;
+
+  function mergeRawSnap(){
+    var out = {};
+    try{
+      out.db = localStorage.getItem(v2Active ? V2_KEY : KEY);
+      out.meta = localStorage.getItem(SHOPMETA_KEY);
+      out.trips = localStorage.getItem(TRIPS_KEY);
+      out.fav = localStorage.getItem(FAV_KEY);
+      out.fb = localStorage.getItem(FB_KEY);
+    }catch(e){ logError('合并快照读取', e); }
+    return out;
+  }
+  function mergeRestoreRaws(snap){
+    var map = { db:(v2Active ? V2_KEY : KEY), meta:SHOPMETA_KEY, trips:TRIPS_KEY, fav:FAV_KEY, fb:FB_KEY };
+    Object.keys(map).forEach(function(k){
+      var v = snap ? snap[k] : null;
+      try{ if(v == null) localStorage.removeItem(map[k]); else localStorage.setItem(map[k], v); }catch(e){}
+    });
+    shopMetaStore = null;
+    tripStore = null;
+    favStore = null;
+    feedbackStore = loadFeedbackStore();
+    feedbackToday = { date:todayStr(), items:{} };
+    db = loadDb();
+    invalidateStores();
+  }
+  function mergeFacts(s){
+    var sid = shopIdOfStore(s);
+    var recs = s.records || [];
+    var photos = 0;
+    recs.forEach(function(r){ photos += (photosOfRecord(r) || []).length; });
+    var meta = shopMetaGet(sid);
+    var fb = feedbackStore.items.filter(function(it){ return it.key === s.key; });
+    var fbHist = (feedbackStore.history || []).filter(function(h){ return h.key === s.key; });
+    return {
+      key:s.key, shopId:sid, name:s.name, city:s.city || '', area:s.area || '',
+      address:s.address || '', lat:s.lat, lng:s.lng,
+      visits:recs.length, rating:s.rating, perPrice:s.perPrice,
+      photos:photos, tags:(s.tags || []).slice(0, 8),
+      wish: db.wishlist.some(function(w){ return feedbackKeyOf(w) === s.key; }),
+      fav: favoriteHas(s.name, s.city),
+      trips: (typeof tripStore !== 'undefined' && tripStore && Array.isArray(tripStore.items)) ? tripStore.items.reduce(function(n,t){
+        return n + (t.stops || []).filter(function(st){ return st.shopId === sid; }).length;
+      }, 0) : 0,
+      fb: fb.length ? fb[fb.length - 1].action : '', fbHist:fbHist.length,
+      black: db.blacklist.some(function(b){ return b.key === s.key; }),
+      links:(meta.links || []).length, fields:Object.keys(meta.fields || {}).length
+    };
+  }
+  function mergeRowHtml(label, value){
+    return '<div class="merge-row"><b>'+esc(label)+'</b><span>'+esc(value || '—')+'</span></div>';
+  }
+  function mergeSideHtml(f, role){
+    return '<div class="merge-side"><h3>'+esc(role+' · '+f.name)+'</h3>'+
+      mergeRowHtml('城市 / 区域', [f.city, f.area].filter(Boolean).join(' · '))+
+      mergeRowHtml('地址', f.address)+
+      mergeRowHtml('坐标', f.lat != null && f.lng != null ? Number(f.lat).toFixed(4)+', '+Number(f.lng).toFixed(4) : '')+
+      mergeRowHtml('到店', f.visits+' 条记录 · 评分 '+(f.rating != null ? f.rating : '—')+' · 人均 '+(f.perPrice != null ? '¥'+f.perPrice : '—'))+
+      mergeRowHtml('照片', f.photos+' 张')+
+      mergeRowHtml('收藏 / 想去', (f.fav?'已收藏':'未收藏')+' · '+(f.wish?'在想去':'不在想去'))+
+      mergeRowHtml('旅行引用', f.trips+' 个 stop')+
+      mergeRowHtml('推荐反馈', f.fb ? (fbActionText(f.fb)+'（历史 '+f.fbHist+' 条）') : '无')+
+      mergeRowHtml('黑名单', f.black ? '在' : '不在')+
+      mergeRowHtml('标签', f.tags.length ? f.tags.join('、') : '')+
+      mergeRowHtml('平台链接 / 补充字段', f.links+' 条 · '+f.fields+' 项')+
+    '</div>';
+  }
+  function mergePreviewHtml(a, b){
+    return '<p class="muted" style="margin:0 0 8px">并排对比双方资料。合并只改记录店名/城市并迁移引用，不删除任何到店记录、照片或反馈。</p>'+
+      '<div class="merge-cols">'+mergeSideHtml(mergeFacts(a), '源店')+mergeSideHtml(mergeFacts(b), '目标店')+'</div>'+
+      '<div class="card flat" style="padding:12px;margin-top:10px">'+
+        '<p class="muted" style="margin:0 0 6px">合并后保留哪一方的店铺资料？</p>'+
+        '<label class="frow" style="gap:8px"><input type="radio" name="mergeKeep" value="to" checked><span>保留「'+esc(b.name)+'」资料（把另一边并入它）</span></label>'+
+        '<label class="frow" style="gap:8px;margin-top:6px"><input type="radio" name="mergeKeep" value="from"><span>保留「'+esc(a.name)+'」资料（把「'+esc(b.name)+'」并入它）</span></label>'+
+      '</div>'+
+      '<button type="button" class="btn btn-primary" data-act="mergeRun" style="width:100%;margin-top:10px;min-height:46px">确认合并</button>'+
+      '<p class="dist-note">会迁移：到店记录、照片引用、收藏、标签、旅行 stop、推荐反馈、黑名单；不会自动执行，合并后可撤销。</p>';
+  }
+  function openMergeSheet(fromKey, toKey){
+    var a = mapStoreByKey(fromKey), b = mapStoreByKey(toKey);
+    if(!a || !b || a.key === b.key){ toast('店铺已变化，请刷新后重试'); return; }
+    mergeCtx = { fromKey:fromKey, toKey:toKey };
+    $('#mergeTitle').textContent = '合并预览';
+    $('#mergeBody').innerHTML = mergePreviewHtml(a, b);
+    $('#mergeMask').classList.remove('hidden');
+  }
+  function closeMergeSheet(){ $('#mergeMask').classList.add('hidden'); mergeCtx = null; }
+  function renderMergeResult(r){
+    var c = r.counts || {};
+    var canUndo = r.undo !== false;
+    $('#mergeTitle').textContent = '合并完成';
+    $('#mergeBody').innerHTML = '<div class="card flat" style="padding:14px">'+
+      '<p style="margin:0 0 6px"><b>已合并</b>：'+esc(r.fromName || '')+' → '+esc(r.toName || '')+'</p>'+
+      '<p class="meta" style="margin:0">迁移：到店记录 '+esc(c.records||0)+' 条 · 收藏 '+esc(c.favorites||0)+' 条 · 想去 '+esc(c.wish||0)+' 条 · 反馈 '+esc(c.feedback||0)+' 条（历史 '+esc(c.feedbackHist||0)+' 条）· 旅行 stop '+esc(c.trips||0)+' 个 · 黑名单 '+esc(c.blacklist||0)+' 条</p>'+
+      '</div>'+
+      (canUndo ? '<button type="button" class="btn" data-act="mergeUndo" style="width:100%;margin-top:10px;min-height:44px">撤销这次合并</button>'+
+        '<p class="dist-note">撤销会先核对合并后数据有没有再被改动；若已改动则拒绝覆盖并保留现状。</p>' :
+        '<p class="dist-note">撤销快照未能写入（本机存储空间不足），本次合并无法撤销。</p>');
+    $('#mergeMask').classList.remove('hidden');
+  }
+  function runMergeFromSheet(){
+    if(!mergeCtx) return { ok:false, error:'没有待合并的店铺' };
+    var keepEl = document.querySelector('#mergeBody input[name="mergeKeep"]:checked');
+    var keep = keepEl ? keepEl.value : 'to';
+    var fromKey = keep === 'from' ? mergeCtx.toKey : mergeCtx.fromKey;
+    var toKey = keep === 'from' ? mergeCtx.fromKey : mergeCtx.toKey;
+    var mr = shopMergeKeys(fromKey, toKey, { confirm:false });
+    if(!mr.ok){ if(mr.error) toast(mr.error); return mr; }
+    closeMapStoreSheet();
+    renderMergeResult(mr);
+    toast(mr.warn || ('已合并「'+mr.fromName+'」→「'+mr.toName+'」，可撤销'));
+    return mr;
+  }
+  function shopMergeUndoState(){
+    try{ return JSON.parse(localStorage.getItem(MERGE_UNDO_KEY) || 'null'); }catch(e){ return null; }
+  }
+  function shopMergeUndo(){
+    var u = shopMergeUndoState();
+    if(!u){ return { ok:false, error:'没有可撤销的合并记录' }; }
+    var cur = mergeRawSnap();
+    var diffs = Object.keys(u.after || {}).filter(function(k){ return cur[k] !== u.after[k]; });
+    if(diffs.length){
+      return { ok:false, error:'合并之后又改过'+diffs.map(function(k){ return MERGE_RAW_LABEL[k] || k; }).join('、')+'，已保留现状，没有覆盖任何数据。' };
+    }
+    try{
+      mergeRestoreRaws(u.before || {});
+      localStorage.removeItem(MERGE_UNDO_KEY);
+    }catch(e){
+      return { ok:false, error:'撤销写入失败（'+String((e && e.message) || e)+'），已保留原数据，可先导出备份再重试。' };
+    }
+    invalidateStores();
+    renderAll();
+    return { ok:true, fromName:u.fromName, toName:u.toName };
+  }
+  /* 想去：按「城市|店名」迁移；目标已有则去重 */
+  function wishlistMigrateKey(fromKey, toKey, toStore){
+    var hasTarget = db.wishlist.some(function(w){ return feedbackKeyOf(w) === toKey; });
+    var moved = 0, dropped = 0;
+    db.wishlist = db.wishlist.filter(function(w){
+      if(feedbackKeyOf(w) !== fromKey) return true;
+      if(hasTarget){ dropped++; return false; }
+      w.name = toStore.name;
+      w.city = toStore.city || '';
+      if(w.area && toStore.area) w.area = toStore.area;
+      moved++;
+      return true;
+    });
+    return { moved:moved, dropped:dropped };
+  }
+  function blacklistMigrateKey(fromKey, toKey, toStore){
+    var hasTarget = db.blacklist.some(function(b){ return b.key === toKey; });
+    var moved = 0, dropped = 0;
+    db.blacklist = db.blacklist.filter(function(b){
+      if(b.key !== fromKey) return true;
+      if(hasTarget){ dropped++; return false; }
+      b.key = toKey;
+      b.name = toStore.name;
+      b.city = toStore.city || '';
+      moved++;
+      return true;
+    });
+    return { moved:moved, dropped:dropped };
+  }
+  /* 推荐反馈：档位与历史一起迁移，今天不想吃的内存态也一起走 */
+  function feedbackMigrateKey(fromKey, toKey, toStore){
+    var hasTarget = feedbackStore.items.some(function(it){ return it.key === toKey; });
+    var moved = 0, dropped = 0;
+    feedbackStore.items = feedbackStore.items.filter(function(it){
+      if(it.key !== fromKey) return true;
+      if(hasTarget){ dropped++; return false; }
+      it.key = toKey;
+      it.name = toStore.name;
+      if(it.blackKey) it.blackKey = toKey;
+      moved++;
+      return true;
+    });
+    var histMoved = 0;
+    (feedbackStore.history || []).forEach(function(h){
+      if(h.key !== fromKey) return;
+      h.key = toKey;
+      h.name = toStore.name;
+      histMoved++;
+    });
+    if(feedbackToday.items[fromKey]){
+      if(!feedbackToday.items[toKey]) feedbackToday.items[toKey] = feedbackToday.items[fromKey];
+      delete feedbackToday.items[fromKey];
+    }
+    if(moved || dropped || histMoved) saveFeedbackStore();
+    return { moved:moved, dropped:dropped, history:histMoved };
+  }
+  /* 旅行 stop：源店 shopId 改成目标店；同一行程已存在则合并且不留重复 */
+  function tripsMigrateStops(fromId, toId, toStore){
+    var t = tripStore || tripsLoad();
+    var moved = 0, merged = 0;
+    var next = JSON.parse(JSON.stringify(t));
+    next.items.forEach(function(tr){
+      var hits = (tr.stops || []).filter(function(st){ return st.shopId === fromId; });
+      if(!hits.length) return;
+      var exist = (tr.stops || []).filter(function(st){ return st.shopId === toId; })[0] || null;
+      hits.forEach(function(st){
+        st.shopId = toId;
+        st.name = toStore.name;
+        st.city = toStore.city || '';
+        if(toStore.area) st.area = toStore.area;
+        moved++;
+      });
+      if(exist){
+        hits.forEach(function(st){
+          if(TRIP_STATUS_ORDER.indexOf(st.status) > TRIP_STATUS_ORDER.indexOf(exist.status)) exist.status = st.status;
+          if(st.day && (!exist.day || st.day < exist.day)) exist.day = st.day;
+          if(st.note && !exist.note) exist.note = st.note;
+          var k = tr.stops.indexOf(st);
+          if(k >= 0){ tr.stops.splice(k, 1); merged++; }
+        });
+      }
+    });
+    var persistOk = true;
+    if(moved) persistOk = tripsPersist(next);
+    return { moved:moved, merged:merged, persistOk:persistOk };
+  }
+
+  function shopDupScanAll(){
+    var stores = getStores(), out = [], seen = {};
+    for(var i = 0; i < stores.length; i++){
+      for(var j = i + 1; j < stores.length; j++){
+        var a = stores[i], b = stores[j];
+        var aid = shopIdOfStore(a), bid = shopIdOfStore(b);
+        if(!aid || !bid || aid === bid) continue;
+        var pk = aid < bid ? aid + '|' + bid : bid + '|' + aid;
+        if(seen[pk]) continue;
+        seen[pk] = 1;
+        if(shopDupSuppressed(aid, bid)) continue;
+        var reason = shopDupReasonOf(a, b);
+        if(!reason) continue;
+        out.push({ a:a, b:b, aId:aid, bId:bid, reason:reason });
+      }
+    }
+    out.sort(function(x, y){ return (x.reason.rank || 0) - (y.reason.rank || 0); });
+    return out.slice(0, 30);
+  }
+  function dupScanHtml(list){
+    var undo = shopMergeUndoState();
+    var head = '<p class="muted" style="margin:0 0 8px">扫描 '+getStores().length+' 家店，只给候选，绝不自动合并、绝不自动删除；合并前会先并排预览。</p>';
+    var body = list.length ? list.map(function(x, i){
+      return '<div class="dup-scan-row">'+
+        '<b>'+esc(x.a.name)+' ↔ '+esc(x.b.name)+'</b>'+
+        '<p class="meta" style="margin:2px 0 0">'+esc([x.a.city, x.a.area].filter(Boolean).join(' · ') || '未填位置')+' / '+
+          esc([x.b.city, x.b.area].filter(Boolean).join(' · ') || '未填位置')+' · '+esc(x.reason.text)+'</p>'+
+        '<div class="store-dup-actions">'+
+          '<button type="button" class="btn btn-sm" data-dup-merge="'+i+'">预览合并</button>'+
+          '<button type="button" class="btn btn-sm btn-soft" data-dup-relate="'+i+'">标记同一家（不合并）</button>'+
+          '<button type="button" class="btn btn-sm btn-soft" data-dup-ignore="'+i+'">不是同一家</button>'+
+        '</div></div>';
+    }).join('') : '<p class="muted">没有发现疑似重复店铺。可继续手动标记，系统不会自动处理。</p>';
+    var foot = undo ? '<button type="button" class="btn" data-dup-undo style="width:100%;margin-top:12px;min-height:44px">撤销上次合并（'+esc(undo.fromName||'')+' → '+esc(undo.toName||'')+'）</button>' : '';
+    return head + body + foot;
+  }
+  function openDupScanSheet(){
+    dupScanList = shopDupScanAll();
+    $('#dupScanBody').innerHTML = dupScanHtml(dupScanList);
+    $('#dupScanMask').classList.remove('hidden');
+  }
+  function closeDupScanSheet(){ $('#dupScanMask').classList.add('hidden'); }
+  var dupScanList = [];
+
   function shopMergeKeys(fromKey, toKey, opts){
     opts = opts || {};
     var from = mapStoreByKey(fromKey), to = mapStoreByKey(toKey);
@@ -19777,56 +20078,94 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var fromId = shopIdOfStore(from), toId = shopIdOfStore(to);
     if(!fromId || !toId) return { ok:false, error:'店铺标识缺失' };
     var moving = db.records.filter(function(r){ return keyOf(r) === fromKey; });
-    if(!moving.length) return { ok:false, error:'源店铺没有到店记录可合并' };
+    if(!moving.length && !db.wishlist.some(function(w){ return feedbackKeyOf(w) === fromKey; }) &&
+       !favoriteHas(from.name, from.city) && !feedbackStore.items.some(function(it){ return it.key === fromKey; }) &&
+       !db.blacklist.some(function(b){ return b.key === fromKey; })){
+      return { ok:false, error:'源店铺没有任何可迁移的数据' };
+    }
     if(opts.confirm !== false){
       var ok = false;
       try{
         ok = window.confirm('把「'+from.name+'」并入「'+to.name+'」？\n\n'+
           '将把 '+moving.length+' 条到店记录改成目标店的店名/城市；记录日期、评分、金额、菜品与照片全部保留。\n'+
-          '源店的平台链接、补充字段与坐标会并入目标店（已有值优先保留）。\n\n'+
+          '想去、收藏、推荐反馈、旅行 stop、黑名单与店铺补充信息会一起迁到目标店。\n\n'+
           '不会自动执行，确认后才写入；建议先导出完整备份。');
       }catch(e){ ok = false; }
       if(!ok) return { ok:false, cancelled:true };
     }
-    var recSnap = JSON.parse(JSON.stringify(db.records));
-    var metaRaw = null;
-    try{ metaRaw = localStorage.getItem(SHOPMETA_KEY); }catch(e){}
-    var rawKey = v2Active ? V2_KEY : KEY;
-    var rawBefore = null;
-    try{ rawBefore = localStorage.getItem(rawKey); }catch(e){}
-    db.records.forEach(function(r){
-      if(keyOf(r) !== fromKey) return;
-      r.name = to.name;
-      r.city = to.city || '';
-      r.updatedAt = new Date().toISOString();
-    });
-    save(true);
-    var rawAfter = null;
-    try{ rawAfter = localStorage.getItem(rawKey); }catch(e){}
-    if(rawAfter === rawBefore){
-      db.records = recSnap;
-      invalidateStores();
-      renderAll();
-      return { ok:false, error:'写入本机失败，未改动任何数据（请先备份并检查存储空间）' };
-    }
-    var metaOk = shopMetaMergeInto(fromId, toId, from);
-    if(!metaOk){
-      db.records = recSnap;
-      invalidateStores();
-      try{
-        if(metaRaw == null) localStorage.removeItem(SHOPMETA_KEY); else localStorage.setItem(SHOPMETA_KEY, metaRaw);
-      }catch(e){}
-      shopMetaStore = null;
+    var snapBefore = mergeRawSnap();
+    var counts = { records:moving.length, favorites:0, wish:0, feedback:0, feedbackHist:0, trips:0, blacklist:0 };
+    if(moving.length){
+      db.records.forEach(function(r){
+        if(keyOf(r) !== fromKey) return;
+        r.name = to.name;
+        r.city = to.city || '';
+        r.updatedAt = new Date().toISOString();
+      });
       save(true);
+      if(mergeRawSnap().db === snapBefore.db){
+        mergeRestoreRaws(snapBefore);
+        renderAll();
+        return { ok:false, error:'写入到店记录失败，未改动任何数据（请先备份并检查存储空间）' };
+      }
+    }
+    if(!shopMetaMergeInto(fromId, toId, from)){
+      mergeRestoreRaws(snapBefore);
       renderAll();
       return { ok:false, error:'店铺补充信息写入失败，已回滚本次合并' };
     }
-    /* 阶段④钩子：收藏跟着店铺走。合并后源店不再存在，收藏项迁到目标店（目标已有则只去重）。 */
-    var favMove = favoritesMigrateKey(fromKey, toKey, { name: to.name, city: to.city || '' });
+    /* 阶段④：收藏 / 想去 / 推荐反馈 / 黑名单 / 旅行 stop 跟着店铺走，目标已有则去重。
+       照片挂在记录上，记录改名即保留；标签随记录聚合，无需单独迁移。 */
+    counts.favorites = favoritesMigrateKey(fromKey, toKey, { name:to.name, city:to.city || '' }).moved;
+    if(favoritesLoad().items.some(function(x){ return x.key === fromKey; })){
+      mergeRestoreRaws(snapBefore);
+      renderAll();
+      return { ok:false, error:'收藏迁移失败，已回滚本次合并（没有留下悬空引用）' };
+    }
+    var wm = wishlistMigrateKey(fromKey, toKey, to);
+    counts.wish = wm.moved;
+    var bm = blacklistMigrateKey(fromKey, toKey, to);
+    counts.blacklist = bm.moved;
+    var fm = feedbackMigrateKey(fromKey, toKey, to);
+    counts.feedback = fm.moved;
+    counts.feedbackHist = fm.history;
+    var tm = tripsMigrateStops(fromId, toId, to);
+    counts.trips = tm.moved;
+    save(true);
+    var tripLeft = false;
+    try{
+      var tj = JSON.parse(localStorage.getItem(TRIPS_KEY) || 'null');
+      ((tj && tj.items) || []).forEach(function(t){
+        if((t.stops || []).some(function(st){ return st.shopId === fromId; })) tripLeft = true;
+      });
+    }catch(e){ logError('合并校验旅行引用', e); }
+    if(tripLeft || (tm.moved && !tm.persistOk)){
+      mergeRestoreRaws(snapBefore);
+      renderAll();
+      return { ok:false, error:'旅行 stop 迁移失败，已回滚本次合并（没有留下悬空引用）' };
+    }
+    var snapAfter = mergeRawSnap();
+    var changed = Object.keys(MERGE_RAW_LABEL).some(function(k){ return snapAfter[k] !== snapBefore[k]; });
+    if(!changed){
+      mergeRestoreRaws(snapBefore);
+      renderAll();
+      return { ok:false, error:'没有任何可迁移的数据，未改动任何数据' };
+    }
+    var undoOk = true;
+    try{
+      localStorage.setItem(MERGE_UNDO_KEY, JSON.stringify({
+        at:new Date().toISOString(), fromKey:fromKey, toKey:toKey,
+        fromName:from.name, toName:to.name, before:snapBefore, after:snapAfter, counts:counts
+      }));
+    }catch(e){
+      undoOk = false;
+      logError('合并撤销快照', e);
+    }
     invalidateStores();
     renderAll();
     return { ok:true, moved:moving.length, fromId:fromId, toId:toId, fromName:from.name, toName:to.name,
-      favoritesMigrated:favMove.moved };
+      favoritesMigrated:counts.favorites, counts:counts, undo:undoOk,
+      warn:undoOk ? '' : '合并已完成，但撤销快照写入失败（本机存储空间不足），本次合并无法撤销。' };
   }
   function shopRelateKeys(fromKey, toKey){
     var from = mapStoreByKey(fromKey), to = mapStoreByKey(toKey);
@@ -27454,6 +27793,49 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   });
   $('#mapStoreClose').addEventListener('click', closeMapStoreSheet);
   $('#mapStoreMask').addEventListener('click', function(e){ if(e.target === this) closeMapStoreSheet(); });
+  /* 合并预览 / 撤销 / 重复扫描 */
+  $('#mergeClose').addEventListener('click', closeMergeSheet);
+  $('#mergeMask').addEventListener('click', function(e){ if(e.target === this) closeMergeSheet(); });
+  $('#mergeBody').addEventListener('click', function(e){
+    var run = e.target.closest ? e.target.closest('[data-act="mergeRun"]') : null;
+    if(run){ runMergeFromSheet(); return; }
+    var undoBtn = e.target.closest ? e.target.closest('[data-act="mergeUndo"]') : null;
+    if(undoBtn){
+      var ur = shopMergeUndo();
+      if(!ur.ok){ toast(ur.error || '撤销失败'); return; }
+      closeMergeSheet();
+      toast('已撤销合并「'+ur.fromName+'」←「'+ur.toName+'」');
+      if(!$('#dupScanMask').classList.contains('hidden')) openDupScanSheet();
+      return;
+    }
+  });
+  $('#btnDupScan').addEventListener('click', openDupScanSheet);
+  $('#dupScanClose').addEventListener('click', closeDupScanSheet);
+  $('#dupScanMask').addEventListener('click', function(e){ if(e.target === this) closeDupScanSheet(); });
+  $('#dupScanBody').addEventListener('click', function(e){
+    var el = e.target.closest ? e.target.closest('[data-dup-merge],[data-dup-relate],[data-dup-ignore],[data-dup-undo]') : null;
+    if(!el) return;
+    if(el.hasAttribute('data-dup-undo')){
+      var ur = shopMergeUndo();
+      if(!ur.ok){ toast(ur.error || '撤销失败'); return; }
+      toast('已撤销合并「'+ur.fromName+'」←「'+ur.toName+'」');
+      openDupScanSheet();
+      return;
+    }
+    var idx = Number(el.getAttribute('data-dup-merge') || el.getAttribute('data-dup-relate') || el.getAttribute('data-dup-ignore'));
+    var pair = dupScanList[idx];
+    if(!pair){ toast('候选已变化，请重新扫描'); openDupScanSheet(); return; }
+    if(el.hasAttribute('data-dup-merge')){ closeDupScanSheet(); openMergeSheet(pair.a.key, pair.b.key); return; }
+    if(el.hasAttribute('data-dup-relate')){
+      var rr = shopRelateKeys(pair.a.key, pair.b.key);
+      if(rr.ok){ toast('已标记为同一家（未合并），历史记录保持不变'); openDupScanSheet(); }
+      else toast(rr.error || '标记失败');
+      return;
+    }
+    var ig = shopIgnoreDup(pair.aId, pair.bId);
+    if(ig.ok){ toast('已标记为不是同一家，不再提示'); openDupScanSheet(); }
+    else toast(ig.error || '标记失败');
+  });
   $('#mapStoreBody').addEventListener('click', function(e){
     var visit = e.target.closest ? e.target.closest('[data-map-visit]') : null;
     if(visit){ var id = visit.getAttribute('data-map-visit'); closeMapStoreSheet(); diaryOpenDetail(id); return; }
@@ -27480,11 +27862,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(mergeBtn){
       var fromKey = mergeBtn.getAttribute('data-store-merge-key') || '';
       var toKey = mergeBtn.getAttribute('data-store-target') || mapView.sheetKey;
-      var mr = shopMergeKeys(fromKey, toKey, {});
-      if(mr.ok){
-        toast('已合并「'+mr.fromName+'」→「'+mr.toName+'」：'+mr.moved+' 条到店记录，照片与历史保留');
-        openMapStoreSheet(toKey);
-      }else if(mr.error){ toast(mr.error); }
+      openMergeSheet(fromKey, toKey);
       return;
     }
     var relateBtn = e.target.closest ? e.target.closest('[data-store-relate]') : null;
@@ -31693,6 +32071,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         });
       },
       merge: function(fromKey, toKey){ return shopMergeKeys(fromKey, toKey, { confirm:false }); },
+      mergePreview: function(fromKey, toKey){ openMergeSheet(fromKey, toKey); return { open:!$('#mergeMask').classList.contains('hidden'), text:$('#mergeBody').innerText }; },
+      mergeRun: function(){ return runMergeFromSheet(); },
+      mergeUndo: function(){ return shopMergeUndo(); },
+      mergeUndoState: function(){ return shopMergeUndoState(); },
+      dupScan: function(){ return shopDupScanAll().map(function(x){ return { a:x.a.key, b:x.b.key, aName:x.a.name, bName:x.b.name, reason:x.reason.code, text:x.reason.text }; }); },
+      dupScanText: function(){ return dupScanHtml(shopDupScanAll()); },
+      dupScanOpen: function(){ openDupScanSheet(); return { open:!$('#dupScanMask').classList.contains('hidden'), text:$('#dupScanBody').innerText }; },
       relate: function(fromKey, toKey){ return shopRelateKeys(fromKey, toKey); },
       ignore: function(a, b){ return shopIgnoreDup(a, b); },
       stats: function(key){
