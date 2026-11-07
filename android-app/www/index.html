@@ -1191,6 +1191,46 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .pw-list-item .grow{min-width:0}
   .pw-list-item b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .pw-list-item span{font-size:11px;color:var(--ink3)}
+  /* ============ 在家吃（独立模块：本地菜谱 / 推荐 / 收藏 / 反馈） ============ */
+  .home-head{display:flex;align-items:center;gap:10px;margin:2px 0 12px}
+  .home-head .icon-btn{flex:none}
+  .home-head h2{font-size:17px;margin:0}
+  .home-head .home-sub{font-size:11px;color:var(--ink3);margin-top:2px}
+  .home-entry{display:flex;align-items:center;gap:10px;padding:12px;border-radius:var(--r-card);
+    border:1px solid var(--line);background:var(--card);margin-bottom:10px}
+  .home-entry .he-ico{font-size:22px;line-height:1}
+  .home-entry .grow{flex:1;min-width:0}
+  .home-entry b{display:block;font-size:14px}
+  .home-entry span{font-size:11px;color:var(--ink3)}
+  .home-panel-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .home-reco{border:1px solid var(--line);border-radius:var(--r-card);padding:14px;background:var(--panel-2)}
+  .home-reco-name{font-size:20px;font-weight:700;margin:0 0 2px}
+  .home-reco-tags{font-size:11px;color:var(--ink3);margin-bottom:8px}
+  .home-reco-meta{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+  .home-pill{font-size:11px;padding:3px 8px;border-radius:999px;background:var(--chip);color:var(--ink2)}
+  .home-reco-why{font-size:11.5px;line-height:1.6;color:var(--ink3)}
+  .home-list{display:grid;gap:8px;margin-top:10px}
+  .home-row{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);
+    border-radius:12px;background:var(--card)}
+  .home-row .hi-emoji{width:38px;height:38px;border-radius:10px;background:var(--soft);flex:none;
+    display:flex;align-items:center;justify-content:center;font-size:19px}
+  .home-row .grow{flex:1;min-width:0}
+  .home-row b{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .home-row span{font-size:11px;color:var(--ink3)}
+  .home-fav{flex:none;width:30px;height:30px;border-radius:50%;border:1px solid var(--line);
+    background:var(--card);color:var(--ink3);font-size:15px;line-height:1}
+  .home-fav.on{background:var(--soft);border-color:var(--accent-line);color:var(--accent)}
+  .home-empty{padding:30px 12px;text-align:center;color:var(--ink3);font-size:13px}
+  .home-fb{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+  .home-fb button{font-size:11.5px;padding:8px 4px;border-radius:10px;border:1px solid var(--line);
+    background:var(--card);color:var(--ink);line-height:1.3}
+  .home-fb button.on{background:var(--soft);border-color:var(--accent-line);color:var(--soft-ink);font-weight:600}
+  .home-detail-sec{margin-top:14px}
+  .home-detail-sec h3{font-size:13px;margin:0 0 6px;color:var(--ink2)}
+  .home-detail-sec ul,.home-detail-sec ol{margin:0;padding-left:18px;font-size:12.5px;line-height:1.75}
+  .home-detail-meta{display:flex;gap:6px;flex-wrap:wrap}
+  .home-src{font-size:11px;color:var(--ink3);margin-top:10px}
+  .home-fb-hist{font-size:11px;color:var(--ink3);margin-top:6px}
 </style>
 </head>
 <body>
@@ -1423,6 +1463,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <button data-panel="party">聚会</button>
         <button data-panel="fitness">健身</button>
         <button data-panel="friend">帮朋友</button>
+      </div>
+
+      <!-- 独立入口：在家吃（本地菜谱，离线可用；与餐厅记录完全隔离） -->
+      <div class="home-entry" id="homeEntryCard" role="button" tabindex="0">
+        <div class="he-ico">🍳</div>
+        <div class="grow"><b>在家吃</b><span>本地菜谱 · 个性化推荐 · 离线可用</span></div>
+        <span style="color:var(--ink3);font-size:16px">›</span>
       </div>
 
       <div id="panel-daily">
@@ -1729,8 +1776,50 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       </div>
     </section>
 
+    <!-- ================= 在家吃（独立视图，不写入餐厅记录） ================= -->
+    <section class="view hidden" id="view-home">
+      <div class="home-head">
+        <button type="button" class="icon-btn" id="homeBack" aria-label="返回">
+          <svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <div><h2>在家吃</h2><div class="home-sub">本地菜谱 · 离线可用 · 不写入到店记录</div></div>
+      </div>
+      <div class="seg seg-top" id="homeSeg">
+        <button class="on" data-hpanel="reco">今天做啥</button>
+        <button data-hpanel="lib">菜谱库</button>
+        <button data-hpanel="fav">收藏</button>
+      </div>
+      <div id="homePanelReco">
+        <div class="card">
+          <div id="homeRecoBox"></div>
+          <div class="home-panel-actions">
+            <button type="button" class="btn btn-primary" id="homeRecoBtn" style="flex:1">换一道</button>
+            <button type="button" class="btn" id="homeRecoOpen" style="flex:none">看详情</button>
+          </div>
+          <p class="home-src" id="homeRecoMeta"></p>
+        </div>
+      </div>
+      <div id="homePanelLib" class="hidden">
+        <div class="frow">
+          <input class="input" id="homeQ" placeholder="搜索菜名 / 食材" autocomplete="off">
+          <select class="input" id="homeCat"><option value="">全部风味</option></select>
+        </div>
+        <div class="home-list" id="homeLibList"></div>
+      </div>
+      <div id="homePanelFav" class="hidden">
+        <div class="home-list" id="homeFavList"></div>
+      </div>
+    </section>
+
     <!-- ================= 更多 ================= -->
     <section class="view hidden" id="view-more">
+      <div class="card" style="padding:0">
+        <div class="home-entry" id="homeEntryMore" role="button" tabindex="0" style="margin:0;border:0;background:transparent">
+          <div class="he-ico">🍳</div>
+          <div class="grow"><b>在家吃</b><span>菜谱库 · 推荐 · 收藏（与到店记录分开）</span></div>
+          <span style="color:var(--ink3);font-size:16px">›</span>
+        </div>
+      </div>
       <div class="card">
         <div class="section-head" style="margin:0 0 10px">
           <h2>安装到手机</h2>
@@ -2209,6 +2298,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <button type="button" class="icon-btn" id="statDetailClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
     </div>
     <div id="statDetailBody"></div>
+  </div>
+</div>
+
+<!-- 在家吃：菜谱详情 -->
+<div class="sheet-mask hidden" id="homeDetailMask">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="homeDetailTitle">菜谱</h2>
+      <button type="button" class="icon-btn" id="homeDetailClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
+    </div>
+    <div id="homeDetailBody"></div>
   </div>
 </div>
 
@@ -4746,7 +4846,684 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }catch(_e){}
   }
 
-  /* ================= 抽选偏好（独立增量键 fandazi.draw） =================
+  /* ================= 在家吃（独立键：fandazi.recipes / fandazi.homefb） =================
+   * 与餐厅数据完全隔离：不写 db.records / 不写 fandazi.dishes / 不影响消费统计与到店次数。
+   * 不联网也能用：本地内置基础菜谱；不爬第三方；AI 方案必须标 source.type='ai'。
+   * 阶段二/三预留：ingredients（食材匹配）、steps.minutes、photos、cookedCount/lastCookedAt。
+   */
+  var RECIPES_KEY = 'fandazi.recipes';
+  var HOMEFB_KEY = 'fandazi.homefb';
+  var HOME_VERSION = 1;
+  var HOME_SEED_VERSION = 1;
+  var HOME_MAX_RECIPES = 2000;
+  var HOME_MAX_FB = 5000;
+  var HOME_LAST_PICKS = 6;
+  var HOME_FB_COOLDOWN_DAYS = { nope: 21, tired: 14, fail: 7 };
+  var homeRecipeStore = null;
+  var homeFbStore = null;
+  var homeState = { panel: 'reco', recoId: '', q: '' };
+
+  /* 八档家庭烹饪反馈：配置驱动，任务书文案若不同只改这里，不动数据结构 */
+  var HOME_FB_LEVELS = [
+    { k:'want',   label:'想吃 / 想做', tone:'good' },
+    { k:'cooked', label:'今天做了',     tone:'good' },
+    { k:'love',   label:'很好吃，想再做', tone:'good' },
+    { k:'ok',     label:'还不错',       tone:'' },
+    { k:'plain',  label:'一般般',       tone:'' },
+    { k:'nope',   label:'不想再做',     tone:'warn' },
+    { k:'fail',   label:'做失败了',     tone:'warn' },
+    { k:'tired',  label:'最近吃腻了',   tone:'warn' }
+  ];
+  function homeFbLevel(k){
+    for(var i=0;i<HOME_FB_LEVELS.length;i++){ if(HOME_FB_LEVELS[i].k === k) return HOME_FB_LEVELS[i]; }
+    return null;
+  }
+  function homeNormName(v, n){ return String(v == null ? '' : v).trim().slice(0, n || 60); }
+  function homeNumOrNull(v, max){
+    if(v == null || v === '') return null;
+    var n = Number(v);
+    if(!isFinite(n) || n < 0) return null;
+    if(max != null && n > max) return null;
+    return Math.round(n * 100) / 100;
+  }
+  function homeSourceNorm(s){
+    var type = 'local';
+    var label = '本地基础菜谱';
+    var url = '';
+    if(s && typeof s === 'object'){
+      if(s.type === 'user'){ type = 'user'; label = '我添加'; }
+      else if(s.type === 'ai'){ type = 'ai'; label = 'AI 生成'; }
+      url = String(s.url || '').trim().slice(0, 260);
+    }
+    return { type:type, label:label, url:url };
+  }
+  function homeIngredientNorm(x){
+    if(!x) return null;
+    var name = homeNormName(typeof x === 'string' ? x : x.name, 40);
+    if(!name) return null;
+    return {
+      name: name,
+      amount: String((x && x.amount) == null ? '' : x.amount).trim().slice(0, 20),
+      unit: String((x && x.unit) == null ? '' : x.unit).trim().slice(0, 10),
+      optional: !!(x && x.optional)
+    };
+  }
+  function homeStepNorm(x){
+    if(!x) return null;
+    if(typeof x === 'string'){
+      var t = homeNormName(x, 300);
+      return t ? { text:t, minutes:null } : null;
+    }
+    var text = homeNormName(x.text, 300);
+    if(!text) return null;
+    return { text:text, minutes:homeNumOrNull(x.minutes, 600) };
+  }
+  /* 字段白名单：只保留已知字段，未知字段丢弃；缺 id / 菜名直接丢弃 */
+  function homeRecipeNorm(r, fallbackId){
+    if(!r || typeof r !== 'object' || Array.isArray(r)) return null;
+    var name = homeNormName(r.name, 60);
+    if(!name) return null;
+    var id = String(r.id == null ? (fallbackId || '') : r.id).trim().slice(0, 40);
+    if(!id) return null;
+    var cat = homeNormName(r.category, 20) || '家常';
+    var tags = [];
+    (Array.isArray(r.tags) ? r.tags : []).forEach(function(t){
+      var v = homeNormName(t, 16);
+      if(v && tags.indexOf(v) < 0 && tags.length < 8) tags.push(v);
+    });
+    var ing = [];
+    (Array.isArray(r.ingredients) ? r.ingredients : []).forEach(function(x){
+      var n = homeIngredientNorm(x);
+      if(n && ing.length < 30) ing.push(n);
+    });
+    var steps = [];
+    (Array.isArray(r.steps) ? r.steps : []).forEach(function(x){
+      var n = homeStepNorm(x);
+      if(n && steps.length < 30) steps.push(n);
+    });
+    var photos = [];
+    (Array.isArray(r.photos) ? r.photos : []).forEach(function(p){
+      var pid = String((p && p.id) || p || '').trim();
+      if(pid && photos.length < 6) photos.push({ id:pid.slice(0, 60), cat:'recipe' });
+    });
+    var diff = num(r.difficulty);
+    if(!(diff >= 1 && diff <= 3)) diff = 1;
+    return {
+      id: id, name: name, emoji: homeNormName(r.emoji, 4) || '🍽️',
+      category: cat, tags: tags,
+      difficulty: Math.round(diff),
+      minutes: Math.max(0, Math.round(num(r.minutes))),
+      servings: Math.max(1, Math.round(num(r.servings) || 2)),
+      kcal: homeNumOrNull(r.kcal, 5000), protein: homeNumOrNull(r.protein, 500),
+      ingredients: ing, steps: steps,
+      tips: homeNormName(r.tips, 400),
+      source: homeSourceNorm(r.source),
+      favorite: !!r.favorite,
+      favoriteAt: r.favorite ? String(r.favoriteAt || '') : '',
+      cookedCount: Math.max(0, Math.round(num(r.cookedCount))),
+      lastCookedAt: String(r.lastCookedAt || ''),
+      photos: photos,
+      createdAt: String(r.createdAt || ''), updatedAt: String(r.updatedAt || '')
+    };
+  }
+
+  /* 本地基础菜谱：够撑起离线推荐；全部为常见家常做法，来源本地内置 */
+  /* 精简数据：不写成外部请求，不爬取第三方内容 */
+  function homeSeedRecipes(){
+    var S = [];
+    function add(o){ S.push(o); }
+    add({ name:'番茄炒蛋', emoji:'🍅', category:'家常', tags:['快手','下饭'], difficulty:1, minutes:10, servings:2, kcal:185, protein:11,
+      ingredients:[{name:'番茄',amount:'2',unit:'个'},{name:'鸡蛋',amount:'3',unit:'个'},{name:'食用油',amount:'15',unit:'ml'},{name:'盐',amount:'2',unit:'g'},{name:'糖',amount:'3',unit:'g'}],
+      steps:['番茄切块，鸡蛋加少许盐打散。','热锅倒油，鸡蛋炒到刚凝固盛出。','下番茄翻炒出汁，加糖和盐。','倒回鸡蛋翻匀，关火出锅。'],
+      tips:'鸡蛋先炒再回锅，口感更嫩；番茄选熟透的更甜。' });
+    add({ name:'青椒土豆丝', emoji:'🥔', category:'家常', tags:['快手','下饭'], difficulty:1, minutes:15, servings:2, kcal:160, protein:5,
+      ingredients:[{name:'土豆',amount:'2',unit:'个'},{name:'青椒',amount:'1',unit:'个'},{name:'醋',amount:'10',unit:'ml'},{name:'盐',amount:'2',unit:'g'},{name:'食用油',amount:'15',unit:'ml'}],
+      steps:['土豆切细丝，清水冲去淀粉。','青椒切丝。','热锅下油，土豆丝大火翻炒。','加青椒、盐、醋，断生即可。'],
+      tips:'土豆丝泡水后更爽脆；全程大火。' });
+    add({ name:'红烧肉', emoji:'🥩', category:'家常', tags:['硬菜','下饭'], difficulty:3, minutes:80, servings:4, kcal:520, protein:22,
+      ingredients:[{name:'五花肉',amount:'500',unit:'g'},{name:'生抽',amount:'20',unit:'ml'},{name:'老抽',amount:'10',unit:'ml'},{name:'冰糖',amount:'20',unit:'g'},{name:'姜',amount:'3',unit:'片'}],
+      steps:['五花肉切块，焯水去沫。','锅中少油，下冰糖炒糖色。','下肉块翻炒上色，加生抽老抽姜片。','加水没过肉，小火炖 60 分钟收汁。'],
+      tips:'小火慢炖，最后大火收汁更亮。' });
+    add({ name:'可乐鸡翅', emoji:'🍗', category:'家常', tags:['下饭','甜口'], difficulty:1, minutes:30, servings:2, kcal:300, protein:20,
+      ingredients:[{name:'鸡翅中',amount:'8',unit:'个'},{name:'可乐',amount:'250',unit:'ml'},{name:'生抽',amount:'15',unit:'ml'},{name:'姜',amount:'3',unit:'片'}],
+      steps:['鸡翅两面划刀，焯水。','锅中煎至两面微黄。','倒入可乐和生抽，放姜片。','中小火收汁到浓稠。'],
+      tips:'收汁时勤翻动，避免糊底。' });
+    add({ name:'蒜蓉西兰花', emoji:'🥦', category:'家常', tags:['清淡','快手'], difficulty:1, minutes:12, servings:2, kcal:90, protein:6,
+      ingredients:[{name:'西兰花',amount:'1',unit:'颗'},{name:'蒜',amount:'4',unit:'瓣'},{name:'盐',amount:'2',unit:'g'},{name:'食用油',amount:'10',unit:'ml'}],
+      steps:['西兰花切小朵，焯水 1 分钟。','蒜切末。','热锅下油爆香蒜末。','下西兰花翻炒，加盐出锅。'],
+      tips:'焯水后过凉水，颜色更绿。' });
+    add({ name:'麻婆豆腐', emoji:'🌶️', category:'川菜', tags:['下饭','麻辣'], difficulty:2, minutes:20, servings:2, kcal:210, protein:15,
+      ingredients:[{name:'豆腐',amount:'1',unit:'盒'},{name:'肉末',amount:'80',unit:'g'},{name:'豆瓣酱',amount:'15',unit:'g'},{name:'花椒粉',amount:'2',unit:'g'},{name:'葱',amount:'2',unit:'根'}],
+      steps:['豆腐切块，盐水焯一下。','炒香肉末和豆瓣酱。','下豆腐轻推，加少量水煮 3 分钟。','勾薄芡，撒花椒粉和葱花。'],
+      tips:'推豆腐别用铲子翻，保持完整。' });
+    add({ name:'清蒸鲈鱼', emoji:'🐟', category:'粤菜', tags:['清淡','高蛋白'], difficulty:2, minutes:25, servings:2, kcal:200, protein:32,
+      ingredients:[{name:'鲈鱼',amount:'1',unit:'条'},{name:'姜',amount:'4',unit:'片'},{name:'葱',amount:'2',unit:'根'},{name:'蒸鱼豉油',amount:'20',unit:'ml'}],
+      steps:['鱼处理干净，两面划刀。','铺姜片，水开后蒸 8 分钟。','倒掉蒸汽水，淋豉油。','撒葱丝，浇热油。'],
+      tips:'蒸的时间按鱼大小调整，别蒸过头。' });
+    add({ name:'宫保鸡丁', emoji:'🥜', category:'川菜', tags:['下饭','微辣'], difficulty:2, minutes:25, servings:2, kcal:320, protein:24,
+      ingredients:[{name:'鸡胸肉',amount:'300',unit:'g'},{name:'花生米',amount:'60',unit:'g'},{name:'干辣椒',amount:'6',unit:'个'},{name:'葱',amount:'2',unit:'根'},{name:'生抽',amount:'15',unit:'ml'}],
+      steps:['鸡胸切丁，加生抽腌 10 分钟。','炒香花生米盛出。','下鸡丁和干辣椒翻炒。','加葱段和花生米，翻匀出锅。'],
+      tips:'花生米最后放，保持脆。' });
+    add({ name:'鱼香肉丝', emoji:'🥕', category:'川菜', tags:['下饭','酸甜'], difficulty:2, minutes:25, servings:2, kcal:330, protein:18,
+      ingredients:[{name:'里脊肉',amount:'250',unit:'g'},{name:'木耳',amount:'40',unit:'g'},{name:'胡萝卜',amount:'1',unit:'根'},{name:'豆瓣酱',amount:'10',unit:'g'},{name:'醋',amount:'10',unit:'ml'}],
+      steps:['肉切丝，木耳和胡萝卜切丝。','肉丝滑炒盛出。','炒香豆瓣酱，下配菜。','倒回肉丝，加醋和糖调味的汁。'],
+      tips:'鱼香汁按糖醋 1:1 调，尝味再补。' });
+    add({ name:'西红柿鸡蛋面', emoji:'🍜', category:'家常', tags:['快手','一人食'], difficulty:1, minutes:18, servings:1, kcal:420, protein:16,
+      ingredients:[{name:'面条',amount:'100',unit:'g'},{name:'番茄',amount:'1',unit:'个'},{name:'鸡蛋',amount:'2',unit:'个'},{name:'葱',amount:'1',unit:'根'}],
+      steps:['番茄切块，鸡蛋打散。','炒番茄出汁，加水烧开。','下面条煮熟。','淋入蛋液，撒葱花。'],
+      tips:'蛋液最后淋，蛋花更嫩。' });
+    add({ name:'香菇青菜', emoji:'🍄', category:'家常', tags:['清淡','快手'], difficulty:1, minutes:12, servings:2, kcal:80, protein:4,
+      ingredients:[{name:'香菇',amount:'6',unit:'朵'},{name:'青菜',amount:'300',unit:'g'},{name:'蒜',amount:'2',unit:'瓣'},{name:'盐',amount:'2',unit:'g'}],
+      steps:['香菇切片，青菜洗净。','蒜末爆香。','下香菇炒软。','加青菜和盐，断生出锅。'],
+      tips:'青菜最后下，保持翠绿。' });
+    add({ name:'冬瓜排骨汤', emoji:'🍲', category:'家常', tags:['清淡','汤'], difficulty:1, minutes:60, servings:3, kcal:180, protein:16,
+      ingredients:[{name:'排骨',amount:'400',unit:'g'},{name:'冬瓜',amount:'300',unit:'g'},{name:'姜',amount:'3',unit:'片'},{name:'盐',amount:'3',unit:'g'}],
+      steps:['排骨焯水去沫。','加姜片和水炖 40 分钟。','下冬瓜再炖 15 分钟。','加盐调味。'],
+      tips:'冬瓜后放，避免煮烂。' });
+    add({ name:'玉米排骨汤', emoji:'🌽', category:'家常', tags:['汤','清甜'], difficulty:1, minutes:65, servings:3, kcal:200, protein:17,
+      ingredients:[{name:'排骨',amount:'400',unit:'g'},{name:'玉米',amount:'2',unit:'根'},{name:'胡萝卜',amount:'1',unit:'根'},{name:'盐',amount:'3',unit:'g'}],
+      steps:['排骨焯水。','玉米胡萝卜切段。','全部下锅加水炖 50 分钟。','加盐调味。'],
+      tips:'玉米先下更入味。' });
+    add({ name:'蛋炒饭', emoji:'🍚', category:'家常', tags:['快手','一人食'], difficulty:1, minutes:12, servings:1, kcal:430, protein:14,
+      ingredients:[{name:'米饭',amount:'200',unit:'g'},{name:'鸡蛋',amount:'2',unit:'个'},{name:'葱',amount:'1',unit:'根'},{name:'生抽',amount:'5',unit:'ml'}],
+      steps:['鸡蛋打散。','热锅下蛋液炒散。','下米饭大火翻炒。','加生抽和葱花，炒匀出锅。'],
+      tips:'隔夜饭更粒粒分明。' });
+    add({ name:'葱油拌面', emoji:'🧅', category:'家常', tags:['快手','面'], difficulty:1, minutes:15, servings:1, kcal:480, protein:10,
+      ingredients:[{name:'面条',amount:'120',unit:'g'},{name:'葱',amount:'4',unit:'根'},{name:'生抽',amount:'15',unit:'ml'},{name:'糖',amount:'5',unit:'g'}],
+      steps:['葱切段，小火炸到焦香。','加生抽和糖熬成葱油汁。','面条煮熟捞出。','淋葱油汁拌匀。'],
+      tips:'葱油小火慢炸才香。' });
+    add({ name:'手撕包菜', emoji:'🥬', category:'家常', tags:['快手','下饭'], difficulty:1, minutes:12, servings:2, kcal:110, protein:3,
+      ingredients:[{name:'包菜',amount:'半',unit:'颗'},{name:'干辣椒',amount:'3',unit:'个'},{name:'醋',amount:'10',unit:'ml'},{name:'盐',amount:'2',unit:'g'}],
+      steps:['包菜手撕成片。','热锅下油和干辣椒。','下包菜大火快炒。','加醋和盐，断生出锅。'],
+      tips:'大火快炒才有锅气。' });
+    add({ name:'地三鲜', emoji:'🍆', category:'家常', tags:['下饭'], difficulty:2, minutes:25, servings:2, kcal:300, protein:6,
+      ingredients:[{name:'茄子',amount:'1',unit:'个'},{name:'土豆',amount:'1',unit:'个'},{name:'青椒',amount:'1',unit:'个'},{name:'生抽',amount:'10',unit:'ml'}],
+      steps:['茄子土豆切块，青椒切块。','茄子土豆分别煎到微黄。','下青椒和生抽翻炒。','加少量水焖 3 分钟。'],
+      tips:'茄子先煎能少吸油。' });
+    add({ name:'干煸豆角', emoji:'🫘', category:'川菜', tags:['下饭','微辣'], difficulty:2, minutes:20, servings:2, kcal:190, protein:6,
+      ingredients:[{name:'豆角',amount:'300',unit:'g'},{name:'肉末',amount:'50',unit:'g'},{name:'干辣椒',amount:'4',unit:'个'},{name:'蒜',amount:'3',unit:'瓣'}],
+      steps:['豆角切段，煸到表皮起皱。','下肉末炒散。','加干辣椒和蒜末。','翻炒均匀，加盐出锅。'],
+      tips:'豆角必须煸熟，避免夹生。' });
+    add({ name:'糖醋里脊', emoji:'🍖', category:'家常', tags:['酸甜','硬菜'], difficulty:3, minutes:35, servings:3, kcal:420, protein:20,
+      ingredients:[{name:'里脊肉',amount:'400',unit:'g'},{name:'淀粉',amount:'40',unit:'g'},{name:'番茄酱',amount:'30',unit:'g'},{name:'醋',amount:'15',unit:'ml'},{name:'糖',amount:'20',unit:'g'}],
+      steps:['里脊切条，裹淀粉。','油炸到金黄捞出。','调糖醋汁煮浓。','下肉条翻匀裹汁。'],
+      tips:'复炸一次更脆。' });
+    add({ name:'咖喱鸡', emoji:'🍛', category:'家常', tags:['下饭','一锅出'], difficulty:2, minutes:40, servings:3, kcal:380, protein:26,
+      ingredients:[{name:'鸡腿肉',amount:'400',unit:'g'},{name:'土豆',amount:'2',unit:'个'},{name:'胡萝卜',amount:'1',unit:'根'},{name:'咖喱块',amount:'2',unit:'块'}],
+      steps:['鸡腿肉切块煎香。','下土豆胡萝卜翻炒。','加水煮 20 分钟。','放咖喱块煮化收浓。'],
+      tips:'咖喱块最后放，避免糊底。' });
+    add({ name:'蒸蛋羹', emoji:'🥚', category:'家常', tags:['快手','清淡'], difficulty:1, minutes:15, servings:1, kcal:110, protein:10,
+      ingredients:[{name:'鸡蛋',amount:'2',unit:'个'},{name:'水',amount:'100',unit:'ml'},{name:'盐',amount:'1',unit:'g'},{name:'香油',amount:'3',unit:'ml'}],
+      steps:['鸡蛋加盐打散。','加温水搅匀，过筛。','水开后中小火蒸 10 分钟。','淋香油。'],
+      tips:'加温水并过筛，表面才平滑。' });
+    add({ name:'凉拌黄瓜', emoji:'🥒', category:'家常', tags:['快手','凉菜'], difficulty:1, minutes:8, servings:2, kcal:60, protein:2,
+      ingredients:[{name:'黄瓜',amount:'2',unit:'根'},{name:'蒜',amount:'3',unit:'瓣'},{name:'醋',amount:'10',unit:'ml'},{name:'盐',amount:'2',unit:'g'}],
+      steps:['黄瓜拍碎切段。','蒜切末。','加醋、盐和蒜末。','拌匀静置 5 分钟。'],
+      tips:'拍碎比切片更入味。' });
+    add({ name:'小米粥', emoji:'🥣', category:'家常', tags:['清淡','早餐'], difficulty:1, minutes:30, servings:2, kcal:150, protein:5,
+      ingredients:[{name:'小米',amount:'80',unit:'g'},{name:'水',amount:'800',unit:'ml'},{name:'红枣',amount:'3',unit:'颗',optional:true}],
+      steps:['小米淘洗干净。','加水大火烧开。','转小火煮 25 分钟。','偶尔搅拌防粘底。'],
+      tips:'水米比例约 10:1。' });
+    add({ name:'虾仁炒蛋', emoji:'🍤', category:'粤菜', tags:['高蛋白','快手'], difficulty:1, minutes:12, servings:2, kcal:200, protein:24,
+      ingredients:[{name:'虾仁',amount:'150',unit:'g'},{name:'鸡蛋',amount:'3',unit:'个'},{name:'葱',amount:'1',unit:'根'},{name:'盐',amount:'2',unit:'g'}],
+      steps:['虾仁解冻擦干。','鸡蛋打散加盐。','先炒虾仁变色。','倒入蛋液，凝固即出锅。'],
+      tips:'虾仁先炒再倒蛋液，口感更弹。' });
+    add({ name:'香菇鸡肉焖饭', emoji:'🍄', category:'家常', tags:['一锅出','下饭'], difficulty:2, minutes:45, servings:2, kcal:520, protein:26,
+      ingredients:[{name:'大米',amount:'200',unit:'g'},{name:'鸡腿肉',amount:'200',unit:'g'},{name:'香菇',amount:'5',unit:'朵'},{name:'生抽',amount:'15',unit:'ml'}],
+      steps:['鸡腿肉切块，香菇切片。','炒香鸡肉和香菇，加生抽。','大米下锅，加水。','电饭煲焖熟后拌匀。'],
+      tips:'水量比平时略少，饭更粒粒分明。' });
+    add({ name:'酸辣汤', emoji:'🥘', category:'家常', tags:['汤','开胃'], difficulty:2, minutes:20, servings:2, kcal:130, protein:8,
+      ingredients:[{name:'豆腐',amount:'半',unit:'盒'},{name:'木耳',amount:'20',unit:'g'},{name:'鸡蛋',amount:'1',unit:'个'},{name:'醋',amount:'15',unit:'ml'},{name:'白胡椒',amount:'2',unit:'g'}],
+      steps:['豆腐木耳切丝，加水煮开。','勾薄芡。','淋蛋液。','加醋和白胡椒调味。'],
+      tips:'醋最后放，酸味更明显。' });
+    return S;
+  }
+
+  function homeRecipesSeedStore(){
+    var items = [];
+    homeSeedRecipes().forEach(function(r, i){
+      var n = homeRecipeNorm(r, 'local-' + (i + 1));
+      if(n){
+        n.createdAt = '2026-01-01T00:00:00.000Z';
+        n.updatedAt = '2026-01-01T00:00:00.000Z';
+        items.push(n);
+      }
+    });
+    return items;
+  }
+  function homeRecipesLoad(){
+    if(homeRecipeStore) return homeRecipeStore;
+    var seed = homeRecipesSeedStore();
+    var out = { version:HOME_VERSION, seedVersion:HOME_SEED_VERSION, items: seed, lastPicks:[] };
+    var saved = null;
+    try{
+      var raw = localStorage.getItem(RECIPES_KEY);
+      if(raw) saved = JSON.parse(raw);
+    }catch(e){ logError('菜谱读取', e); }
+    if(saved && typeof saved === 'object' && Array.isArray(saved.items)){
+      var idx = {};
+      out.items.forEach(function(r, i){ idx[r.id] = i; });
+      saved.items.forEach(function(r){
+        var n = homeRecipeNorm(r, null);
+        if(!n) return;
+        if(idx[n.id] !== undefined) out.items[idx[n.id]] = n;
+        else out.items.push(n);
+      });
+      if(Array.isArray(saved.lastPicks)) out.lastPicks = saved.lastPicks.filter(function(x){ return typeof x === 'string'; }).slice(-HOME_LAST_PICKS);
+      if(num(saved.seedVersion) >= 1) out.seedVersion = num(saved.seedVersion);
+    }
+    if(out.items.length > HOME_MAX_RECIPES) out.items = out.items.slice(0, HOME_MAX_RECIPES);
+    homeRecipeStore = out;
+    return out;
+  }
+  function homeRecipesPersist(next){
+    try{
+      localStorage.setItem(RECIPES_KEY, JSON.stringify(next));
+      homeRecipeStore = next;
+      return true;
+    }catch(e){ logError('菜谱保存', e); return false; }
+  }
+  function homeRecipeBy(id){
+    var items = homeRecipesLoad().items;
+    for(var i=0;i<items.length;i++){ if(items[i].id === id) return items[i]; }
+    return null;
+  }
+  function homeRecipeWrite(mutator){
+    var st = homeRecipesLoad();
+    var next = JSON.parse(JSON.stringify(st));
+    var out = mutator(next);
+    if(!homeRecipesPersist(next)){ toast('菜谱保存失败：本机存储空间不足'); return null; }
+    return out;
+  }
+
+  function homeFbLoad(){
+    if(homeFbStore) return homeFbStore;
+    var out = { version:HOME_VERSION, items:[] };
+    try{
+      var raw = JSON.parse(localStorage.getItem(HOMEFB_KEY) || 'null');
+      if(raw && typeof raw === 'object' && Array.isArray(raw.items)){
+        raw.items.forEach(function(it){
+          if(!it || typeof it.recipeId !== 'string' || !it.recipeId) return;
+          if(!homeFbLevel(it.level)) return;
+          out.items.push({
+            id: String(it.id || '').slice(0, 40),
+            recipeId: it.recipeId.slice(0, 40),
+            level: String(it.level),
+            at: String(it.at || ''),
+            note: String(it.note || '').slice(0, 200)
+          });
+        });
+        if(out.items.length > HOME_MAX_FB) out.items = out.items.slice(out.items.length - HOME_MAX_FB);
+      }
+    }catch(e){ logError('家庭反馈读取', e); }
+    homeFbStore = out;
+    return out;
+  }
+  function homeFbPersist(next){
+    try{
+      localStorage.setItem(HOMEFB_KEY, JSON.stringify(next));
+      homeFbStore = next;
+      return true;
+    }catch(e){ logError('家庭反馈保存', e); return false; }
+  }
+  function homeFbLatest(recipeId){
+    var items = homeFbLoad().items;
+    for(var i=items.length-1;i>=0;i--){ if(items[i].recipeId === recipeId) return items[i]; }
+    return null;
+  }
+  function homeFbAdd(recipeId, level, note){
+    if(!homeFbLevel(level)) return null;
+    var st = homeFbLoad();
+    var next = { version:HOME_VERSION, items: st.items.slice() };
+    var item = { id:'fb'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), recipeId:recipeId, level:level, at:new Date().toISOString(), note:String(note || '').slice(0,200) };
+    next.items.push(item);
+    if(next.items.length > HOME_MAX_FB) next.items = next.items.slice(next.items.length - HOME_MAX_FB);
+    if(!homeFbPersist(next)) return null;
+    return item;
+  }
+  function homeFbCooling(recipeId, nowMs){
+    var it = homeFbLatest(recipeId);
+    if(!it) return false;
+    var days = HOME_FB_COOLDOWN_DAYS[it.level];
+    if(!days) return false;
+    var t = Date.parse(it.at);
+    if(!isFinite(t)) return false;
+    return (nowMs - t) < days * 86400000;
+  }
+
+  /* 个性化随机推荐：复用画像 boost/block，只用家庭反馈 + 收藏 + 做过次数，不碰餐厅池 */
+  function homeRecoCandidates(opts){
+    opts = opts || {};
+    var items = homeRecipesLoad().items;
+    var now = opts.now || Date.now();
+    var out = [];
+    items.forEach(function(r){
+      if(profileManual.block.indexOf(r.category) >= 0) return;
+      if(homeFbCooling(r.id, now)) return;
+      if(opts.exclude && opts.exclude.indexOf(r.id) >= 0) return;
+      var w = 1;
+      if(r.favorite) w += 0.4;
+      if(r.cookedCount === 0) w += 0.2;
+      if(profileManual.boost.indexOf(r.category) >= 0) w += 0.15;
+      var last = homeFbLatest(r.id);
+      if(last && last.level === 'love') w += 0.3;
+      if(last && last.level === 'want') w += 0.15;
+      if(last && last.level === 'fail') w += 0.05;
+      out.push({ recipe:r, w:w });
+    });
+    return out;
+  }
+  function homeRecoPick(opts){
+    opts = opts || {};
+    var st = homeRecipesLoad();
+    var exclude = (opts.exclude || []).concat(st.lastPicks || []);
+    var cands = homeRecoCandidates({ exclude:exclude, now:opts.now });
+    var relaxed = false;
+    if(!cands.length){
+      cands = homeRecoCandidates({ now:opts.now });
+      relaxed = true;
+    }
+    if(!cands.length) return null;
+    var total = 0; cands.forEach(function(c){ total += c.w; });
+    var rnd = typeof opts.rnd === 'number' ? opts.rnd : Math.random();
+    var acc = 0, picked = cands[cands.length - 1];
+    for(var i=0;i<cands.length;i++){
+      acc += cands[i].w;
+      if(rnd * total < acc){ picked = cands[i]; break; }
+    }
+    return { recipe:picked.recipe, weight:picked.w, candidates:cands.length, relaxed:relaxed };
+  }
+  function homeRecoSave(recipeId){
+    var st = homeRecipesLoad();
+    var next = JSON.parse(JSON.stringify(st));
+    next.lastPicks = (next.lastPicks || []).concat([recipeId]).slice(-HOME_LAST_PICKS);
+    homeRecipesPersist(next);
+    homeState.recoId = recipeId;
+  }
+
+  function homeToggleFav(recipeId){
+    var done = homeRecipeWrite(function(next){
+      for(var i=0;i<next.items.length;i++){
+        if(next.items[i].id !== recipeId) continue;
+        next.items[i].favorite = !next.items[i].favorite;
+        next.items[i].favoriteAt = next.items[i].favorite ? new Date().toISOString() : '';
+        next.items[i].updatedAt = new Date().toISOString();
+        return next.items[i].favorite;
+      }
+      return null;
+    });
+    return done;
+  }
+
+  /* ---------------- 备份：菜谱 / 家庭反馈（与餐厅段并列，可缺失） ---------------- */
+  function homeRecipesBackupData(){
+    var st = homeRecipesLoad();
+    return { version:HOME_VERSION, seedVersion:st.seedVersion, items:JSON.parse(JSON.stringify(st.items)), lastPicks:(st.lastPicks || []).slice(-HOME_LAST_PICKS) };
+  }
+  function homeFbBackupData(){ return { version:HOME_VERSION, items:JSON.parse(JSON.stringify(homeFbLoad().items)) }; }
+  function homeBackupValidate(recipesPayload, fbPayload, where){
+    if(recipesPayload != null){
+      if(typeof recipesPayload !== 'object' || !Array.isArray(recipesPayload.items)) throw new Error(where+'：菜谱段格式不正确');
+      recipesPayload.items.forEach(function(r, i){
+        if(!r || typeof r !== 'object' || typeof r.name !== 'string' || !r.name.trim()) throw new Error(where+'：第 '+(i+1)+' 道菜谱缺少菜名');
+        if(typeof r.id !== 'string' || !r.id.trim()) throw new Error(where+'：第 '+(i+1)+' 道菜谱缺少 id');
+      });
+    }
+    if(fbPayload != null){
+      if(typeof fbPayload !== 'object' || !Array.isArray(fbPayload.items)) throw new Error(where+'：家庭反馈段格式不正确');
+      fbPayload.items.forEach(function(it, i){
+        if(!it || typeof it.recipeId !== 'string' || !it.recipeId || !homeFbLevel(it.level)) throw new Error(where+'：第 '+(i+1)+' 条家庭反馈不合法');
+      });
+    }
+  }
+  function applyBackupHome(recipesPayload, fbPayload, mode){
+    var out = { applied:false, recipes:0, favorites:0, feedback:0 };
+    if(recipesPayload != null){
+      var base = { version:HOME_VERSION, seedVersion:HOME_SEED_VERSION, items:homeRecipesSeedStore(), lastPicks:[] };
+      if(mode !== 'replace') base.items = JSON.parse(JSON.stringify(homeRecipesLoad().items));
+      var idx = {};
+      base.items.forEach(function(r, i){ idx[r.id] = i; });
+      recipesPayload.items.forEach(function(r){
+        var n = homeRecipeNorm(r, null);
+        if(!n) return;
+        if(idx[n.id] !== undefined) base.items[idx[n.id]] = n;
+        else { idx[n.id] = base.items.length; base.items.push(n); }
+      });
+      if(Array.isArray(recipesPayload.lastPicks)) base.lastPicks = recipesPayload.lastPicks.filter(function(x){ return typeof x === 'string'; }).slice(-HOME_LAST_PICKS);
+      if(base.items.length > HOME_MAX_RECIPES) base.items = base.items.slice(0, HOME_MAX_RECIPES);
+      if(!homeRecipesPersist(base)) throw new Error('菜谱写入失败：本机存储空间不足');
+      out.applied = true;
+      out.recipes = base.items.length;
+      out.favorites = base.items.filter(function(r){ return r.favorite; }).length;
+    }
+    if(fbPayload != null){
+      var fbase = { version:HOME_VERSION, items: mode === 'replace' ? [] : homeFbLoad().items.slice() };
+      var seen = {};
+      fbase.items.forEach(function(it){ seen[it.id] = true; });
+      fbPayload.items.forEach(function(it){
+        if(!it || typeof it.recipeId !== 'string' || !homeFbLevel(it.level)) return;
+        var id = String(it.id || ('fb'+Math.random().toString(36).slice(2,10))).slice(0, 40);
+        if(seen[id]) return;
+        seen[id] = true;
+        fbase.items.push({ id:id, recipeId:it.recipeId.slice(0,40), level:it.level, at:String(it.at || ''), note:String(it.note || '').slice(0,200) });
+      });
+      if(fbase.items.length > HOME_MAX_FB) fbase.items = fbase.items.slice(fbase.items.length - HOME_MAX_FB);
+      if(!homeFbPersist(fbase)) throw new Error('家庭反馈写入失败：本机存储空间不足');
+      out.applied = true;
+      out.feedback = fbase.items.length;
+    }
+    return out;
+  }
+  function rollbackHome(recipesRaw, recipesStore, fbRaw, fbStore){
+    homeRecipeStore = recipesStore;
+    homeFbStore = fbStore;
+    try{
+      if(recipesRaw == null) localStorage.removeItem(RECIPES_KEY); else localStorage.setItem(RECIPES_KEY, recipesRaw);
+      if(fbRaw == null) localStorage.removeItem(HOMEFB_KEY); else localStorage.setItem(HOMEFB_KEY, fbRaw);
+    }catch(_e){}
+  }
+
+  /* ---------------- UI ---------------- */
+  function homeCatOptions(){
+    var st = homeRecipesLoad(), cats = [];
+    st.items.forEach(function(r){ if(cats.indexOf(r.category) < 0) cats.push(r.category); });
+    var sel = $('#homeCat');
+    if(!sel) return;
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">全部风味</option>' + cats.map(function(c){ return '<option value="'+esc(c)+'">'+esc(c)+'</option>'; }).join('');
+    if(cats.indexOf(cur) >= 0) sel.value = cur;
+  }
+  function homeRowHtml(r){
+    var cat = r.category + (r.minutes ? ' · ' + r.minutes + ' 分钟' : '');
+    return '<div class="home-row" data-hopen="'+esc(r.id)+'">' +
+      '<div class="hi-emoji">'+esc(r.emoji)+'</div>' +
+      '<div class="grow"><b>'+esc(r.name)+'</b><span>'+esc(cat)+'</span></div>' +
+      '<button type="button" class="home-fav'+(r.favorite?' on':'')+'" data-hfav="'+esc(r.id)+'" aria-label="收藏">'+(r.favorite?'♥':'♡')+'</button>' +
+      '</div>';
+  }
+  function renderHomeLib(){
+    var st = homeRecipesLoad();
+    var q = String($('#homeQ') ? $('#homeQ').value : '').trim().toLowerCase();
+    var cat = $('#homeCat') ? $('#homeCat').value : '';
+    var list = st.items.filter(function(r){
+      if(cat && r.category !== cat) return false;
+      if(!q) return true;
+      if(r.name.toLowerCase().indexOf(q) >= 0) return true;
+      if(r.tags.some(function(t){ return t.toLowerCase().indexOf(q) >= 0; })) return true;
+      return r.ingredients.some(function(x){ return x.name.toLowerCase().indexOf(q) >= 0; });
+    });
+    var box = $('#homeLibList');
+    if(box) box.innerHTML = list.length ? list.map(homeRowHtml).join('') : '<div class="home-empty">没有匹配的菜谱</div>';
+  }
+  function renderHomeFav(){
+    var st = homeRecipesLoad();
+    var list = st.items.filter(function(r){ return r.favorite; });
+    var box = $('#homeFavList');
+    if(box) box.innerHTML = list.length ? list.map(homeRowHtml).join('') : '<div class="home-empty">还没有收藏菜谱<br><span style="font-size:11px">在详情页点 ♡ 即可收藏</span></div>';
+  }
+  function homeRecoReason(pick){
+    if(!pick) return '菜谱库为空';
+    var r = pick.recipe, reasons = [];
+    if(r.favorite) reasons.push('已收藏');
+    if(r.cookedCount === 0) reasons.push('还没做过');
+    if(profileManual.boost.indexOf(r.category) >= 0) reasons.push('合口味偏好');
+    var last = homeFbLatest(r.id);
+    if(last && last.level === 'love') reasons.push('上次觉得好吃');
+    return reasons.length ? reasons.join(' · ') : '随机换换口味';
+  }
+  function homeRenderReco(force){
+    var st = homeRecipesLoad();
+    var pick = null;
+    if(!force && homeState.recoId){ var r0 = homeRecipeBy(homeState.recoId); if(r0) pick = { recipe:r0, weight:0, candidates:0, relaxed:false }; }
+    if(!pick){ pick = homeRecoPick(); if(pick){ homeRecoSave(pick.recipe.id); } }
+    var box = $('#homeRecoBox');
+    if(!box) return;
+    if(!pick){ box.innerHTML = '<div class="home-empty">菜谱库为空</div>'; if($('#homeRecoMeta')) $('#homeRecoMeta').textContent = ''; return; }
+    var r = pick.recipe;
+    var meta = [
+      r.category,
+      r.minutes ? r.minutes + ' 分钟' : '',
+      r.servings ? r.servings + ' 人份' : '',
+      ['','简单','中等','有点难度'][r.difficulty] || '',
+      r.kcal ? r.kcal + ' kcal' : ''
+    ].filter(Boolean);
+    box.innerHTML =
+      '<div class="home-reco">' +
+        '<p class="home-reco-name">'+esc(r.emoji)+' '+esc(r.name)+'</p>' +
+        '<div class="home-reco-tags">'+esc(r.tags.join(' · '))+'</div>' +
+        '<div class="home-reco-meta">'+meta.map(function(m){ return '<span class="home-pill">'+esc(m)+'</span>'; }).join('')+'</div>' +
+        '<div class="home-reco-why">推荐理由：'+esc(homeRecoReason(pick))+ (pick.relaxed ? '（已放宽最近记录）' : '') +'</div>' +
+      '</div>';
+    if($('#homeRecoMeta')) $('#homeRecoMeta').textContent = '本地推荐 · 候选 ' + (pick.candidates || st.items.length) + ' 道 · 离线可用';
+    homeState.recoId = r.id;
+  }
+  function renderHome(){
+    homeCatOptions();
+    var panel = homeState.panel || 'reco';
+    if($('#homePanelReco')) $('#homePanelReco').classList.toggle('hidden', panel !== 'reco');
+    if($('#homePanelLib')) $('#homePanelLib').classList.toggle('hidden', panel !== 'lib');
+    if($('#homePanelFav')) $('#homePanelFav').classList.toggle('hidden', panel !== 'fav');
+    $$('#homeSeg button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-hpanel') === panel); });
+    if(panel === 'reco') homeRenderReco(false);
+    if(panel === 'lib') renderHomeLib();
+    if(panel === 'fav') renderHomeFav();
+  }
+  function homeDetailFbHtml(r){
+    var last = homeFbLatest(r.id);
+    var cooling = homeFbCooling(r.id, Date.now());
+    return '<div class="home-detail-sec"><h3>这顿吃完，感觉如何？</h3>' +
+      '<div class="home-fb">' + HOME_FB_LEVELS.map(function(l){
+        return '<button type="button" data-hfb="'+l.k+'"'+(last && last.level === l.k ? ' class="on"' : '')+'>'+esc(l.label)+'</button>';
+      }).join('') + '</div>' +
+      '<div class="home-fb-hist">' +
+        (last ? ('最近一次：' + esc(homeFbLevel(last.level).label) + ' · ' + esc(String(last.at).slice(0, 10))) : '还没有反馈') +
+        (cooling ? ' · 冷却中，推荐会避开' : '') +
+      '</div>' +
+      '<p class="home-src">家庭烹饪反馈只写本机 <code>fandazi.homefb</code>，不会生成到店记录，也不计入消费统计。</p>' +
+      '</div>';
+  }
+  function homeOpenDetail(id){
+    var r = homeRecipeBy(id);
+    if(!r) return;
+    var mask = $('#homeDetailMask');
+    if($('#homeDetailTitle')) $('#homeDetailTitle').textContent = r.emoji + ' ' + r.name;
+    var meta = [
+      r.category,
+      r.minutes ? r.minutes + ' 分钟' : '',
+      r.servings ? r.servings + ' 人份' : '',
+      ['','简单','中等','有点难度'][r.difficulty] || '',
+      r.kcal ? r.kcal + ' kcal' : '',
+      r.protein ? '蛋白 ' + r.protein + ' g' : ''
+    ].filter(Boolean);
+    var body = $('#homeDetailBody');
+    if(body){
+      body.setAttribute('data-recipe', r.id);
+      body.innerHTML =
+        '<div class="home-detail-meta">'+meta.map(function(m){ return '<span class="home-pill">'+esc(m)+'</span>'; }).join('')+'</div>' +
+        '<div class="home-panel-actions"><button type="button" class="btn '+(r.favorite?'btn-soft':'')+'" data-hfav="'+esc(r.id)+'">'+(r.favorite?'♥ 已收藏':'♡ 收藏这道菜')+'</button></div>' +
+        '<div class="home-detail-sec"><h3>食材（'+r.ingredients.length+'）</h3><ul>' +
+          r.ingredients.map(function(x){ return '<li>'+esc(x.name)+(x.amount?(' '+esc(x.amount)+esc(x.unit)):'')+(x.optional?'（可选）':'')+'</li>'; }).join('') +
+        '</ul></div>' +
+        '<div class="home-detail-sec"><h3>步骤</h3><ol>' +
+          r.steps.map(function(s){ return '<li>'+esc(s.text)+(s.minutes?('（约 '+s.minutes+' 分钟）'):'')+'</li>'; }).join('') +
+        '</ol></div>' +
+        (r.tips ? '<div class="home-detail-sec"><h3>小贴士</h3><p class="muted">'+esc(r.tips)+'</p></div>' : '') +
+        '<div class="home-detail-sec"><h3>做过的次数</h3><p class="muted">'+(r.cookedCount ? ('共 '+r.cookedCount+' 次 · 最近 ' + esc(String(r.lastCookedAt).slice(0, 10))) : '还没有记录')+'</p></div>' +
+        homeDetailFbHtml(r) +
+        '<p class="home-src">来源：'+esc(r.source.label) +
+          (r.source.type === 'ai' ? '（AI 生成内容，仅作参考）' : (r.source.type === 'local' ? '（内置本地菜谱，离线可用）' : '')) +
+        (r.source.url ? ' · <a href="'+esc(r.source.url)+'" target="_blank" rel="noopener">原文链接</a>' : '') + '</p>';
+    }
+    if(mask) mask.classList.remove('hidden');
+  }
+  function homeCloseDetail(){ var m = $('#homeDetailMask'); if(m) m.classList.add('hidden'); }
+
+  function homeFeedbackAction(recipeId, levelKey){
+    var lv = homeFbLevel(levelKey);
+    if(!lv) return;
+    var item = homeFbAdd(recipeId, levelKey);
+    if(!item){ toast('家庭反馈保存失败：本机存储空间不足'); return; }
+    if(levelKey === 'cooked'){
+      homeRecipeWrite(function(next){
+        for(var i=0;i<next.items.length;i++){
+          if(next.items[i].id !== recipeId) continue;
+          next.items[i].cookedCount = Math.max(0, num(next.items[i].cookedCount)) + 1;
+          next.items[i].lastCookedAt = item.at;
+          next.items[i].updatedAt = item.at;
+        }
+      });
+    }
+    toast('已记录：' + lv.label);
+    homeOpenDetail(recipeId);
+    renderHome();
+  }
+
+  function homeUIInit(){
+    function goHome(){ try{ showView('home'); }catch(e){} }
+    [['#homeEntryCard'], ['#homeEntryMore']].forEach(function(pair){
+      var el = $(pair[0]);
+      if(!el) return;
+      el.addEventListener('click', goHome);
+      el.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); goHome(); } });
+    });
+    if($('#homeBack')) $('#homeBack').addEventListener('click', function(){ showView('recommend'); });
+    if($('#homeSeg')) $('#homeSeg').addEventListener('click', function(e){
+      var b = e.target.closest('[data-hpanel]');
+      if(!b) return;
+      homeState.panel = b.getAttribute('data-hpanel');
+      renderHome();
+    });
+    if($('#homeRecoBtn')) $('#homeRecoBtn').addEventListener('click', function(){ homeRenderReco(true); });
+    if($('#homeRecoOpen')) $('#homeRecoOpen').addEventListener('click', function(){ if(homeState.recoId) homeOpenDetail(homeState.recoId); });
+    var listClick = function(e){
+      var fav = e.target.closest('[data-hfav]');
+      if(fav){
+        e.stopPropagation();
+        var on = homeToggleFav(fav.getAttribute('data-hfav'));
+        if(on !== null){ renderHome(); if(!$('#homeDetailMask').classList.contains('hidden')) homeOpenDetail(fav.getAttribute('data-hfav')); }
+        return;
+      }
+      var row = e.target.closest('[data-hopen]');
+      if(row) homeOpenDetail(row.getAttribute('data-hopen'));
+    };
+    if($('#view-home')) $('#view-home').addEventListener('click', listClick);
+    if($('#homeDetailBody')) $('#homeDetailBody').addEventListener('click', function(e){
+      var fav = e.target.closest('[data-hfav]');
+      if(fav){ homeToggleFav(fav.getAttribute('data-hfav')); homeOpenDetail(fav.getAttribute('data-hfav')); renderHome(); return; }
+      var fb = e.target.closest('[data-hfb]');
+      if(fb){
+        var wrap = fb.closest('#homeDetailBody');
+        var id = wrap ? wrap.getAttribute('data-recipe') : '';
+        if(id) homeFeedbackAction(id, fb.getAttribute('data-hfb'));
+      }
+    });
+    if($('#homeDetailMask')) $('#homeDetailMask').addEventListener('click', function(e){ if(e.target === this) homeCloseDetail(); });
+    if($('#homeDetailClose')) $('#homeDetailClose').addEventListener('click', homeCloseDetail);
+    if($('#homeQ')) $('#homeQ').addEventListener('input', renderHomeLib);
+    if($('#homeCat')) $('#homeCat').addEventListener('change', renderHomeLib);
+  }
+
+  /* 抽选偏好（独立增量键 fandazi.draw） =================
    * 只存「这次不抽」的 shopId 与筛选条件；不写 v2.shops / v2.visits，
    * 不删除、不修改任何店铺、想去、记录或旅行数据。完整备份不含该段（本机偏好）。
    */
@@ -13592,6 +14369,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       safeRender('renderPhotoWall', renderPhotoWall, '#pwGrid');
       loadPhotoWall();
     }
+    if(name === 'home'){
+      safeRender('renderHome', renderHome, '#homeRecoBox');
+    }
     if(name === 'record' || name === 'recommend') safeRender('renderReminder', renderReminder);
     safeRender('renderBackupReminder', renderBackupReminder);
     try{ syncBlindBall(); }catch(e){}
@@ -21163,6 +21943,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       shopmeta: shopMetaBackupData(),
       trips: tripBackupData(),
       dishes: dishBackupData(),
+      recipes: homeRecipesBackupData(),
+      homefb: homeFbBackupData(),
       records: db.records
     };
     /* v2 模式下：records 仍是投影后的 v1 兼容结构（老版本也能读），
@@ -21323,6 +22105,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     tripBackupValidate(obj.payload.trips, '恢复');
     /* 菜品段：缺失（v5 及更早）保持本机现状；存在则严格校验，非法整包拒绝 */
     dishBackupValidate(obj.payload.dishes, '恢复');
+    /* 在家吃：菜谱 / 家庭反馈段，允许旧备份缺失；存在则校验 */
+    homeBackupValidate(obj.payload.recipes, obj.payload.homefb, '恢复');
     if(!obj.checksum || !obj.checksum.value) throw new Error('备份文件缺少校验值，无法确认完整性');
     if(!Array.isArray(obj.photos)) obj.photos = [];
     for(var i = 0; i < obj.photos.length; i++){
@@ -21588,6 +22372,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var dsPrevRaw = null, dsPrevStore = JSON.parse(JSON.stringify(dishesLoad()));
       try{ dsPrevRaw = localStorage.getItem(DISHES_KEY); }catch(e){ dsPrevRaw = null; }
       var dsResult = { applied:false, legacy:true, dishes:dishesLoad().items.length, dropped:0 };
+      var hcPrevRaw = null, hcPrevStore = JSON.parse(JSON.stringify(homeRecipesLoad()));
+      var hfPrevRaw = null, hfPrevStore = JSON.parse(JSON.stringify(homeFbLoad()));
+      try{ hcPrevRaw = localStorage.getItem(RECIPES_KEY); hfPrevRaw = localStorage.getItem(HOMEFB_KEY); }catch(e){ hcPrevRaw = null; hfPrevRaw = null; }
+      var hcResult = { applied:false, recipes:0, favorites:0, feedback:0 };
       var committed;
       try{
         pmResult = applyBackupProfile(obj.payload.profile);
@@ -21596,6 +22384,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         smResult = applyBackupShopMeta(obj.payload.shopmeta, mode);
         tpResult = applyBackupTrips(obj.payload.trips, mode);
         dsResult = applyBackupDishes(obj.payload.dishes, mode, next.records);
+        hcResult = applyBackupHome(obj.payload.recipes, obj.payload.homefb, mode);
         /* v2 模式下写 v2（读回校验），v1 模式下沿用 commitDbString */
         committed = commitDbNext(next);
       }catch(e){
@@ -21605,6 +22394,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         rollbackShopMeta();
         rollbackTrips(tpPrevRaw, tpPrevStore);
         rollbackDishes(dsPrevRaw, dsPrevStore);
+        rollbackHome(hcPrevRaw, hcPrevStore, hfPrevRaw, hfPrevStore);
         throw e;
       }
       db = next;
@@ -21624,6 +22414,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         shopMetaApplied:!!smResult.applied, shopMetaShops:smResult.shops, shopMetaLinks:smResult.links,
         tripApplied:!!tpResult.applied, trips:tpResult.trips, tripStops:tpResult.stops,
         dishApplied:!!dsResult.applied, dishes:dsResult.dishes, dishesDropped:dsResult.dropped,
+        recipesApplied:!!hcResult.applied, recipes:hcResult.recipes, recipeFav:hcResult.favorites, homeFeedback:hcResult.feedback,
         missingPhotos:countMissingPhotos(norm, photoMap), ms:Math.round(nowMs() - t0),
         snapshotId:snapRef ? snapRef.id : null
       };
@@ -21687,6 +22478,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var dsPrevRaw = null, dsPrevStore = JSON.parse(JSON.stringify(dishesLoad()));
       try{ dsPrevRaw = localStorage.getItem(DISHES_KEY); }catch(e){ dsPrevRaw = null; }
       var dsResult = { applied:false, legacy:true, dishes:dishesLoad().items.length, dropped:0 };
+      var hcPrevRaw = null, hcPrevStore = JSON.parse(JSON.stringify(homeRecipesLoad()));
+      var hfPrevRaw = null, hfPrevStore = JSON.parse(JSON.stringify(homeFbLoad()));
+      try{ hcPrevRaw = localStorage.getItem(RECIPES_KEY); hfPrevRaw = localStorage.getItem(HOMEFB_KEY); }catch(e){ hcPrevRaw = null; hfPrevRaw = null; }
+      var hcResult = { applied:false, recipes:0, favorites:0, feedback:0 };
       var committed;
       try{
         pmResult = applyBackupProfile(snap.data.profile);
@@ -21695,6 +22490,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         smResult = applyBackupShopMeta(snap.data.shopmeta, 'replace');
         tpResult = applyBackupTrips(snap.data.trips, 'replace');
         dsResult = applyBackupDishes(snap.data.dishes, 'replace', norm.records);
+        hcResult = applyBackupHome(snap.data.recipes, snap.data.homefb, 'replace');
         committed = commitDbNext(norm);
       }catch(e){
         rollbackFeedback();
@@ -21703,6 +22499,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         rollbackShopMeta();
         rollbackTrips(tpPrevRaw, tpPrevStore);
         rollbackDishes(dsPrevRaw, dsPrevStore);
+        rollbackHome(hcPrevRaw, hcPrevStore, hfPrevRaw, hfPrevStore);
         throw e;
       }
       db = norm;
@@ -21715,7 +22512,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         profileApplied:!!pmResult.applied, profileBoost:pmResult.boost, profileBlock:pmResult.block, profileBudget:pmResult.budgetCap,
         reports:rpResult.count, reportsApplied:!!rpResult.applied,
         tripApplied:!!tpResult.applied, trips:tpResult.trips, tripStops:tpResult.stops,
-        dishApplied:!!dsResult.applied, dishes:dsResult.dishes, dishesDropped:dsResult.dropped };
+        dishApplied:!!dsResult.applied, dishes:dsResult.dishes, dishesDropped:dsResult.dropped,
+        recipesApplied:!!hcResult.applied, recipes:hcResult.recipes, recipeFav:hcResult.favorites, homeFeedback:hcResult.feedback };
     });
   }
 
@@ -21840,6 +22638,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<p class="dist-note">' + (res.reportsApplied ? '年度报告存档已还原（' + res.reports + ' 份）。' : '该备份不含年度存档段（旧版本备份），本机存档保持不变。') + '</p>' +
         '<p class="dist-note">' + (res.tripApplied ? '旅行计划已按备份还原（' + res.trips + ' 个行程 / ' + res.tripStops + ' 个地点）。' : '该备份不含旅行计划段（旧版本备份），本机旅行计划保持不变。') + '</p>' +
         '<p class="dist-note">' + (res.dishApplied ? '菜品已按备份还原（' + res.dishes + ' 道' + (res.dishesDropped ? '，丢弃孤儿菜品 ' + res.dishesDropped + ' 道' : '') + '）。' : '该备份不含菜品段（旧版本备份），本机菜品保持不变。') + '</p>' +
+        '<p class="dist-note">' + (res.recipesApplied ? '菜谱已按备份还原（' + res.recipes + ' 道，收藏 ' + res.recipeFav + ' 道，家庭反馈 ' + res.homeFeedback + ' 条）。' : '该备份不含在家吃段（旧版本备份），本机菜谱与家庭反馈保持不变。') + '</p>' +
         (res.missingPhotos ? '<p class="dist-note">有 ' + res.missingPhotos + ' 条记录引用的照片缺失，已保留无图状态。</p>' : '') +
         '<p class="dist-note">恢复前的本机数据已存为恢复点；若结果不对，可点下方按钮回到恢复前。</p>' +
         '<div class="actions" style="margin-top:12px">' +
@@ -24442,6 +25241,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   initLauncherIcon();
   initTheme();
   renderAll();
+  try{ homeUIInit(); }catch(e){ logError('在家吃初始化', e); }
   webdavInit();
   showView('record');
   try{ blindBallInit(); blindShakeBind(); }catch(e){ logError('盲盒初始化', e); }
@@ -26270,6 +27070,54 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   })();
 
   window.__fandaziTest = {
+    home: {
+      open: function(panel){ homeState.panel = panel || 'reco'; showView('home'); return homeState.panel; },
+      panel: function(p){ homeState.panel = p; renderHome(); return p; },
+      counts: function(){
+        var st = homeRecipesLoad();
+        return { recipes: st.items.length, favorites: st.items.filter(function(r){ return r.favorite; }).length, feedback: homeFbLoad().items.length };
+      },
+      recipes: function(){
+        return homeRecipesLoad().items.map(function(r){
+          return { id:r.id, name:r.name, category:r.category, minutes:r.minutes, kcal:r.kcal, favorite:r.favorite, source:r.source.type, ingredients:r.ingredients.length, steps:r.steps.length, cookedCount:r.cookedCount };
+        });
+      },
+      reco: function(opts){ var p = homeRecoPick(opts || {}); return p ? { id:p.recipe.id, name:p.recipe.name, weight:p.weight, candidates:p.candidates, relaxed:p.relaxed } : null; },
+      fav: function(id){ return homeToggleFav(id); },
+      detail: function(id){
+        homeOpenDetail(id);
+        return {
+          open: !$('#homeDetailMask').classList.contains('hidden'),
+          title: $('#homeDetailTitle').textContent,
+          text: $('#homeDetailBody').innerText
+        };
+      },
+      closeDetail: function(){ homeCloseDetail(); return true; },
+      feedback: function(id, level){
+        homeFbAdd(id, level);
+        var st = homeRecipesLoad();
+        var r = homeRecipeBy(id);
+        if(level === 'cooked' && r){
+          homeRecipeWrite(function(next){
+            next.items.forEach(function(x){ if(x.id === id){ x.cookedCount = num(x.cookedCount) + 1; x.lastCookedAt = new Date().toISOString(); } });
+          });
+        }
+        return homeFbLoad().items.length;
+      },
+      fb: function(){ return homeFbLoad().items.slice(); },
+      latest: function(id){ return homeFbLatest(id); },
+      favors: function(){ return homeRecipesLoad().items.filter(function(r){ return r.favorite; }).map(function(r){ return r.id; }); },
+      raw: function(){
+        var out = {};
+        try{ out.recipes = localStorage.getItem(RECIPES_KEY); out.homefb = localStorage.getItem(HOMEFB_KEY); }catch(e){}
+        return out;
+      },
+      reset: function(){
+        try{ localStorage.removeItem(RECIPES_KEY); localStorage.removeItem(HOMEFB_KEY); }catch(e){}
+        homeRecipeStore = null; homeFbStore = null; homeState.recoId = '';
+        return true;
+      }
+    },
     poi: {
       norm: poiNorm,
       errText: poiErrDetail,
