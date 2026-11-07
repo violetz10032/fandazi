@@ -816,6 +816,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .merge-row span{color:var(--ink);word-break:break-word}
   .dup-scan-row{padding:10px 0;border-top:1px dashed var(--line)}
   .dup-scan-row:first-of-type{border-top:0}
+  .trip-day-group{margin:12px 0 0}
+  .trip-day-head{display:flex;align-items:baseline;gap:8px;padding:6px 0 4px}
+  .trip-day-head b{font-size:13px}
+  .trip-day-head .hint{font-size:11px;color:var(--ink3)}
+  .trip-day-tools{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 2px}
+  .trip-priority{display:flex;gap:6px;margin-top:6px}
+  .trip-priority button{min-height:32px;padding:0 10px;border-radius:var(--r-tag);border:1px solid var(--line);background:var(--card);color:var(--ink2);font-size:12px}
+  .trip-priority button.on{background:var(--soft);border-color:var(--accent-line);color:var(--soft-ink)}
+  .trip-priority button.must-on{background:var(--soft);border-color:var(--accent);color:var(--soft-ink);font-weight:600}
+  .trip-pick{outline:2px solid var(--accent);outline-offset:2px;border-radius:10px}
+  .trip-move{display:flex;gap:6px;margin-top:8px}
+  .trip-move button{min-height:36px;min-width:64px}
   .fb-note{flex:1 0 100%;font-size:10.5px;color:var(--ink3);margin-top:2px;line-height:1.5}
 
 
@@ -4108,8 +4120,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var TRIPS_MAX_STOPS = 200;
   var TRIP_STATUS = { want:'想去', planned:'已安排', checked:'已到店', skip:'跳过' };
   var TRIP_STATUS_ORDER = ['want','planned','checked','skip'];
+  var TRIP_PRIORITY = { '':'未标', must:'必去', backup:'备选' };
   var tripStore = null;
-  var tripUI = { mode:'', tripId:'', editingId:'', filterArea:'', filterDay:'', filterStatus:'', addOpen:false, addQ:'' };
+  var tripUI = { mode:'', tripId:'', editingId:'', filterArea:'', filterDay:'', filterStatus:'',
+    filterKm:'', filterBudget:'', filterCuisine:'', filterRating:'', pickId:'', addOpen:false, addQ:'' };
   var tripPendingCheck = null;
   var tripAddTimer = null;
 
@@ -4127,6 +4141,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var shopId = String(s.shopId == null ? '' : s.shopId).trim();
     if(!shopId) return null;
     var st = Object.prototype.hasOwnProperty.call(TRIP_STATUS, String(s.status)) ? String(s.status) : 'want';
+    var pr = Object.prototype.hasOwnProperty.call(TRIP_PRIORITY, String(s.priority)) ? String(s.priority) : '';
     return {
       shopId: shopId.slice(0, 40),
       name: String(s.name == null ? '' : s.name).slice(0, 40),
@@ -4134,6 +4149,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       area: String(s.area == null ? '' : s.area).slice(0, 30),
       status: st,
       day: tripDate(s.day),
+      priority: pr,
       note: String(s.note == null ? '' : s.note).slice(0, 200)
     };
   }
@@ -4149,6 +4165,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       stops.push(n);
     });
     if(stops.length > TRIPS_MAX_STOPS) stops = stops.slice(0, TRIPS_MAX_STOPS);
+    var dayBudget = {};
+    if(t.dayBudget && typeof t.dayBudget === 'object' && !Array.isArray(t.dayBudget)){
+      Object.keys(t.dayBudget).slice(0, 40).forEach(function(k){
+        var d = tripDate(k), v = num(t.dayBudget[k]);
+        if(d && v > 0) dayBudget[d] = Math.round(v);
+      });
+    }
     return {
       id: id,
       name: String(t.name == null ? '' : t.name).slice(0, 40),
@@ -4157,6 +4180,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       endDate: tripDate(t.endDate),
       lodging: String(t.lodging == null ? '' : t.lodging).slice(0, 80),
       budget: num(t.budget) > 0 ? Math.round(num(t.budget)) : null,
+      dayBudget: dayBudget,
       note: String(t.note == null ? '' : t.note).slice(0, 300),
       createdAt: String(t.createdAt || ''),
       updatedAt: String(t.updatedAt || ''),
@@ -4314,6 +4338,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!t){ toast('这个旅行计划已不存在'); return; }
     tripUI.mode = 'detail'; tripUI.tripId = id;
     tripUI.filterArea = ''; tripUI.filterDay = ''; tripUI.filterStatus = '';
+    tripUI.filterKm = ''; tripUI.filterBudget = ''; tripUI.filterCuisine = ''; tripUI.filterRating = '';
+    tripUI.pickId = '';
     tripUI.addOpen = false; tripUI.addQ = '';
     renderTripSheet();
     $('#tripMask').classList.remove('hidden');
@@ -4352,6 +4378,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function tripFilteredStops(t){
     var f = tripUI;
     return (t.stops || []).filter(function(s){
+      var store = tripStoreOf(s.shopId);
       if(f.filterArea){
         if(f.filterArea === '__none__'){ if(s.area) return false; }
         else if(s.area !== f.filterArea) return false;
@@ -4364,11 +4391,29 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           if(s.day < t.startDate || s.day > t.endDate) return false;
         }else if(s.day !== f.filterDay) return false;
       }
+      if(f.filterKm){
+        var km = store ? storeKm(store) : null;
+        if(!(km != null && km <= Number(f.filterKm))) return false;
+      }
+      if(f.filterBudget){
+        var per = store ? (store.isWish ? num(store.perPrice) : perPriceOf(store.latest || {})) : 0;
+        if(!(per > 0 && per <= Number(f.filterBudget))) return false;
+      }
+      if(f.filterCuisine){
+        if(!store || String(store.category || '') !== f.filterCuisine) return false;
+      }
+      if(f.filterRating){
+        var rt = store ? num(store.rating) : 0;
+        if(!(rt > 0 && rt >= Number(f.filterRating))) return false;
+      }
       return true;
     });
   }
   function tripStopHtml(t, s){
     var store = tripStoreOf(s.shopId);
+    var phone = String(shopFieldOf(s.shopId, 'phone').value || '');
+    var address = store ? String(store.address || '') : '';
+    var review = store && store.latest ? String(store.latest.note || '') : '';
     var metas = [];
     if(store && store.isWish) metas.push('想去清单');
     else if(store && num(store.visits) > 0) metas.push(store.visits + ' 次到访');
@@ -4384,18 +4429,32 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       if(k === 'checked' && s.status !== 'checked') return '';
       return '<option value="' + k + '"' + (s.status === k ? ' selected' : '') + '>' + TRIP_STATUS[k] + '</option>';
     }).join('');
-    return '<div style="padding:10px 0;border-bottom:1px dashed var(--line)" data-trip-stop="' + esc(s.shopId) + '">' +
+    var pri = s.priority || '';
+    return '<div class="' + (tripUI.pickId === s.shopId ? 'trip-pick' : '') + '" style="padding:10px 0;border-bottom:1px dashed var(--line)" data-trip-stop="' + esc(s.shopId) + '">' +
       '<div style="font-size:13px"><b>' + esc(s.name || (store ? store.name : '未命名店铺')) + '</b> ' +
-        '<span class="tag ' + (s.status === 'checked' ? '' : 'dim') + '">' + TRIP_STATUS[s.status] + '</span></div>' +
+        '<span class="tag ' + (s.status === 'checked' ? '' : 'dim') + '">' + TRIP_STATUS[s.status] + '</span>' +
+        (pri ? ' <span class="tag">' + TRIP_PRIORITY[pri] + '</span>' : '') + '</div>' +
       '<p class="meta">' + esc([s.city, s.area].filter(Boolean).join(' · ') || '未填城市/区域') + '</p>' +
       '<p class="meta">' + esc(metas.join(' · ')) + '</p>' +
+      '<p class="meta">地址：' + esc(address || '暂无数据') + '</p>' +
+      '<p class="meta">电话：' + esc(phone || '暂无数据') + '</p>' +
+      '<p class="meta">个人评价：' + esc(review || '暂无数据') + '</p>' +
       '<div class="frow" style="margin-top:8px;gap:8px">' +
         '<select class="input" data-trip-status="' + esc(s.shopId) + '" aria-label="状态" style="flex:1;min-height:44px">' + opts + '</select>' +
         '<input class="input" type="date" data-trip-day="' + esc(s.shopId) + '" aria-label="安排日期" value="' + esc(s.day) + '"' +
           (t.startDate ? ' min="' + esc(t.startDate) + '"' : '') + (t.endDate ? ' max="' + esc(t.endDate) + '"' : '') +
           ' style="max-width:160px;min-height:44px">' +
       '</div>' +
+      '<div class="trip-priority">' +
+        '<button type="button" data-act="tripPriority" data-tid="' + esc(t.id) + '" data-sid="' + esc(s.shopId) + '" data-pri="must" class="' + (pri === 'must' ? 'on must-on' : '') + '">必去</button>' +
+        '<button type="button" data-act="tripPriority" data-tid="' + esc(t.id) + '" data-sid="' + esc(s.shopId) + '" data-pri="backup" class="' + (pri === 'backup' ? 'on' : '') + '">备选</button>' +
+        '<span class="hint" style="margin-left:auto;align-self:center">同一家只能标一个；再点一次取消</span>' +
+      '</div>' +
       '<input class="input" data-trip-note="' + esc(s.shopId) + '" aria-label="备注" placeholder="这个店的备注（可选）" maxlength="200" value="' + esc(s.note) + '" style="margin-top:8px;min-height:44px">' +
+      '<div class="trip-move">' +
+        '<button type="button" class="btn btn-sm" data-act="tripMoveUp" data-tid="' + esc(t.id) + '" data-sid="' + esc(s.shopId) + '">↑ 上移</button>' +
+        '<button type="button" class="btn btn-sm" data-act="tripMoveDown" data-tid="' + esc(t.id) + '" data-sid="' + esc(s.shopId) + '">↓ 下移</button>' +
+      '</div>' +
       '<div class="frow" style="margin-top:8px;gap:8px">' +
         '<button type="button" class="btn btn-primary" data-act="tripStopEat" data-tid="' + esc(t.id) + '" data-sid="' + esc(s.shopId) + '" style="flex:1;min-height:44px">记一餐 / 确认到店</button>' +
         '<button type="button" class="btn btn-sm" data-act="tripStopDel" data-tid="' + esc(t.id) + '" data-sid="' + esc(s.shopId) + '" style="min-height:44px;min-width:64px">移除</button>' +
@@ -4444,13 +4503,188 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '<button type="button" class="btn btn-sm" data-act="tripAddClose" style="margin-top:8px;min-height:44px">收起</button>' +
     '</div>';
   }
+  /* ---------- 多站点编排：优先级 / 手动调序 / 直线距离建议 / 每天预算 / 随机选店 ---------- */
+  function tripStopIndexOf(t, shopId){
+    for(var i = 0; i < t.stops.length; i++){ if(t.stops[i].shopId === shopId) return i; }
+    return -1;
+  }
+  function tripDayIndices(t, day){
+    var idx = [];
+    t.stops.forEach(function(s, i){ if((s.day || '') === day) idx.push(i); });
+    return idx;
+  }
+  function tripPrioritySet(tripId, shopId, pri){
+    var t = tripsGet(tripId);
+    if(!t) return false;
+    var s = tripStopOf(t, shopId);
+    if(!s) return false;
+    var next = (s.priority || '') === pri ? '' : pri;
+    var ok = tripMutate(tripId, function(tt){
+      var x = tripStopOf(tt, shopId);
+      if(!x) return false;
+      x.priority = next;
+    });
+    if(!ok) return false;
+    renderTrips();
+    renderTripSheet();
+    toast(next ? '已标为「' + TRIP_PRIORITY[next] + '」' : '已取消标记');
+    return true;
+  }
+  function tripStopMove(tripId, shopId, dir){
+    var t = tripsGet(tripId);
+    if(!t) return false;
+    var pos0 = tripStopIndexOf(t, shopId);
+    if(pos0 < 0) return false;
+    var day = t.stops[pos0].day || '';
+    var idx = tripDayIndices(t, day);
+    var pos = idx.indexOf(pos0);
+    var target = pos + (dir === 'up' ? -1 : 1);
+    if(target < 0 || target >= idx.length){
+      toast('这一天已经是最' + (dir === 'up' ? '前' : '后') + '一家');
+      return false;
+    }
+    var a = idx[pos], b = idx[target];
+    var ok = tripMutate(tripId, function(tt){
+      var tmp = tt.stops[a];
+      tt.stops[a] = tt.stops[b];
+      tt.stops[b] = tmp;
+    });
+    if(!ok) return false;
+    renderTrips();
+    renderTripSheet();
+    toast('已' + (dir === 'up' ? '上移' : '下移') + '「' + (t.stops[pos0].name || '这家店') + '」');
+    return true;
+  }
+  function tripDayCoordCount(t, day){
+    var n = 0;
+    t.stops.forEach(function(s){
+      if((s.day || '') !== day) return;
+      var store = tripStoreOf(s.shopId);
+      if(store && mapHasCoords(store)) n++;
+    });
+    return n;
+  }
+  function tripOrderDayFromDist(tripId, day){
+    var t = tripsGet(tripId);
+    if(!t) return false;
+    var idx = tripDayIndices(t, day);
+    if(idx.length < 2){ toast('这一天至少 2 家店才能排顺序'); return false; }
+    var pts = idx.map(function(i){
+      var s = t.stops[i], store = tripStoreOf(s.shopId);
+      return { i:i, s:s, has:!!(store && mapHasCoords(store)),
+        lat:store ? num(store.lat) : 0, lng:store ? num(store.lng) : 0 };
+    });
+    var usable = pts.filter(function(p){ return p.has; });
+    var noCoord = pts.filter(function(p){ return !p.has; });
+    if(usable.length < 2){ toast('这一天有坐标的店不足 2 家，无法给出直线距离顺序'); return false; }
+    var order = [usable[0]], rest = usable.slice(1), total = 0;
+    while(rest.length){
+      var last = order[order.length - 1], bi = 0, bd = null;
+      for(var k = 0; k < rest.length; k++){
+        var d = haversineKm(last.lat, last.lng, rest[k].lat, rest[k].lng);
+        if(bd == null || d < bd){ bd = d; bi = k; }
+      }
+      total += bd;
+      order.push(rest[bi]);
+      rest.splice(bi, 1);
+    }
+    var seq = order.concat(noCoord);
+    var ok = tripMutate(tripId, function(tt){
+      var picked = seq.map(function(p){ return tt.stops[p.i]; });
+      seq.forEach(function(p, at){ tt.stops[idx[at]] = picked[at]; });
+    });
+    if(!ok) return false;
+    renderTrips();
+    renderTripSheet();
+    toast('已按直线距离排序（约 ' + distText(total) + '）：直线距离，非道路里程；不估算行驶时间；仍可用上移/下移手动调整');
+    return true;
+  }
+  function tripDayBudgetSet(tripId, day, value){
+    var t = tripsGet(tripId);
+    if(!t || !day) return false;
+    var v = num(value);
+    var ok = tripMutate(tripId, function(tt){
+      if(!tt.dayBudget || typeof tt.dayBudget !== 'object' || Array.isArray(tt.dayBudget)) tt.dayBudget = {};
+      if(v > 0) tt.dayBudget[day] = Math.round(v);
+      else delete tt.dayBudget[day];
+    });
+    if(!ok) return false;
+    renderTrips();
+    renderTripSheet();
+    toast(v > 0 ? '已保存 ' + day + ' 的预计餐饮预算' : '已清除 ' + day + ' 的预算');
+    return true;
+  }
+  function tripDayStats(stops){
+    var sum = 0, n = 0, must = 0, backup = 0;
+    stops.forEach(function(s){
+      if(s.priority === 'must') must++;
+      else if(s.priority === 'backup') backup++;
+      var store = tripStoreOf(s.shopId);
+      var per = store ? (store.isWish ? num(store.perPrice) : perPriceOf(store.latest || {})) : 0;
+      if(per > 0){ sum += per; n++; }
+    });
+    return { sum:sum, n:n, must:must, backup:backup };
+  }
+  function tripRandomPick(tripId){
+    var t = tripsGet(tripId);
+    if(!t) return null;
+    var stops = tripFilteredStops(t);
+    var pool = stops.filter(function(s){ return s.status !== 'checked'; });
+    if(!pool.length) pool = stops;
+    if(!pool.length){ toast('当前筛选下没有可选店铺'); return null; }
+    var pick = pool[Math.floor(Math.random() * pool.length)];
+    tripUI.pickId = pick.shopId;
+    renderTripSheet();
+    try{
+      var card = document.querySelector('[data-trip-stop="' + pick.shopId + '"]');
+      if(card && card.scrollIntoView) card.scrollIntoView({ block:'center' });
+    }catch(e){ logError('旅行随机选店滚动', e); }
+    toast('随机选中「' + (pick.name || '这家店') + '」：只做行程建议，不会写入到店记录');
+    return pick.shopId;
+  }
+  function tripGroupedHtml(t, stops){
+    var groups = [], byDay = {};
+    stops.forEach(function(s){
+      var d = s.day || '';
+      if(!byDay[d]){ byDay[d] = { day:d, stops:[] }; groups.push(byDay[d]); }
+      byDay[d].stops.push(s);
+    });
+    groups.sort(function(a, b){
+      if(!a.day) return 1;
+      if(!b.day) return -1;
+      return a.day < b.day ? -1 : (a.day > b.day ? 1 : 0);
+    });
+    return groups.map(function(g){
+      var stat = tripDayStats(g.stops);
+      var budget = num((t.dayBudget || {})[g.day]);
+      var coord = g.day ? tripDayCoordCount(t, g.day) : 0;
+      var hint = g.stops.length + ' 家' +
+        (stat.n ? ' · 参考人均合计 ' + money(stat.sum) : ' · 参考人均暂无数据') +
+        (stat.must ? ' · 必去 ' + stat.must : '') +
+        (stat.backup ? ' · 备选 ' + stat.backup : '') +
+        (budget > 0 ? ' · 预计餐饮 ' + money(budget) : '');
+      return '<div class="trip-day-group">' +
+        '<div class="trip-day-head"><b>' + esc(g.day || '未定日期') + '</b><span class="hint">' + esc(hint) + '</span></div>' +
+        (g.day ? '<div class="trip-day-tools">' +
+          '<input class="input" type="number" min="0" step="10" inputmode="numeric" data-trip-daybudget="' + esc(g.day) + '"' +
+            ' aria-label="当天预计餐饮预算" placeholder="当天预计餐饮预算（¥）" value="' + (budget > 0 ? String(budget) : '') + '" style="min-height:44px">' +
+          '<button type="button" class="btn btn-sm" data-act="tripOrderDay" data-tid="' + esc(t.id) + '" data-day="' + esc(g.day) + '"' +
+            (coord < 2 ? ' disabled' : '') + ' style="min-height:44px">按直线距离排序</button>' +
+        '</div>' +
+        '<p class="dist-note" style="margin:2px 0 4px">排序依据店铺坐标的直线距离（Haversine），<b>不是道路里程，也不估算行驶时间</b>；排完仍可用上移 / 下移手动改。</p>' : '') +
+        g.stops.map(function(s){ return tripStopHtml(t, s); }).join('') +
+        '</div>';
+    }).join('');
+  }
   function tripDetailHtml(t){
     var c = tripCounts(t);
     var stops = tripFilteredStops(t);
-    var areaSet = {}, daySet = {}, hasNoArea = false, hasNoDay = false;
+    var areaSet = {}, daySet = {}, catSet = {}, hasNoArea = false, hasNoDay = false;
     t.stops.forEach(function(s){
       if(s.area) areaSet[s.area] = 1; else hasNoArea = true;
       if(s.day) daySet[s.day] = 1; else hasNoDay = true;
+      var store = tripStoreOf(s.shopId);
+      if(store && store.category) catSet[store.category] = 1;
     });
     var areaOpts = '<option value="">全部区域</option>' +
       Object.keys(areaSet).sort().map(function(a){ return '<option value="' + esc(a) + '"' + (tripUI.filterArea === a ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join('') +
@@ -4459,30 +4693,49 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       Object.keys(daySet).sort().map(function(d){ return '<option value="' + esc(d) + '"' + (tripUI.filterDay === d ? ' selected' : '') + '>' + esc(d) + '</option>'; }).join('') +
       (hasNoDay ? '<option value="__none__"' + (tripUI.filterDay === '__none__' ? ' selected' : '') + '>未定日期</option>' : '') +
       ((t.startDate && t.endDate) ? '<option value="__inrange__"' + (tripUI.filterDay === '__inrange__' ? ' selected' : '') + '>行程内</option>' : '');
+    var catOpts = '<option value="">全部菜系</option>' +
+      Object.keys(catSet).sort().map(function(k){ return '<option value="' + esc(k) + '"' + (tripUI.filterCuisine === k ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('');
+    var kmOpts = '<option value="">距离不限</option>' +
+      [['1','距我 ≤ 1 km'],['3','距我 ≤ 3 km'],['5','距我 ≤ 5 km']].map(function(x){
+        return '<option value="' + x[0] + '"' + (tripUI.filterKm === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
+      }).join('');
+    var budgetOpts = '<option value="">人均不限</option>' +
+      [['50','参考人均 ≤ ¥50'],['100','参考人均 ≤ ¥100'],['200','参考人均 ≤ ¥200']].map(function(x){
+        return '<option value="' + x[0] + '"' + (tripUI.filterBudget === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
+      }).join('');
+    var ratingOpts = '<option value="">评分不限</option>' +
+      [['4','评分 ≥ 4.0'],['4.5','评分 ≥ 4.5']].map(function(x){
+        return '<option value="' + x[0] + '"' + (tripUI.filterRating === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
+      }).join('');
     var statusChips =
       '<button type="button" class="chip-toggle' + (tripUI.filterStatus === '' ? ' on' : '') + '" data-act="tripFilterStatus" data-st="" style="min-height:44px;height:44px">全部状态</button>' +
       TRIP_STATUS_ORDER.map(function(k){
         return '<button type="button" class="chip-toggle' + (tripUI.filterStatus === k ? ' on' : '') + '" data-act="tripFilterStatus" data-st="' + k + '" style="min-height:44px;height:44px">' + TRIP_STATUS[k] + ' ' + c[k] + '</button>';
       }).join('');
+    var budgetDays = Object.keys(t.dayBudget || {});
+    var budgetTotal = 0;
+    budgetDays.forEach(function(k){ budgetTotal += num(t.dayBudget[k]); });
     var body;
     if(!t.stops.length){
       body = '<div class="empty"><h3>还没有安排店铺</h3><p>点上方「添加店铺」，从想去清单或已有记录里选；同一家店可以同时出现在多个旅行。</p></div>';
     }else if(!stops.length){
-      body = '<div class="empty"><h3>没有符合筛选的店</h3><p>当前区域 / 日期 / 状态下没有结果，不会显示虚构数据。</p>' +
+      body = '<div class="empty"><h3>没有符合筛选的店</h3><p>当前区域 / 日期 / 状态 / 距离 / 人均 / 菜系 / 评分下没有结果，不会显示虚构数据。</p>' +
         '<div class="actions" style="justify-content:center;margin-top:10px"><button type="button" class="btn" data-act="tripFilterReset" style="min-height:44px">清空筛选</button></div></div>';
     }else{
-      body = stops.map(function(s){ return tripStopHtml(t, s); }).join('');
+      body = tripGroupedHtml(t, stops);
     }
     return '<div class="card flat" style="padding:10px 12px;margin-bottom:10px">' +
         diaryKv('目的地', esc(t.destination || '未填')) +
         diaryKv('日期', esc(tripDateText(t) || '未填')) +
         diaryKv('住宿', esc(t.lodging || '未填')) +
-        diaryKv('预算', num(t.budget) > 0 ? money(t.budget) : '暂无数据') +
+        diaryKv('总预算', num(t.budget) > 0 ? money(t.budget) : '暂无数据') +
+        diaryKv('餐饮预算', budgetDays.length ? money(budgetTotal) + '（已设 ' + budgetDays.length + ' 天）' : '暂无数据（可在每天下面按天填写）') +
         diaryKv('备注', esc(t.note || '未填')) +
       '</div>' +
       '<div class="actions" style="margin-top:0;margin-bottom:10px">' +
         '<button type="button" class="btn" data-act="tripShare" data-tid="' + esc(t.id) + '" style="min-height:44px">分享行程</button>' +
         '<button type="button" class="btn" data-act="tripMap" data-tid="' + esc(t.id) + '" style="min-height:44px">在地图上看</button>' +
+        '<button type="button" class="btn" data-act="tripRandom" data-tid="' + esc(t.id) + '" style="min-height:44px">随机选一家</button>' +
         '<button type="button" class="btn" data-act="tripEdit" data-tid="' + esc(t.id) + '" style="min-height:44px">编辑</button>' +
         '<button type="button" class="btn btn-danger" data-act="tripDel" data-tid="' + esc(t.id) + '" style="min-height:44px">删除</button>' +
       '</div>' +
@@ -4490,13 +4743,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<select class="input" id="tripFA" aria-label="按区域筛选" style="min-height:44px">' + areaOpts + '</select>' +
         '<select class="input" id="tripFD" aria-label="按日期筛选" style="min-height:44px">' + dayOpts + '</select>' +
       '</div>' +
+      '<div class="frow" style="gap:8px;margin-bottom:8px">' +
+        '<select class="input" id="tripFK" aria-label="按距离筛选" style="min-height:44px">' + kmOpts + '</select>' +
+        '<select class="input" id="tripFB" aria-label="按人均筛选" style="min-height:44px">' + budgetOpts + '</select>' +
+      '</div>' +
+      '<div class="frow" style="gap:8px;margin-bottom:8px">' +
+        '<select class="input" id="tripFC" aria-label="按菜系筛选" style="min-height:44px">' + catOpts + '</select>' +
+        '<select class="input" id="tripFR" aria-label="按评分筛选" style="min-height:44px">' + ratingOpts + '</select>' +
+      '</div>' +
       '<div class="chips" style="margin-bottom:8px">' + statusChips + '</div>' +
       '<div style="margin-bottom:8px">' +
         (tripUI.addOpen
           ? tripAddPanelHtml(t)
           : '<button type="button" class="btn btn-soft btn-block" data-act="tripAddOpen" style="min-height:44px">+ 添加店铺（想去清单 / 记录）</button>') +
       '</div>' +
-      '<p class="dist-note">「记一餐 / 确认到店」复用现有记录表单：店名、城市、商圈、坐标会带入，金额 / 评分 / 热量保持空白；保存成功后这家店才变为「已到店」。</p>' +
+      '<p class="dist-note">距离筛选用的是「距我」的实算 / 手填距离（没有距离的店在设了距离筛选时会被排除）。「记一餐 / 确认到店」复用现有记录表单：店名、城市、商圈、坐标会带入，金额 / 评分 / 热量保持空白；保存成功后这家店才变为「已到店」。</p>' +
       body;
   }
   function renderTripSheet(){
@@ -4624,7 +4885,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var ct = String(city || (store ? (store.city || '') : '') || '');
     var ar = String(area || (store ? (store.area || '') : '') || '');
     var ok = tripMutate(tripId, function(tt){
-      tt.stops.push({ shopId: shopId, name: nm, city: ct, area: ar, status: 'want', day: '', note: '' });
+      tt.stops.push({ shopId: shopId, name: nm, city: ct, area: ar, status: 'want', day: '', priority: '', note: '' });
     });
     if(!ok) return false;
     renderTrips();
@@ -8504,9 +8765,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     if(act === 'tripFilterReset'){
       tripUI.filterArea = ''; tripUI.filterDay = ''; tripUI.filterStatus = '';
+      tripUI.filterKm = ''; tripUI.filterBudget = ''; tripUI.filterCuisine = ''; tripUI.filterRating = '';
+      tripUI.pickId = '';
       renderTripSheet();
       return;
     }
+    if(act === 'tripPriority'){ tripPrioritySet(tid, sid, el.getAttribute('data-pri') || 'must'); return; }
+    if(act === 'tripMoveUp'){ tripStopMove(tid, sid, 'up'); return; }
+    if(act === 'tripMoveDown'){ tripStopMove(tid, sid, 'down'); return; }
+    if(act === 'tripOrderDay'){ tripOrderDayFromDist(tid, el.getAttribute('data-day') || ''); return; }
+    if(act === 'tripRandom'){ tripRandomPick(tid); return; }
     if(act === 'tripStopEat'){ tripStopEat(tid, sid); return; }
     if(act === 'tripStopDel'){ tripStopRemove(tid, sid); return; }
     if(act === 'tripAddOpen'){ tripUI.addOpen = true; tripUI.addQ = ''; renderTripSheet(); return; }
@@ -8533,6 +8801,28 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       renderTripSheet();
       return;
     }
+    if(tg.id === 'tripFK'){
+      tripUI.filterKm = tg.value || '';
+      renderTripSheet();
+      return;
+    }
+    if(tg.id === 'tripFB'){
+      tripUI.filterBudget = tg.value || '';
+      renderTripSheet();
+      return;
+    }
+    if(tg.id === 'tripFC'){
+      tripUI.filterCuisine = tg.value || '';
+      renderTripSheet();
+      return;
+    }
+    if(tg.id === 'tripFR'){
+      tripUI.filterRating = tg.value || '';
+      renderTripSheet();
+      return;
+    }
+    var bd = tg.closest ? tg.closest('[data-trip-daybudget]') : null;
+    if(bd){ tripDayBudgetSet(tid, bd.getAttribute('data-trip-daybudget'), bd.value); return; }
     var st = tg.closest ? tg.closest('[data-trip-status]') : null;
     if(st){ tripStopSet(tid, st.getAttribute('data-trip-status'), { status: st.value }); return; }
     var day = tg.closest ? tg.closest('[data-trip-day]') : null;
@@ -31905,6 +32195,24 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       get: function(id){ var t = tripsGet(id); return t ? JSON.parse(JSON.stringify(t)) : null; },
       stop: function(tid, sid){ var s = tripStopOf(tripsGet(tid), sid); return s ? JSON.parse(JSON.stringify(s)) : null; },
       counts: function(tid){ return tripCounts(tripsGet(tid)); },
+      detailHtml: function(tid){ var t = tripsGet(tid); return t ? tripDetailHtml(t) : ''; },
+      priority: function(tid, sid, pri){ return tripPrioritySet(tid, sid, pri); },
+      moveStop: function(tid, sid, dir){ return tripStopMove(tid, sid, dir); },
+      orderDay: function(tid, day){ return tripOrderDayFromDist(tid, day); },
+      setDayBudget: function(tid, day, v){ return tripDayBudgetSet(tid, day, v); },
+      random: function(tid){ return tripRandomPick(tid); },
+      filtered: function(tid){
+        var t = tripsGet(tid);
+        return t ? tripFilteredStops(t).map(function(s){ return s.shopId; }) : [];
+      },
+      setFilters: function(o){
+        o = o || {};
+        ['filterKm','filterBudget','filterCuisine','filterRating','filterDay','filterArea','filterStatus'].forEach(function(k){
+          if(Object.prototype.hasOwnProperty.call(o, k)) tripUI[k] = o[k] == null ? '' : String(o[k]);
+        });
+        renderTripSheet();
+        return true;
+      },
       create: function(fields){
         fields = fields || {};
         var nowIso = new Date().toISOString();
