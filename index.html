@@ -1664,7 +1664,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           <summary>地图跳转说明</summary>
           <p class="muted" style="margin-bottom:8px">地图按钮只打开高德/百度地图的网页链接（uri.amap.com、map.baidu.com），由浏览器或手机唤起地图 App。</p>
           <p class="muted" style="margin-bottom:8px"><b>为什么不需要登录：</b>链接里只有店名和（可选）经纬度，不经过本应用的服务器，也不申请地图开放平台的 Key，不读取你的账号。</p>
-          <p class="muted" style="margin-bottom:8px"><b>为什么有时要补经纬度：</b>同名店、商场里的店在搜索里可能排到别家；手填 lng/lat 后会直接打开定点标记和导航，不再依赖搜索排序。坐标可在高德地图长按店铺复制。</p>
+          <p class="muted" style="margin-bottom:8px"><b>为什么有时要补经纬度：</b>同名店、商场里的店在搜索里可能排到别家；手填 lng/lat 后会直接打开定点标记和导航，不再依赖搜索排序。手填按 WGS84 处理；从高德复制的坐标（GCJ-02）请用上方「高德 POI 搜索」或「地图选点」，避免导航偏移。</p>
           <p class="muted" style="margin-bottom:8px"><b>起点怎么定：</b>默认取「常用地点」里手填的坐标；没填坐标时用「地点名 + 城市」，可能还需要在网页里手动确认起点。</p>
           <p class="muted"><b>多途经点：</b>一条链接包含多站需要每站都有坐标；本应用目前按站逐个跳转，不拼接多途经点链接。</p>
         </details>
@@ -1943,7 +1943,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <p class="muted" id="mapBaseDesc" style="margin-top:9px;line-height:1.65">当前使用画布底图（默认）：不发任何外部请求，离线可用；切换到高德会按需动态加载官方 JS API。</p>
         <p class="muted" id="mapBaseEnv" style="margin-top:6px;line-height:1.65"></p>
         <p class="muted" style="margin-top:6px;line-height:1.65">高德 Key 与 securityJsCode 随前端代码公开（单文件应用无法隐藏），请在控制台把域名白名单设为 <b>violetz10032.github.io</b>，需要时可撤销并重建。个人认证的 JS 图面配额有限，超限或加载失败会自动回落画布并给出重试入口。按高德协议，不得缓存、抓取服务端数据与底图图片；离线时底图只会是空白网格，标记仍可见。</p>
-        <p class="muted" style="margin-top:6px;line-height:1.65">坐标：记录里保留 WGS84（GPS），高德底图为 GCJ-02，仅显示时本地转换，不回写、不改记录值。</p>
+        <p class="muted" style="margin-top:6px;line-height:1.65">坐标：记录里保留原始值（GPS/手填 WGS84，高德 POI/地图选点 GCJ-02）；拼导航链接时按来源判断，仅 WGS84 转 GCJ-02，不回写、不改记录值。来源不明时按原值使用并标注。</p>
       </div>
 
       <div class="card" id="themeCard">
@@ -2467,7 +2467,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <button type="button" class="btn btn-primary" id="btnPickConfirm" disabled>确认使用此位置</button>
       <button type="button" class="btn btn-soft" id="btnPickCancel" style="margin-left:auto">取消</button>
     </div>
-    <p class="legal" style="margin-top:10px">坐标按 GCJ-02 写入；逆地理编码失败不会清空你已填的地址。无网络或无高德 Key 时请直接手填经纬度。</p>
+    <p class="legal" style="margin-top:10px">坐标按来源写入：高德 POI / 地图选点为 GCJ-02，手填 / 设备定位为 WGS84；逆地理编码失败不会清空你已填的地址。无网络或无高德 Key 时请直接手填经纬度。</p>
   </div>
 </div>
 
@@ -3401,7 +3401,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   /* 店铺级定位元数据：只存“这家店在哪、来源是什么”，不替代记录里的 lat/lng。
      字段白名单 + 长度限制 + 坐标范围校验；旧数据没有 location 时按无定位元数据读取。 */
-  var SHOP_LOCATION_SOURCES = { amap_poi:'高德 POI', manual:'手动选点', device:'当前定位', imported:'导入' };
+  var SHOP_LOCATION_SOURCES = { amap_poi:'高德 POI', amap_map:'高德地图选点', manual:'手动填写', device:'当前定位', imported:'导入' };
+  /* 坐标来源对应的真实坐标系：POI / 地图选点为 GCJ-02；手填 / 设备定位为 WGS84；导入沿用历史默认 */
+  function shopCoordSysOfSource(src){
+    if(src === 'amap_poi' || src === 'amap_map') return 'GCJ02';
+    if(src === 'device' || src === 'manual') return 'WGS84';
+    return 'GCJ02';
+  }
   function shopLocationNorm(loc){
     if(!loc || typeof loc !== 'object') return null;
     var lng = Number(loc.lng), lat = Number(loc.lat);
@@ -3410,7 +3416,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(lng === 0 && lat === 0) return null;
     var src = Object.prototype.hasOwnProperty.call(SHOP_LOCATION_SOURCES, String(loc.source)) ? String(loc.source) : 'imported';
     return {
-      coordinateSystem: 'GCJ02',
+      coordinateSystem: shopCoordSysOfSource(src),
       source: src,
       amapPoiId: String(loc.amapPoiId == null ? '' : loc.amapPoiId).slice(0, 80),
       formattedAddress: String(loc.formattedAddress == null ? '' : loc.formattedAddress).slice(0, 200),
@@ -6245,6 +6251,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         latest: latest, records: recs, visits: recs.length,
         lat: coordRec ? coordRec.lat : null,
         lng: coordRec ? coordRec.lng : null,
+        locationSource: coordRec ? String(coordRec.locationSource || '') : '',
+        coordinateSystem: coordRec ? String(coordRec.coordinateSystem || '') : '',
         distanceKm: distRec ? num(distRec.distanceKm) : null,
         openStart: openRec ? openRec.openStart : '',
         openEnd: openRec ? openRec.openEnd : '',
@@ -13840,6 +13848,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function mapInfoOf(r){
     r = r || {};
+    var latest = r.latest || {};
     return {
       name: String(r.name || '').trim(),
       city: String(r.city || '').trim(),
@@ -13847,8 +13856,44 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       address: String(r.address || '').trim(),
       lng: mapCoord(r.lng, 180),
       lat: mapCoord(r.lat, 90),
-      fromPlace: r.fromPlace || ''
+      fromPlace: r.fromPlace || '',
+      /* 坐标系依据：记录自身优先，店铺聚合对象再取坐标来源那次的记录 */
+      locationSource: String((r.locationSource != null ? r.locationSource : latest.locationSource) || ''),
+      coordinateSystem: String((r.coordinateSystem != null ? r.coordinateSystem : latest.coordinateSystem) || '')
     };
+  }
+  /* 来源 → 坐标系：高德 POI / 地图选点是 GCJ-02；手填 GPS / 浏览器定位是 WGS84 */
+  var MAP_SOURCE_SYS = { amap_poi:'GCJ02', amap_map:'GCJ02', device:'WGS84', manual:'WGS84' };
+  function mapCoordSysNorm(v){
+    var s = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if(s.indexOf('GCJ') >= 0) return 'GCJ02';
+    if(s.indexOf('WGS') >= 0) return 'WGS84';
+    return '';
+  }
+  function mapSourceSys(src){
+    return MAP_SOURCE_SYS[String(src || '').trim().toLowerCase()] || '';
+  }
+  /* 坐标系判断：记录来源 → 记录显式标记 → shopmeta 来源 → shopmeta 标记 → 未知（保持原值） */
+  function mapInfoCoordSys(info){
+    if(!info) return '';
+    var bySource = mapSourceSys(info.locationSource);
+    if(bySource) return bySource;
+    var explicit = mapCoordSysNorm(info.coordinateSystem);
+    if(explicit) return explicit;
+    var loc = null;
+    try{
+      if(info.name) loc = shopLocationOf(shopIdOf(info.name, info.city));
+    }catch(e){ loc = null; }
+    if(loc){
+      var locSource = mapSourceSys(loc.source);
+      if(locSource) return locSource;
+      var locSys = mapCoordSysNorm(loc.coordinateSystem);
+      if(locSys) return locSys;
+    }
+    return '';
+  }
+  function mapLinkUncertain(info){
+    return mapHasCoords(info) && !mapInfoCoordSys(info);
   }
   function amapSearchUrl(info){
     var url = 'https://uri.amap.com/search?keyword=' + encodeURIComponent(info.name) + '&callnative=1';
@@ -13858,10 +13903,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function baiduSearchUrl(info){
     return 'https://map.baidu.com/search/' + encodeURIComponent(info.name || info.city || '');
   }
-  /* 高德链接坐标：记录里存 WGS84，链接需要 GCJ-02；仅用于拼 URL，不回写记录 */
+  /* 高德链接坐标：GCJ-02 直接使用；WGS84 才转换；来源未知保持原值，不回写记录 */
   function mapLinkPosition(info){
-    var d = wgs2gcj(info.lat, info.lng);
-    return Number(d.lng.toFixed(6)) + ',' + Number(d.lat.toFixed(6));
+    var sys = mapInfoCoordSys(info);
+    if(sys === 'WGS84'){
+      var d = wgs2gcj(info.lat, info.lng);
+      return Number(d.lng.toFixed(6)) + ',' + Number(d.lat.toFixed(6));
+    }
+    return Number(info.lng.toFixed(6)) + ',' + Number(info.lat.toFixed(6));
   }
   function amapMarkerUrl(info){
     if(!mapHasCoords(info)) return amapSearchUrl(info);
@@ -13916,8 +13965,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var nav = amapNavUrl(info, info.fromPlace);
     $('#btnMapNavLink').href = nav;
     $('#btnMapNavLink').textContent = coords ? '导航到这家' : '搜索这家（需补坐标）';
+    var coordSys = mapInfoCoordSys(info);
+    var sysHint = coordSys === 'GCJ02' ? '坐标为 GCJ-02，直接使用。'
+      : coordSys === 'WGS84' ? '坐标为 WGS84，已转换为 GCJ-02 后打开。'
+      : '坐标系来源未知，按原值打开，可能偏移；可在店铺档案里重新选点。';
     $('#mapHint').textContent = coords
-      ? '已填经纬度：高德会直接打开该坐标的标记与导航；起点默认取「常用地点」的手填坐标。'
+      ? '已填经纬度：' + sysHint
       : '未填经纬度：将用「店名 + 城市」搜索，同名店可能需要你在网页里再确认；精确导航需补经纬度。';
   }
   function openMapModal(info){
@@ -14950,12 +15003,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var s = mapStoreByKey(key);
     if(!s){ toast('这家店的数据已变化，请刷新地图'); return null; }
     var c = storeCoord(s);
-    var info = mapInfoOf(s.latest || { name:s.name, city:s.city, area:s.area, address:s.address, lng:c?c.lng:'', lat:c?c.lat:'' });
+    var info = mapInfoOf(s || {});
     if(c){ info.lng = c.lng; info.lat = c.lat; }
     info.name = s.name;
     info.city = s.city || info.city;
     info.area = s.area || info.area;
     info.address = s.address || info.address;
+    var linkUncertain = mapLinkUncertain(info);
     mapView.sheetKey = key;
     mapView.selected = '';
     var recs = (s.records || []).slice().sort(function(a,b){ return String(b.visitDate||'').localeCompare(String(a.visitDate||'')); });
@@ -14991,11 +15045,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '</div>'+
       shopDupHtml(s)+
       mapDishSummaryHtml(sid)+
+      (linkUncertain ? '<div class="fb-note" style="margin-bottom:8px">坐标系来源未知：导航按记录原值拼接，可能偏移；请用「改坐标」重新选点。</div>' : '')+
       '<div class="actions" style="margin-top:0">'+
         '<button type="button" class="btn" data-act="shopAgain" data-key="'+esc(s.key)+'">又来了</button>'+
-        '<a class="btn btn-soft" href="'+esc(mapLinkOf(info, 'amap', false, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">高德'+(c?'定点':'搜索')+'</a>'+
+        '<a class="btn btn-soft" href="'+esc(mapLinkOf(info, 'amap', false, info.fromPlace))+'" target="_blank" rel="noopener noreferrer"'+(linkUncertain ? ' title="坐标系来源未知，按记录原值拼链接，可能偏移"' : '')+'>高德'+(c?'定点':'搜索')+'</a>'+
         '<a class="btn" href="'+esc(mapLinkOf(info, 'baidu', false, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">百度搜索</a>'+
-        (c ? '<a class="btn" href="'+esc(amapNavUrl(info, info.fromPlace))+'" target="_blank" rel="noopener noreferrer">导航</a>' : '')+
+        (c ? '<a class="btn" href="'+esc(amapNavUrl(info, info.fromPlace))+'" target="_blank" rel="noopener noreferrer"'+(linkUncertain ? ' title="坐标系来源未知，按记录原值拼链接，可能偏移"' : '')+'>导航</a>' : '')+
         '<button type="button" class="btn" data-shop-meta="'+esc(sid)+'" data-shop-meta-title="'+esc(s.name)+'">链接 / 补充</button>'+
         '<button type="button" class="btn" data-trip-join="'+esc(sid)+'" style="min-height:44px">加入旅行计划</button>'+
         '<button type="button" class="btn" data-map-fix="'+esc(recs[0] ? recs[0].id : '')+'">'+(c?'改坐标':'补坐标')+'</button>'+
@@ -16343,12 +16398,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!el) return;
     var has = mapCoord($('#f-lng').value, 180) !== null && mapCoord($('#f-lat').value, 90) !== null;
     if(!has){ el.style.display = 'none'; el.textContent = ''; return; }
-    var src = poiCoordSource || 'manual';
-    var name = SHOP_LOCATION_SOURCES[src] || '手动';
+    var src = poiCoordSource || '';
+    var name = SHOP_LOCATION_SOURCES[src] || '未标记';
+    var sys = mapSourceSys(src);
+    var sysText = sys === 'GCJ02' ? 'GCJ-02，链接直接使用'
+      : sys === 'WGS84' ? 'WGS84，拼导航时转 GCJ-02'
+      : '坐标系未知，按原值拼链接';
     el.style.display = '';
-    el.textContent = '坐标来源：' + name + '（GCJ-02）' +
+    el.textContent = '坐标来源：' + name + '（' + sysText + '）' +
       (poiState.distNote ? '；' + poiState.distNote : '') +
-      '。可直接手改，改后记为「手动」。';
+      '。可直接手改，改后按 WGS84 处理。';
   }
   /* 按「出发地点」的坐标实算到店铺坐标的直线距离，自动带出到「与我距离 km」 */
   function formAutoDist(){
@@ -16458,7 +16517,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#f-lng').value = lng.toFixed(5);
     $('#f-lat').value = lat.toFixed(5);
     poiPicked = null;
-    poiCoordSource = 'manual';
+    poiCoordSource = 'amap_map';
     distAuto = false;
     formAutoDist();
     poiSourceState();
@@ -21861,6 +21920,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       btn.disabled = false; btn.textContent = '用当前位置填入店铺坐标';
       $('#f-lng').value = g.lng.toFixed(5);
       $('#f-lat').value = g.lat.toFixed(5);
+      poiPicked = null;
+      poiCoordSource = 'device';
+      poiSourceState();
+      updateFormMapLinks();
       var st = $('#geoFormState');
       if(st){ st.textContent = '已填入 ±'+Math.round(g.acc || 0)+'m，请确认是否就是这家店'; st.className = 'geo-state on'; }
       toast('已填入当前坐标；若你不在店里，请清空或手填');
@@ -26659,6 +26722,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         var info = mapInfoOf(o || {});
         return {
           hasCoords: mapHasCoords(info),
+          coordSys: mapInfoCoordSys(info),
+          uncertain: mapLinkUncertain(info),
+          position: mapHasCoords(info) ? mapLinkPosition(info) : '',
           search: amapSearchUrl(info),
           marker: amapMarkerUrl(info),
           baidu: baiduSearchUrl(info),
