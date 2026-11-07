@@ -1257,6 +1257,43 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .home-log-photos .ph{position:relative;width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
   .home-log-photos .ph img{width:100%;height:100%;object-fit:cover;display:block}
   .home-log-photos .ph button{position:absolute;top:2px;right:2px;border:0;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;width:18px;height:18px;line-height:16px;font-size:11px;padding:0;cursor:pointer}
+  /* 第三阶段：一周菜单 / 采购清单 / 烹饪模式 / 统计 */
+  .home-week-day{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;background:var(--card)}
+  .home-week-day.locked{border-color:var(--accent-line);background:var(--soft)}
+  .home-week-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .home-week-head b{font-size:13px;flex:none}
+  .home-week-head span{font-size:11px;color:var(--ink3);flex:1;min-width:0}
+  .home-week-head button{font-size:11px;padding:4px 9px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink2);flex:none}
+  .home-week-head button.on{background:var(--card);border-color:var(--accent-line);color:var(--soft-ink);font-weight:600}
+  .home-week-dish{display:flex;gap:6px;font-size:12px;line-height:1.7}
+  .home-week-dish i{font-style:normal;color:var(--ink3);flex:none;width:34px;font-size:11px}
+  .home-week-dish span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .home-week-dish span.on{cursor:pointer;color:var(--ink)}
+  .home-week-budget{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;font-size:12px;align-items:center;color:var(--ink2)}
+  .home-week-budget .input{width:76px;display:inline-block;padding:6px 8px}
+  .home-shop-row{display:flex;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);font-size:12.5px;align-items:baseline}
+  .home-shop-row b{flex:1;min-width:0;font-weight:600}
+  .home-shop-row span{font-size:12px;color:var(--ink2);flex:none;text-align:right}
+  .home-shop-total{font-size:11px;color:var(--ink3);margin-top:8px}
+  .cook-mask{position:fixed;inset:0;background:var(--mask);z-index:70;display:flex;align-items:flex-end}
+  .cook-sheet{width:100%;max-height:92vh;background:var(--card);border-radius:18px 18px 0 0;padding:16px;display:flex;flex-direction:column;gap:12px}
+  .cook-head{display:flex;align-items:center;gap:8px}
+  .cook-head b{font-size:14px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cook-head em{font-style:normal;font-size:11px;color:var(--ink3);flex:none}
+  .cook-head button{border:0;background:transparent;font-size:22px;line-height:1;color:var(--ink3);flex:none}
+  .cook-step-text{font-size:21px;line-height:1.65;font-weight:600;min-height:140px;max-height:52vh;overflow:auto;padding:10px 4px}
+  .cook-dots{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .cook-dots i{width:8px;height:8px;border-radius:50%;background:var(--track)}
+  .cook-dots i.on{background:var(--accent)}
+  .cook-dots span{font-size:11px;color:var(--ink3);margin-left:4px}
+  .cook-acts{display:flex;gap:8px}
+  .cook-acts button{flex:1}
+  .home-stat-row{display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:7px}
+  .home-stat-row b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+  .home-stat-row .bar{height:7px;border-radius:999px;background:var(--chart-1);flex:none;min-width:2px}
+  .home-stat-row span{font-size:11px;color:var(--ink3);flex:none}
+  .home-stat-sec{margin-top:12px}
+  .home-stat-sec h3{font-size:13px;margin:0 0 8px;color:var(--ink2)}
 </style>
 </head>
 <body>
@@ -1821,6 +1858,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <button data-hpanel="fav">收藏</button>
         <button data-hpanel="pantry">食材</button>
         <button data-hpanel="log">记录</button>
+        <button data-hpanel="week">一周菜单</button>
+        <button data-hpanel="stats">统计</button>
       </div>
       <div id="homePanelReco">
         <div class="card">
@@ -1869,6 +1908,30 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           </div>
           <div class="home-log-stats" id="homeLogStats"></div>
           <div class="home-list" id="homeLogList"></div>
+        </div>
+      </div>
+      <div id="homePanelWeek" class="hidden">
+        <div class="card">
+          <div class="section-head" style="margin:0 0 10px"><h2>一周家庭菜单</h2><span class="hint" id="homeWeekMeta"></span></div>
+          <div class="home-week-budget">
+            <span>每日预算 ¥<input class="input" id="homeWeekBudget" type="number" min="20" max="500" step="10" value="80" inputmode="decimal"> · 周合计 <b id="homeWeekBudgetTotal">¥560</b></span>
+          </div>
+          <div class="home-panel-actions" style="margin:0 0 10px">
+            <button type="button" class="btn btn-primary" id="homeWeekGen" style="flex:1">生成未来七天</button>
+            <button type="button" class="btn" id="homeWeekReroll" style="flex:none">重排未锁定</button>
+          </div>
+          <div id="homeWeekDays"></div>
+          <p class="home-src" id="homeWeekNote"></p>
+        </div>
+        <div class="card">
+          <div class="section-head" style="margin:0 0 10px"><h2>采购清单</h2><span class="hint" id="homeShopMeta"></span></div>
+          <div id="homeShopList"></div>
+        </div>
+      </div>
+      <div id="homePanelStats" class="hidden">
+        <div class="card">
+          <div class="section-head" style="margin:0 0 10px"><h2>在家吃统计</h2><span class="hint">只用真实制作记录，不估算</span></div>
+          <div id="homeStatsBox"></div>
         </div>
       </div>
     </section>
@@ -2373,6 +2436,23 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <button type="button" class="icon-btn" id="homeDetailClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
     </div>
     <div id="homeDetailBody"></div>
+  </div>
+</div>
+
+<!-- 在家吃：烹饪模式（当前步骤放大，退出保留进度） -->
+<div class="cook-mask hidden" id="cookMask">
+  <div class="cook-sheet">
+    <div class="cook-head">
+      <b id="cookTitle">烹饪</b>
+      <em id="cookMeta"></em>
+      <button type="button" id="cookClose" aria-label="退出烹饪模式">×</button>
+    </div>
+    <div class="cook-step-text" id="cookStepText"></div>
+    <div class="cook-dots" id="cookDots"></div>
+    <div class="cook-acts">
+      <button type="button" class="btn" id="cookPrev">上一步</button>
+      <button type="button" class="btn btn-primary" id="cookNext">下一步</button>
+    </div>
   </div>
 </div>
 
@@ -6709,6 +6789,523 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return out;
   }
 
+  /* ================= 第三阶段：一周菜单 / 采购清单 / 烹饪模式 / 统计 =================
+   * 独立键：fandazi.homeweek（一周菜单 + 每日预算）、fandazi.cookprog（烹饪进度）。
+   * 不写 db.records / fandazi.dishes；统计只读 fandazi.cooklog，没有数据就显示「暂无数据」，不估算。
+   */
+  var WEEK_KEY = 'fandazi.homeweek';
+  var COOKPROG_KEY = 'fandazi.cookprog';
+  var HOME_WEEK_VERSION = 1;
+  var HOME_WEEK_DAYS = 7;
+  var HOME_COOKPROG_MAX = 40;
+  var HOME_WEEK_ROLES = [
+    { k:'main', label:'主菜' },
+    { k:'side', label:'配菜' },
+    { k:'soup', label:'汤品' },
+    { k:'staple', label:'主食' }
+  ];
+  var HOME_MEAT_WORDS = ['猪','牛','羊','鸡','鸭','鹅','鱼','虾','蟹','贝','蛤','蛏','鱿','墨鱼','海参','鲍','蛋','腊','火腿','培根','香肠','肚','肝','腰','肠','排骨','翅','腿','蹄','骨','肉'];
+  var weekStore = null, cookProgStore = null;
+  var cookState = { recipeId:'', title:'', steps:[], step:0 };
+
+  function homeWeekDayDates(){
+    var out = [];
+    for(var i=1;i<=HOME_WEEK_DAYS;i++) out.push(dateShift(-i));
+    return out;
+  }
+  function homeWeekNorm(o){
+    var out = { version:HOME_WEEK_VERSION, budget:80, days:[], updatedAt:'' };
+    if(o && typeof o === 'object' && !Array.isArray(o)){
+      var b = Number(o.budget);
+      if(isFinite(b) && b >= 20 && b <= 500) out.budget = Math.round(b);
+      out.updatedAt = String(o.updatedAt || '').slice(0, 40);
+    }
+    var src = (o && Array.isArray(o.days)) ? o.days : [];
+    homeWeekDayDates().forEach(function(ds){
+      var found = null;
+      src.forEach(function(x){ if(x && String(x.date || '') === ds) found = x; });
+      var day = { date:ds, locked:false, dishes:{ main:'', side:'', soup:'', staple:'' } };
+      if(found){
+        day.locked = found.locked === true;
+        var d = (found.dishes && typeof found.dishes === 'object' && !Array.isArray(found.dishes)) ? found.dishes : {};
+        HOME_WEEK_ROLES.forEach(function(role){
+          day.dishes[role.k] = String(d[role.k] == null ? '' : d[role.k]).trim().slice(0, 40);
+        });
+      }
+      out.days.push(day);
+    });
+    return out;
+  }
+  function homeWeekLoad(){
+    if(weekStore) return weekStore;
+    var out = homeWeekNorm(null);
+    try{
+      var raw = localStorage.getItem(WEEK_KEY);
+      if(raw) out = homeWeekNorm(JSON.parse(raw));
+    }catch(e){ logError('一周菜单读取', e); }
+    weekStore = out;
+    return out;
+  }
+  function homeWeekPersist(next){
+    var prev = weekStore;
+    var norm = homeWeekNorm(next);
+    norm.updatedAt = new Date().toISOString();
+    try{
+      localStorage.setItem(WEEK_KEY, JSON.stringify(norm));
+      weekStore = norm;
+      return true;
+    }catch(e){ logError('一周菜单保存', e); weekStore = prev; return false; }
+  }
+  function homeWeekBackupData(){ return JSON.parse(JSON.stringify(homeWeekLoad())); }
+  function homeWeekBackupValidate(payload, where){
+    if(payload == null) return;
+    if(typeof payload !== 'object' || !Array.isArray(payload.days)) throw new Error(where + '：一周菜单段格式不正确');
+    payload.days.forEach(function(x, i){
+      if(!x || typeof x !== 'object' || !/^\d{4}-\d{2}-\d{2}$/.test(String(x.date || ''))) throw new Error(where + '：第 ' + (i + 1) + ' 天菜单缺少日期');
+      if(x.dishes != null && typeof x.dishes !== 'object') throw new Error(where + '：第 ' + (i + 1) + ' 天菜单的菜品格式不正确');
+    });
+  }
+  function applyBackupWeek(payload, mode){
+    if(payload == null) return { applied:false, days:homeWeekLoad().days.filter(function(d){ return d.locked || d.dishes.main; }).length };
+    var norm = homeWeekNorm(payload);
+    if(mode === 'merge'){
+      var local = homeWeekLoad();
+      local.days.forEach(function(day){
+        var bk = null;
+        norm.days.forEach(function(d){ if(d.date === day.date) bk = d; });
+        if(!bk || day.locked) return;
+        HOME_WEEK_ROLES.forEach(function(role){
+          if(!day.dishes[role.k] && bk.dishes[role.k]) day.dishes[role.k] = bk.dishes[role.k];
+        });
+      });
+      if(!homeWeekPersist(local)) throw new Error('一周菜单写入失败：本机存储空间不足');
+      return { applied:true, days:homeWeekLoad().days.filter(function(d){ return d.locked || d.dishes.main; }).length };
+    }
+    if(!homeWeekPersist(norm)) throw new Error('一周菜单写入失败：本机存储空间不足');
+    return { applied:true, days:homeWeekLoad().days.filter(function(d){ return d.locked || d.dishes.main; }).length };
+  }
+  function homeWeekRollback(prevRaw, prevStore){
+    weekStore = prevStore;
+    try{
+      if(prevRaw == null) localStorage.removeItem(WEEK_KEY); else localStorage.setItem(WEEK_KEY, prevRaw);
+    }catch(_e){}
+  }
+
+  function homeCookProgItemNorm(x){
+    if(!x || typeof x !== 'object' || Array.isArray(x)) return null;
+    var id = String(x.recipeId || '').trim().slice(0, 40);
+    if(!id) return null;
+    var step = Math.max(0, Math.round(num(x.step)));
+    var total = Math.min(200, Math.max(1, Math.round(num(x.total))));
+    if(step >= total) step = total - 1;
+    return {
+      recipeId: id,
+      title: homeNormName(x.title, 60),
+      step: step,
+      total: total,
+      at: String(x.at || '').slice(0, 40)
+    };
+  }
+  function homeCookProgLoad(){
+    if(cookProgStore) return cookProgStore;
+    var out = { version:1, items:[] };
+    try{
+      var raw = JSON.parse(localStorage.getItem(COOKPROG_KEY) || 'null');
+      if(raw && Array.isArray(raw.items)) raw.items.forEach(function(x){
+        var n = homeCookProgItemNorm(x);
+        if(n && out.items.length < HOME_COOKPROG_MAX) out.items.push(n);
+      });
+    }catch(e){ logError('烹饪进度读取', e); }
+    cookProgStore = out;
+    return out;
+  }
+  function homeCookProgPersist(next){
+    try{
+      localStorage.setItem(COOKPROG_KEY, JSON.stringify(next));
+      cookProgStore = next;
+      return true;
+    }catch(e){ logError('烹饪进度保存', e); return false; }
+  }
+  function homeCookProgressGet(recipeId){
+    var items = homeCookProgLoad().items;
+    for(var i=0;i<items.length;i++){ if(items[i].recipeId === recipeId) return items[i]; }
+    return null;
+  }
+  function homeCookProgressSet(recipeId, title, step, total){
+    if(!recipeId) return false;
+    var st = homeCookProgLoad();
+    var item = homeCookProgItemNorm({ recipeId:recipeId, title:title, step:step, total:total, at:new Date().toISOString() });
+    if(!item) return false;
+    var next = { version:1, items:[] };
+    st.items.forEach(function(x){ if(x.recipeId !== recipeId) next.items.push(JSON.parse(JSON.stringify(x))); });
+    next.items.push(item);
+    if(next.items.length > HOME_COOKPROG_MAX) next.items = next.items.slice(next.items.length - HOME_COOKPROG_MAX);
+    return homeCookProgPersist(next);
+  }
+  function homeCookProgressClear(recipeId){
+    var st = homeCookProgLoad();
+    var next = { version:1, items:st.items.filter(function(x){ return x.recipeId !== recipeId; }).map(function(x){ return JSON.parse(JSON.stringify(x)); }) };
+    if(next.items.length === st.items.length) return false;
+    return homeCookProgPersist(next);
+  }
+  function homeCookProgBackupData(){ return { version:1, items: JSON.parse(JSON.stringify(homeCookProgLoad().items)) }; }
+  function homeCookProgBackupValidate(payload, where){
+    if(payload == null) return;
+    if(typeof payload !== 'object' || !Array.isArray(payload.items)) throw new Error(where + '：烹饪进度段格式不正确');
+    payload.items.forEach(function(x, i){
+      if(!x || typeof x !== 'object' || typeof x.recipeId !== 'string' || !x.recipeId.trim()) throw new Error(where + '：第 ' + (i + 1) + ' 条烹饪进度缺少 recipeId');
+      if(!isFinite(Number(x.step))) throw new Error(where + '：第 ' + (i + 1) + ' 条烹饪进度缺少步数');
+    });
+  }
+  function applyBackupCookProg(payload, mode){
+    if(payload == null) return { applied:false, items:homeCookProgLoad().items.length };
+    var base = { version:1, items: mode === 'replace' ? [] : homeCookProgLoad().items.map(function(x){ return JSON.parse(JSON.stringify(x)); }) };
+    var idx = {};
+    base.items.forEach(function(x, i){ idx[x.recipeId] = i; });
+    payload.items.forEach(function(x){
+      var n = homeCookProgItemNorm(x);
+      if(!n) return;
+      if(idx[n.recipeId] !== undefined){ if(mode === 'replace') base.items[idx[n.recipeId]] = n; }
+      else { idx[n.recipeId] = base.items.length; base.items.push(n); }
+    });
+    if(base.items.length > HOME_COOKPROG_MAX) base.items = base.items.slice(base.items.length - HOME_COOKPROG_MAX);
+    if(!homeCookProgPersist(base)) throw new Error('烹饪进度写入失败：本机存储空间不足');
+    return { applied:true, items:base.items.length };
+  }
+  function homeCookProgRollback(prevRaw, prevStore){
+    cookProgStore = prevStore;
+    try{
+      if(prevRaw == null) localStorage.removeItem(COOKPROG_KEY); else localStorage.setItem(COOKPROG_KEY, prevRaw);
+    }catch(_e){}
+  }
+
+  /* ---- 菜单排布：主菜 / 配菜 / 汤品 / 主食 ---- */
+  function homeIngIsMeat(name){
+    var n = String(name || '');
+    for(var i=0;i<HOME_MEAT_WORDS.length;i++){ if(n.indexOf(HOME_MEAT_WORDS[i]) >= 0) return true; }
+    return false;
+  }
+  function homeWeekRole(r){
+    if(!r) return 'side';
+    if((r.tags || []).indexOf('汤') >= 0) return 'soup';
+    if((r.tags || []).indexOf('主食') >= 0) return 'staple';
+    var meat = false;
+    (r.ingredients || []).forEach(function(x){ if(homeIngIsMeat(x.name)) meat = true; });
+    return meat ? 'main' : 'side';
+  }
+  function homeWeekPool(){
+    var pool = { main:[], side:[], soup:[], staple:[] };
+    homeRecipesLoad().items.forEach(function(r){
+      var role = homeWeekRole(r);
+      if(!pool[role]) role = 'side';
+      pool[role].push(r);
+    });
+    return pool;
+  }
+  function homeWeekRecentIds(){
+    var out = {};
+    var now = Date.now();
+    homeCookLoad().items.forEach(function(c){
+      if(!c.recipeId) return;
+      var t = c.date ? Date.parse(c.date + 'T12:00:00') : 0;
+      if(isFinite(t) && (now - t) < 7 * 86400000) out[c.recipeId] = 1;
+    });
+    return out;
+  }
+  function homeWeekPick(role, ctx){
+    var pool = ctx.pool[role] || [];
+    var cand = pool.filter(function(r){ return !ctx.used[r.id]; });
+    var fresh = cand.filter(function(r){ return !ctx.recent[r.id]; });
+    if(fresh.length) cand = fresh;
+    if(!cand.length) cand = pool.slice();
+    if(!cand.length) return null;
+    var best = null, bestScore = -1;
+    cand.forEach(function(r){
+      var sc = 0.6 + Math.random();
+      if(r.favorite) sc += 0.35;
+      var cat = ctx.cats[r.category] || 0;
+      sc -= cat * 0.45;
+      var shared = 0;
+      (r.ingredients || []).forEach(function(x){ if(ctx.ings[homeKeyName(x.name)]) shared++; });
+      sc += Math.min(5, shared) * 0.8;
+      var diff = num(r.difficulty);
+      if(diff) sc += (1 - Math.min(3, diff) / 3) * 0.25;
+      if(sc > bestScore){ bestScore = sc; best = r; }
+    });
+    return best;
+  }
+  function homeWeekRegister(r, ctx){
+    if(!r) return;
+    ctx.used[r.id] = 1;
+    (r.ingredients || []).forEach(function(x){ ctx.ings[homeKeyName(x.name)] = 1; });
+    ctx.cats[r.category] = (ctx.cats[r.category] || 0) + 1;
+  }
+  function homeWeekGenerate(){
+    var wk = homeWeekLoad();
+    var ctx = { pool:homeWeekPool(), used:{}, recent:homeWeekRecentIds(), ings:{}, cats:{} };
+    wk.days.forEach(function(day){
+      if(!day.locked) return;
+      HOME_WEEK_ROLES.forEach(function(role){
+        var r = day.dishes[role.k] ? homeRecipeBy(day.dishes[role.k]) : null;
+        homeWeekRegister(r, ctx);
+      });
+    });
+    wk.days.forEach(function(day){
+      if(day.locked) return;
+      var dishes = {};
+      HOME_WEEK_ROLES.forEach(function(role){
+        var r = homeWeekPick(role.k, ctx);
+        dishes[role.k] = r ? r.id : '';
+        homeWeekRegister(r, ctx);
+      });
+      day.dishes = dishes;
+    });
+    homeWeekPersist(wk);
+    renderHomeWeek();
+  }
+  function homeWeekToggleLock(idx){
+    var wk = homeWeekLoad();
+    if(!wk.days[idx]) return false;
+    wk.days[idx].locked = !wk.days[idx].locked;
+    homeWeekPersist(wk);
+    renderHomeWeek();
+    return wk.days[idx].locked;
+  }
+  function homeWeekSetBudget(v){
+    var n = Number(v);
+    if(!isFinite(n) || n < 20 || n > 500) return false;
+    var wk = homeWeekLoad();
+    wk.budget = Math.round(n);
+    homeWeekPersist(wk);
+    if($('#homeWeekBudgetTotal')) $('#homeWeekBudgetTotal').textContent = '¥' + (wk.budget * HOME_WEEK_DAYS);
+    return true;
+  }
+  function homeCookCostByRecipe(){
+    var out = {};
+    homeCookLoad().items.forEach(function(c){
+      if(c.cost == null || c.cost <= 0) return;
+      var k = c.recipeId || ('title:' + homeKeyName(c.title));
+      var e = out[k] || (out[k] = { n:0, sum:0, avg:null });
+      e.n++;
+      e.sum += num(c.cost);
+      e.avg = Math.round((e.sum / e.n) * 100) / 100;
+    });
+    return out;
+  }
+  function homeWeekCostOf(r, costMap){
+    if(!r) return null;
+    var e = costMap[r.id] || costMap['title:' + homeKeyName(r.name)];
+    return e ? e.avg : null;
+  }
+  function homeWeekDayHtml(day, idx, costMap){
+    var mins = 0, knownCost = 0, knownN = 0, total = 0;
+    var rows = HOME_WEEK_ROLES.map(function(role){
+      var r = day.dishes[role.k] ? homeRecipeBy(day.dishes[role.k]) : null;
+      if(r){ total++; mins += num(r.minutes); }
+      var cost = homeWeekCostOf(r, costMap);
+      if(cost != null){ knownCost += cost; knownN++; }
+      return '<div class="home-week-dish"><i>' + role.label + '</i><span' +
+        (r ? ' class="on" data-hwopen="' + esc(r.id) + '"' : '') + '>' +
+        (r ? (esc(r.emoji) + ' ' + esc(r.name)) : '未安排') + '</span></div>';
+    }).join('');
+    var costText = knownN ? ('已知成本 ¥' + (Math.round(knownCost * 100) / 100) + '（' + knownN + '/' + total + ' 道有记录）') : '成本暂无数据';
+    var dt = new Date(day.date + 'T12:00:00');
+    return '<div class="home-week-day' + (day.locked ? ' locked' : '') + '">' +
+      '<div class="home-week-head"><b>' + (dt.getMonth() + 1) + '月' + dt.getDate() + '日</b>' +
+      '<span>' + (mins ? (mins + ' 分钟 · ') : '') + costText + '</span>' +
+      '<button type="button" data-hwlock="' + idx + '" class="' + (day.locked ? 'on' : '') + '">' + (day.locked ? '已锁定' : '锁定') + '</button></div>' +
+      rows + '</div>';
+  }
+  function renderHomeWeek(){
+    var wk = homeWeekLoad();
+    if($('#homeWeekBudget')) $('#homeWeekBudget').value = String(wk.budget);
+    if($('#homeWeekBudgetTotal')) $('#homeWeekBudgetTotal').textContent = '¥' + (wk.budget * HOME_WEEK_DAYS);
+    var costMap = homeCookCostByRecipe();
+    var box = $('#homeWeekDays');
+    if(box) box.innerHTML = wk.days.map(function(d, i){ return homeWeekDayHtml(d, i, costMap); }).join('');
+    var ids = {}, cats = {}, mins = 0, n = 0;
+    wk.days.forEach(function(d){
+      HOME_WEEK_ROLES.forEach(function(role){
+        var r = d.dishes[role.k] ? homeRecipeBy(d.dishes[role.k]) : null;
+        if(!r) return;
+        ids[r.id] = 1; cats[r.category] = 1; mins += num(r.minutes); n++;
+      });
+    });
+    if($('#homeWeekMeta')) $('#homeWeekMeta').textContent = '共 ' + Object.keys(ids).length + ' 道 · ' + Object.keys(cats).length + ' 个菜系 · 日均 ' + (n ? Math.round(mins / HOME_WEEK_DAYS) : 0) + ' 分钟';
+    if($('#homeWeekNote')) $('#homeWeekNote').textContent = '每天 1 主菜 + 1 配菜 + 1 汤品 + 1 主食；避开 7 天内做过的菜，尽量复用同周食材；预算只作每日上限提示，成本只在有真实记录时显示。';
+    renderHomeShop();
+  }
+  function homeWeekShopList(){
+    var wk = homeWeekLoad();
+    var map = {}, order = [];
+    function canon(name){
+      var k = homeKeyName(name);
+      var hit = k;
+      Object.keys(HOME_ALIASES).forEach(function(base){
+        var list = HOME_ALIASES[base] || [];
+        for(var i=0;i<list.length;i++){
+          if(homeKeyName(list[i]) === k){ hit = homeKeyName(base); break; }
+        }
+      });
+      return hit;
+    }
+    wk.days.forEach(function(day){
+      HOME_WEEK_ROLES.forEach(function(role){
+        var r = day.dishes[role.k] ? homeRecipeBy(day.dishes[role.k]) : null;
+        if(!r) return;
+        (r.ingredients || []).forEach(function(x){
+          var k = canon(x.name);
+          if(!k) return;
+          var e = map[k];
+          if(!e){ e = map[k] = { name:homeNormName(x.name, 40), units:{}, unitOrder:[], texts:[], count:0 }; order.push(k); }
+          e.count++;
+          var amt = String(x.amount == null ? '' : x.amount).trim();
+          var unit = String(x.unit == null ? '' : x.unit).trim();
+          var n = Number(amt);
+          if(amt && isFinite(n)){
+            if(e.units[unit] == null){ e.units[unit] = 0; e.unitOrder.push(unit); }
+            e.units[unit] += n;
+          } else if(amt && e.texts.indexOf(amt) < 0){ e.texts.push(amt); }
+        });
+      });
+    });
+    return order.map(function(k){
+      var e = map[k], parts = [];
+      e.unitOrder.forEach(function(u){
+        var n = Math.round(e.units[u] * 10) / 10;
+        parts.push((n > 0 ? String(n) : '') + u);
+      });
+      e.texts.forEach(function(t){ parts.push(t); });
+      return { name:e.name, total:parts.join(' + ') || '适量', count:e.count };
+    });
+  }
+  function renderHomeShop(){
+    var list = homeWeekShopList();
+    var box = $('#homeShopList');
+    if(box) box.innerHTML = list.length ? list.map(function(x){
+      return '<div class="home-shop-row"><b>' + esc(x.name) + '</b><span>' + esc(x.total) + '</span></div>';
+    }).join('') : '<div class="home-empty">还没有菜单，先生成一周菜单</div>';
+    if($('#homeShopMeta')) $('#homeShopMeta').textContent = list.length ? (list.length + ' 种食材') : '';
+  }
+
+  /* ---- 统计：只读真实 cooklog；没有数据一律「暂无数据」 ---- */
+  function homeStatsData(){
+    var items = homeCookLoad().items;
+    var out = { records:items.length, dishes:0, cats:{}, avg:null, rated:0, costMonths:{}, costCount:0, top:[] };
+    var titles = {}, byTitle = {}, sum = 0;
+    items.forEach(function(c){
+      titles[c.title] = 1;
+      var r = c.recipeId ? homeRecipeBy(c.recipeId) : null;
+      var cat = r ? r.category : '未关联菜谱';
+      out.cats[cat] = (out.cats[cat] || 0) + 1;
+      var t = byTitle[c.title] || (byTitle[c.title] = { n:0, sum:0, rated:0 });
+      t.n++;
+      if(c.rating != null){ out.rated++; sum += c.rating; t.rated++; t.sum += c.rating; }
+      if(c.cost != null && c.cost > 0){
+        out.costCount++;
+        var m = String(c.date || '').slice(0, 7);
+        if(m) out.costMonths[m] = (out.costMonths[m] || 0) + num(c.cost);
+      }
+    });
+    out.dishes = Object.keys(titles).length;
+    if(out.rated) out.avg = Math.round((sum / out.rated) * 10) / 10;
+    Object.keys(byTitle).forEach(function(k){
+      var t = byTitle[k];
+      out.top.push({ title:k, n:t.n, avg:t.rated ? Math.round((t.sum / t.rated) * 10) / 10 : null });
+    });
+    out.top.sort(function(a, b){ return b.n - a.n; });
+    out.top = out.top.slice(0, 5);
+    return out;
+  }
+  function homeStatRow(name, value, pct, right){
+    return '<div class="home-stat-row"><b>' + esc(name) + '</b>' +
+      '<i class="bar" style="width:' + Math.max(2, Math.round(pct * 0.6)) + 'px"></i>' +
+      '<span>' + esc(right) + '</span></div>';
+  }
+  function homeStatsHtml(){
+    var s = homeStatsData();
+    if(!s.records){
+      return '<div class="home-empty">还没有制作记录<br><span style="font-size:11px">打开菜谱详情，点「记录这次制作」</span></div>' +
+        '<p class="home-src">花费趋势：暂无数据（没有真实记录，不做估算）</p>';
+    }
+    var h = '<div class="home-log-stats">' + [
+      '做过 ' + s.dishes + ' 道',
+      '共 ' + s.records + ' 次',
+      s.avg != null ? ('平均 ' + s.avg + ' 分') : '平均评分：暂无数据'
+    ].map(function(t){ return '<span class="home-pill">' + esc(t) + '</span>'; }).join('') + '</div>';
+    var catKeys = Object.keys(s.cats).sort(function(a, b){ return s.cats[b] - s.cats[a]; });
+    var catMax = catKeys.length ? s.cats[catKeys[0]] : 1;
+    h += '<div class="home-stat-sec"><h3>菜系分布</h3>' + catKeys.map(function(k){
+      return homeStatRow(k, s.cats[k], Math.round((s.cats[k] / catMax) * 100), s.cats[k] + ' 次');
+    }).join('') + '</div>';
+    h += '<div class="home-stat-sec"><h3>常做菜</h3>' + (s.top.length ? s.top.map(function(t){
+      return homeStatRow(t.title, t.n, Math.round((t.n / s.top[0].n) * 100), '×' + t.n + (t.avg != null ? (' · 均 ' + t.avg + ' 分') : ''));
+    }).join('') : '<p class="muted" style="font-size:12px">暂无数据</p>') + '</div>';
+    h += '<div class="home-stat-sec"><h3>花费趋势</h3>';
+    if(!s.costCount){
+      h += '<p class="muted" style="font-size:12px">暂无数据（没有记录花费，不做估算）</p>';
+    } else {
+      var months = Object.keys(s.costMonths).sort();
+      var maxCost = 1;
+      months.forEach(function(m){ if(s.costMonths[m] > maxCost) maxCost = s.costMonths[m]; });
+      h += months.map(function(m){
+        return homeStatRow(m, s.costMonths[m], Math.round((s.costMonths[m] / maxCost) * 100), '¥' + (Math.round(s.costMonths[m] * 100) / 100));
+      }).join('');
+      h += '<p class="home-shop-total">只统计填了花费的记录（' + s.costCount + ' 次），没填的不估算。</p>';
+    }
+    h += '</div>';
+    return h;
+  }
+  function renderHomeStats(){
+    var box = $('#homeStatsBox');
+    if(box) box.innerHTML = homeStatsHtml();
+  }
+
+  /* ---- 烹饪模式：当前步骤放大，前后切换，退出保留进度 ---- */
+  function homeCookModeEntryHtml(r){
+    var steps = (r.steps || []).length;
+    var p = homeCookProgressGet(r.id);
+    var label = (p && p.step > 0 && steps) ? ('继续烹饪 · 第 ' + (p.step + 1) + '/' + steps + ' 步') : '开始烹饪';
+    return '<div class="home-panel-actions"><button type="button" class="btn btn-primary" data-hcook="' + esc(r.id) + '">' + label + '</button></div>';
+  }
+  function homeCookModeOpen(recipeId){
+    var r = homeRecipeBy(recipeId);
+    if(!r) return false;
+    var steps = (r.steps || []).map(function(s){ return String(s && s.text != null ? s.text : s || '').trim(); }).filter(Boolean);
+    if(!steps.length) return false;
+    var p = homeCookProgressGet(recipeId);
+    var step = (p && p.step >= 0 && p.step < steps.length) ? p.step : 0;
+    cookState = { recipeId:recipeId, title:r.name, steps:steps, step:step };
+    homeCookModeRender();
+    if($('#cookMask')) $('#cookMask').classList.remove('hidden');
+    return true;
+  }
+  function homeCookModeRender(){
+    if($('#cookTitle')) $('#cookTitle').textContent = '🍳 ' + cookState.title;
+    if($('#cookMeta')) $('#cookMeta').textContent = '第 ' + (cookState.step + 1) + ' / ' + cookState.steps.length + ' 步';
+    if($('#cookStepText')) $('#cookStepText').textContent = cookState.steps[cookState.step] || '';
+    if($('#cookDots')) $('#cookDots').innerHTML = cookState.steps.map(function(_s, i){
+      return '<i' + (i === cookState.step ? ' class="on"' : '') + '></i>';
+    }).join('') + '<span>' + (cookState.step + 1) + '/' + cookState.steps.length + '</span>';
+    if($('#cookPrev')) $('#cookPrev').disabled = cookState.step <= 0;
+    if($('#cookNext')) $('#cookNext').disabled = cookState.step >= cookState.steps.length - 1;
+  }
+  function homeCookModeGo(delta){
+    if(!cookState.recipeId) return false;
+    var n = cookState.step + delta;
+    if(n < 0 || n >= cookState.steps.length) return false;
+    cookState.step = n;
+    homeCookProgressSet(cookState.recipeId, cookState.title, n, cookState.steps.length);
+    homeCookModeRender();
+    return true;
+  }
+  function homeCookModeClose(){
+    if(cookState.recipeId) homeCookProgressSet(cookState.recipeId, cookState.title, cookState.step, cookState.steps.length);
+    if($('#cookMask')) $('#cookMask').classList.add('hidden');
+    var id = cookState.recipeId;
+    if(id && $('#homeDetailMask') && !$('#homeDetailMask').classList.contains('hidden')) homeOpenDetail(id);
+  }
+
   /* 食材匹配：直接做 / 缺少量 / 需额外采购较多；可替代食材单独列出 */
   function homePantryIndex(){
     var idx = {};
@@ -7007,7 +7604,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function renderHome(){
     homeCatOptions();
     var panel = homeState.panel || 'reco';
-    ['reco','lib','fav','pantry','log'].forEach(function(k){
+    ['reco','lib','fav','pantry','log','week','stats'].forEach(function(k){
       var el = $('#homePanel' + k.charAt(0).toUpperCase() + k.slice(1));
       if(el) el.classList.toggle('hidden', panel !== k);
     });
@@ -7017,6 +7614,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(panel === 'fav') renderHomeFav();
     if(panel === 'pantry') renderHomePantry();
     if(panel === 'log') renderHomeLog();
+    if(panel === 'week') renderHomeWeek();
+    if(panel === 'stats') renderHomeStats();
   }
 
   /* ---------- 第二阶段 UI：食材 / 匹配 / 制作记录 ---------- */
@@ -7376,6 +7975,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       body.innerHTML =
         '<div class="home-detail-meta">'+meta.map(function(m){ return '<span class="home-pill">'+esc(m)+'</span>'; }).join('')+'</div>' +
         '<div class="home-panel-actions"><button type="button" class="btn '+(r.favorite?'btn-soft':'')+'" data-hfav="'+esc(r.id)+'">'+(r.favorite?'♥ 已收藏':'♡ 收藏这道菜')+'</button></div>' +
+        homeCookModeEntryHtml(r) +
         '<div class="home-detail-sec"><h3>食材（'+r.ingredients.length+'）</h3><ul>' +
           r.ingredients.map(function(x){ return '<li>'+esc(x.name)+(x.amount?(' '+esc(x.amount)+esc(x.unit)):'')+(x.optional?'（可选）':'')+'</li>'; }).join('') +
         '</ul></div>' +
@@ -7432,6 +8032,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if($('#homeRecoBtn')) $('#homeRecoBtn').addEventListener('click', function(){ homeRenderReco(true); });
     if($('#homeRecoOpen')) $('#homeRecoOpen').addEventListener('click', function(){ if(homeState.recoId) homeOpenDetail(homeState.recoId); });
     var listClick = function(e){
+      var lock = e.target.closest('[data-hwlock]');
+      if(lock){
+        e.stopPropagation();
+        homeWeekToggleLock(Number(lock.getAttribute('data-hwlock')));
+        return;
+      }
       var fav = e.target.closest('[data-hfav]');
       if(fav){
         e.stopPropagation();
@@ -7441,11 +8047,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       }
       var row = e.target.closest('[data-hopen]');
       if(row) homeOpenDetail(row.getAttribute('data-hopen'));
+      var wkDish = e.target.closest('[data-hwopen]');
+      if(wkDish) homeOpenDetail(wkDish.getAttribute('data-hwopen'));
     };
     if($('#view-home')) $('#view-home').addEventListener('click', listClick);
     if($('#homeDetailBody')) $('#homeDetailBody').addEventListener('click', function(e){
       var fav = e.target.closest('[data-hfav]');
       if(fav){ homeToggleFav(fav.getAttribute('data-hfav')); homeOpenDetail(fav.getAttribute('data-hfav')); renderHome(); return; }
+      var hcook = e.target.closest('[data-hcook]');
+      if(hcook){ homeCookModeOpen(hcook.getAttribute('data-hcook')); return; }
       var fb = e.target.closest('[data-hfb]');
       if(fb){
         var wrap = fb.closest('#homeDetailBody');
@@ -7460,6 +8070,25 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if($('#homeDetailClose')) $('#homeDetailClose').addEventListener('click', homeCloseDetail);
     if($('#homeQ')) $('#homeQ').addEventListener('input', renderHomeLib);
     if($('#homeCat')) $('#homeCat').addEventListener('change', renderHomeLib);
+
+    /* 第三阶段：一周菜单 / 采购清单 / 烹饪模式 */
+    if($('#homeWeekGen')) $('#homeWeekGen').addEventListener('click', function(){
+      homeWeekGenerate();
+      toast('已生成未来七天菜单');
+    });
+    if($('#homeWeekReroll')) $('#homeWeekReroll').addEventListener('click', function(){
+      homeWeekGenerate();
+      toast('已重排未锁定的天数');
+    });
+    if($('#homeWeekBudget')) $('#homeWeekBudget').addEventListener('change', function(){
+      var v = $('#homeWeekBudget').value;
+      if(homeWeekSetBudget(v)) toast('每日预算已改为 ¥' + Math.round(Number(v)));
+      else { toast('预算需在 ¥20 – ¥500 之间'); renderHomeWeek(); }
+    });
+    if($('#cookMask')) $('#cookMask').addEventListener('click', function(e){ if(e.target === this) homeCookModeClose(); });
+    if($('#cookClose')) $('#cookClose').addEventListener('click', homeCookModeClose);
+    if($('#cookPrev')) $('#cookPrev').addEventListener('click', function(){ homeCookModeGo(-1); });
+    if($('#cookNext')) $('#cookNext').addEventListener('click', function(){ homeCookModeGo(1); });
 
     /* 食材录入：手动输入，不做克数/保质期 */
     function homePantryAddFromForm(){
@@ -23997,8 +24626,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
      5 = 增加 fandazi.trips（旅行计划，独立增量键）。
      6 = 增加 fandazi.dishes（菜品，独立增量键）。
      7 = shopmeta 条目增加可选 location（店铺级坐标 + 来源），记录增加可选 locationSource。
-     旧备份缺少 trips / dishes / location 段时恢复保持本机现状，不清空。 */
-  var BACKUP_SCHEMA_VERSION = 7;
+     8 = 增加在家吃第三阶段：fandazi.homeweek（一周菜单 + 每日预算）、fandazi.cookprog（烹饪进度）。
+     旧备份缺少 trips / dishes / location / week / cookprog 段时恢复保持本机现状，不清空。 */
+  var BACKUP_SCHEMA_VERSION = 8;
   var BACKUP_LAST_KEY = 'fandazi.backup.last';
   var BACKUP_TMP_KEY = KEY + '.restore.tmp';
   var BACKUP_FILE_MAX = 200 * 1024 * 1024;
@@ -24293,6 +24923,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       homefb: homeFbBackupData(),
       pantry: pantryBackupData(),
       cooklog: homeCookBackupData(),
+      week: homeWeekBackupData(),
+      cookprog: homeCookProgBackupData(),
       records: db.records
     };
     /* v2 模式下：records 仍是投影后的 v1 兼容结构（老版本也能读），
@@ -24460,6 +25092,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     /* 在家吃第二阶段：食材 / 制作记录段，同样允许旧备份缺失（缺失时保持本机现状） */
     pantryBackupValidate(obj.payload.pantry, '恢复');
     homeCookBackupValidate(obj.payload.cooklog, '恢复');
+    /* 在家吃第三阶段：一周菜单 / 烹饪进度段，旧备份缺失时保持本机现状 */
+    homeWeekBackupValidate(obj.payload.week, '恢复');
+    homeCookProgBackupValidate(obj.payload.cookprog, '恢复');
     /* 收藏段：独立于想去；旧备份缺失（v7 及更早）时保持本机现状，存在则严格校验 */
     favoritesBackupValidate(obj.payload.favorites, '恢复');
     if(!obj.checksum || !obj.checksum.value) throw new Error('备份文件缺少校验值，无法确认完整性');
@@ -24733,9 +25368,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var hcResult = { applied:false, recipes:0, favorites:0, feedback:0 };
       var ptPrevRaw = null, ptPrevStore = JSON.parse(JSON.stringify(pantryLoad()));
       var ckPrevRaw = null, ckPrevStore = JSON.parse(JSON.stringify(homeCookLoad()));
-      try{ ptPrevRaw = localStorage.getItem(PANTRY_KEY); ckPrevRaw = localStorage.getItem(COOKLOG_KEY); }catch(e){ ptPrevRaw = null; ckPrevRaw = null; }
+      var wkPrevRaw = null, wkPrevStore = JSON.parse(JSON.stringify(homeWeekLoad()));
+      var cpPrevRaw = null, cpPrevStore = JSON.parse(JSON.stringify(homeCookProgLoad()));
+      try{
+        ptPrevRaw = localStorage.getItem(PANTRY_KEY); ckPrevRaw = localStorage.getItem(COOKLOG_KEY);
+        wkPrevRaw = localStorage.getItem(WEEK_KEY); cpPrevRaw = localStorage.getItem(COOKPROG_KEY);
+      }catch(e){ ptPrevRaw = null; ckPrevRaw = null; wkPrevRaw = null; cpPrevRaw = null; }
       var ptResult = { applied:false, items:pantryLoad().items.length };
       var ckResult = { applied:false, items:homeCookLoad().items.length };
+      var wkResult = { applied:false, days:0 };
+      var cpResult = { applied:false, items:homeCookProgLoad().items.length };
       var fvPrevRaw = null, fvPrevStore = JSON.parse(JSON.stringify(favoritesLoad()));
       try{ fvPrevRaw = localStorage.getItem(FAV_KEY); }catch(e){ fvPrevRaw = null; }
       function rollbackFavorites(){
@@ -24757,6 +25399,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         hcResult = applyBackupHome(obj.payload.recipes, obj.payload.homefb, mode);
         ptResult = applyBackupPantry(obj.payload.pantry, mode);
         ckResult = applyBackupCookLog(obj.payload.cooklog, mode);
+        wkResult = applyBackupWeek(obj.payload.week, mode);
+        cpResult = applyBackupCookProg(obj.payload.cookprog, mode);
         fvResult = applyBackupFavorites(obj.payload.favorites, mode);
         /* v2 模式下写 v2（读回校验），v1 模式下沿用 commitDbString */
         committed = commitDbNext(next);
@@ -24769,6 +25413,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         rollbackDishes(dsPrevRaw, dsPrevStore);
         rollbackHome(hcPrevRaw, hcPrevStore, hfPrevRaw, hfPrevStore);
         homeCookRollback(ptPrevRaw, ptPrevStore, ckPrevRaw, ckPrevStore);
+        homeWeekRollback(wkPrevRaw, wkPrevStore);
+        homeCookProgRollback(cpPrevRaw, cpPrevStore);
         rollbackFavorites();
         throw e;
       }
@@ -24792,6 +25438,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         recipesApplied:!!hcResult.applied, recipes:hcResult.recipes, recipeFav:hcResult.favorites, homeFeedback:hcResult.feedback,
         pantryApplied:!!ptResult.applied, pantry:ptResult.items,
         cooklogApplied:!!ckResult.applied, cooklog:ckResult.items,
+        weekApplied:!!wkResult.applied, weekDays:wkResult.days,
+        cookprogApplied:!!cpResult.applied, cookprog:cpResult.items,
         favoritesApplied:!!fvResult.applied, favorites:favoriteCount(), favoritesAdded:fvResult.added,
         favoritesLegacy:!!fvResult.legacy,
         missingPhotos:countMissingPhotos(norm, photoMap), ms:Math.round(nowMs() - t0),
@@ -29514,6 +30162,26 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         clear: function(){ homeCookPersist({ version:HOME_EXT_VERSION, items:[] }); return true; },
         raw: function(){ try{ return localStorage.getItem(COOKLOG_KEY); }catch(e){ return null; } }
       },
+      week: {
+        load: function(){ return JSON.parse(JSON.stringify(homeWeekLoad())); },
+        generate: function(){ homeWeekGenerate(); return JSON.parse(JSON.stringify(homeWeekLoad())); },
+        lock: function(i){ return homeWeekToggleLock(i); },
+        budget: function(n){ return homeWeekSetBudget(n); },
+        shop: function(){ return homeWeekShopList(); },
+        renderText: function(){ return $('#homeWeekDays') ? $('#homeWeekDays').innerText : ''; },
+        shopText: function(){ return $('#homeShopList') ? $('#homeShopList').innerText : ''; },
+        raw: function(){ try{ return localStorage.getItem(WEEK_KEY); }catch(e){ return null; } }
+      },
+      cookmode: {
+        open: function(id){ var ok = homeCookModeOpen(id); return { ok:ok, open: $('#cookMask') ? !$('#cookMask').classList.contains('hidden') : false, step: cookState.step, total: cookState.steps.length, text: $('#cookStepText') ? $('#cookStepText').textContent : '' }; },
+        next: function(){ var ok = homeCookModeGo(1); return { ok:ok, step: cookState.step, text: $('#cookStepText') ? $('#cookStepText').textContent : '' }; },
+        prev: function(){ var ok = homeCookModeGo(-1); return { ok:ok, step: cookState.step }; },
+        close: function(){ homeCookModeClose(); return { open: $('#cookMask') ? !$('#cookMask').classList.contains('hidden') : false }; },
+        get: function(id){ return homeCookProgressGet(id); },
+        raw: function(){ try{ return localStorage.getItem(COOKPROG_KEY); }catch(e){ return null; } }
+      },
+      stats: function(){ return homeStatsData(); },
+      statsText: function(){ renderHomeStats(); return $('#homeStatsBox') ? $('#homeStatsBox').innerText : ''; },
       match: function(id){ return homePantryMatch(homeRecipeBy(id)); },
       reason: function(id){ var r = homeRecipeBy(id); return r ? homeRecoReason({ recipe:r, weight:0, candidates:0, relaxed:false }) : ''; },
       candidates: function(opts){
@@ -29550,8 +30218,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         return out;
       },
       reset: function(){
-        try{ localStorage.removeItem(RECIPES_KEY); localStorage.removeItem(HOMEFB_KEY); localStorage.removeItem(PANTRY_KEY); localStorage.removeItem(COOKLOG_KEY); }catch(e){}
-        homeRecipeStore = null; homeFbStore = null; pantryStore = null; cookStore = null; homeState.recoId = '';
+        try{ localStorage.removeItem(RECIPES_KEY); localStorage.removeItem(HOMEFB_KEY); localStorage.removeItem(PANTRY_KEY); localStorage.removeItem(COOKLOG_KEY); localStorage.removeItem(WEEK_KEY); localStorage.removeItem(COOKPROG_KEY); }catch(e){}
+        homeRecipeStore = null; homeFbStore = null; pantryStore = null; cookStore = null; weekStore = null; cookProgStore = null; homeState.recoId = '';
         return true;
       }
     },
