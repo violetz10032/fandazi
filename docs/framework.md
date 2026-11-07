@@ -1,8 +1,8 @@
-# i吃饭 · 框架方案（v6 · PWA + 时间×距离推荐 + 批量导出 + 好友分享 + 互导教程）
+# i吃饭 · 框架方案（v8 · 第二阶段：统一反馈 / 合并增强 / 旅行多站点 / 架构收口）
 
 > 一个「美食记录 + 场景决策 + 时间/距离推荐 + 价格区间抽签 + 批量导出 + 好友本地互导」的单页应用。
 > 当前实现：`index.html` 单文件内联 CSS/JS；同级 `manifest.webmanifest`、`sw.js`、4 个本地图标。
-> 数据版本：3（旧 v1/v2 自动迁移）；应用版本：v6。
+> 数据版本：3（旧 v1/v2 自动迁移）；应用版本：v8（第二阶段全部落地，含 7 个独立增量键）。
 > 历史版本：`_backups/index-v1.html`（v1）… `index-v7.html`（最新一份备份）。备份文件不入库，版本演进见 git 提交历史。
 > 日期：2026-11-05
 
@@ -699,3 +699,76 @@ i吃饭 · 分享清单
 | `README.md` | 项目介绍、本地运行、部署与功能清单 |
 | `docs/framework.md` | 本文件 |
 | `docs/features.md` | 同类产品参考与差异 |
+
+---
+
+## 11. 第二阶段（v8）实现说明
+
+本节的每条都对应 `index.html` 里已落地的代码；没有代码支撑的设想不写。
+
+### 11.1 独立增量键（不再往主库塞新字段）
+
+| 键 | 内容 | 写入函数 | 说明 |
+| --- | --- | --- | --- |
+| `fandazi.v2` / `fandazi.v1` | 主库（记录 / 店铺 / 想去 / 设置） | `save()` | 旧版结构，迁移时只读 |
+| `fandazi.shopmeta` | 店铺补充档案（电话、链接等字段对象） | `shopFieldSet` | `fields[key] = {value,source,at}` |
+| `fandazi.favorites` | 独立收藏夹 | `favoriteToggle` / `favoritesPersist` | 与想去分开存储、分开读写 |
+| `fandazi.feedback` | 推荐反馈 `{version:3, items[], history[]}` | `feedbackPersist` | 旧 v1/v2 raw 直接可读 |
+| `fandazi.dishes` | 菜品 `{version:1, items[]}` | `dishAdd` / `dishUpdate` | 必须挂 `visitId` |
+| `fandazi.trips` | 旅行行程（含每天预算、stop 优先级） | `tripsPersist` | 不写 `db.records` |
+| `fandazi.mergeundo` | 最近一次合并的 5 键快照 | `shopMergeKeys` | 仅保留一次，用于撤销 |
+
+所有键都进备份整包（`BACKUP_SCHEMA_VERSION = 8`）；旧备份缺段时保持本机数据不动。
+
+### 11.2 统一推荐反馈（v3）
+
+- **七个入口同一套反馈层**：`FB_SURFACES = {daily, draw, blind, friend, gather, fitness, trip}`，七处卡片都通过 `feedbackBarHtml(store, surface)` 渲染同一组按钮。
+- **六档语义各自独立**（`FB_ACTIONS`）：
+  - `want` 想吃：正向加权；
+  - `neutral` 可以考虑：清空正负；
+  - `today` 今天不想吃：只写 `feedbackToday.items`，不进 `items`，次日按日期键自然失效；
+  - `tired` 最近吃腻了：写入 `items` 并带 `until`（`FB_TIRED_DAYS = 21` 天），到期自动失效；
+  - `dislike` 不喜欢这家：长期降权，可撤销，撤销后权重按时间缓慢恢复；
+  - `never` 永不推荐：写 `items` 同时写 `db.blacklist`，七处候选统一排除。
+- **绝不生成到店记录**：`applyFeedback` 只动 `feedbackStore` / `feedbackToday` / `db.blacklist`，不调用任何记录写入函数；实测每次反馈后 `db.records` 条数不变。
+- **改判与撤销**：同一 key 再选其它档位会替换旧档位；`undoFeedback(key, action)` 删掉该档并回滚 `never` 对应的黑名单项。
+- **历史可回答「为什么」**：`feedbackLog` 往 `history` 追加 `{key,name,action,surface,prev,until,at}`（上限 `FB_HISTORY_MAX = 300`），`feedbackReasonText` / `feedbackExplainText` 用当前档位 + `tired` 到期时间 + 上次改判生成解释。
+- **失败的写不装作成功**：`saveFeedbackStore()` 返回布尔；失败时 `fbSnapshot()` / `fbRestore()` 把内存回滚，`applyFeedback` 返回 `false` 并弹「反馈保存失败」。
+- **算法仍各归各**：每日推荐用 `dailyScore`，抽签用 `runDraw` + 预算/价格区间，盲盒、朋友、聚会、健身、旅行各有自己的候选池与排序；统一的只是反馈与数据管理，不是把七套排序合并成一套。时间衰减、探索位、推荐解释保持原样。
+
+### 11.3 店铺合并增强
+
+- **入口**：`#btnDupScan` → `openDupScanSheet()`；`shopDupScanAll()` 只产出候选（同一高德 POI、同名且地址一致/包含、同名且坐标一致），最多 30 组，**不自动合并、不自动删除**。
+- **合并前预览**：`openMergeSheet(fromKey, toKey)` 并排渲染双方资料、照片数、到店记录、收藏、想去、旅行引用、反馈/黑名单，并提供「保留哪一方资料」单选（`mergeCtx.keep`）。
+- **迁移清单**（`shopMergeKeys`）：记录改名（`keyOf` 归一）、`shopmeta` 合并、收藏键改写（`favoriteKeyOf`）、想去键改写（`wishlistMigrateKey`）、黑名单（`blacklistMigrateKey`）、反馈（`feedbackMigrateKey`）、旅行 stop 的 `shopId` 与名称（`tripsMigrateStops`，重复 stop 去重）。
+- **失败回滚**：迁移前 `mergeRawSnap()` 抓 5 键原始字符串；任一步失败或最终校验发现源键残留，`mergeRestoreRaws()` 逐键写回并给用户可见错误，不静默覆盖。
+- **撤销**：成功后把 `{before, after}` 写进 `fandazi.mergeundo`；`shopMergeUndo()` 先逐键比对当前 raw 与 `after`，不一致就拒绝并提示「合并后数据已变动」，保留现状。
+
+### 11.4 旅行多站点（第二阶段⑤）
+
+- **数据**：`tripNorm` 增加 `dayBudget`（日期键 → 正整数，上限 40 天）；`tripStopNorm` 增加 `priority`（`'' / must / backup`）。旧数据缺这两个字段时按空值读取，stop 不丢。
+- **按天分组**：`tripGroupedHtml` 按 `stop.day` 分组，未定日期的单独一组；组内上移/下移由 `tripStopMove` 只交换同一天内的位置，到边界返回 `false` 并提示。
+- **直线距离建议**：`tripOrderDayFromDist` 以当天第一家为起点做最近邻（`haversineKm`），无坐标店排最后；界面固定写明「直线距离，不是道路里程，也不估算行驶时间」，排序结果随时可被上移/下移覆盖。
+- **每天预算**：`tripDayBudgetSet` 写 `dayBudget`，`tripDayStats` 汇总「预计餐饮 ¥合计（已设 N 天）」，清空即删除该天。
+- **筛选**：`tripFilteredStops` 支持距离（`storeKm`，缺坐标不进结果）、参考人均、菜系、评分；清空后恢复全部。
+- **随机选店**：`tripRandomPick` 只在当前筛选结果里选并高亮，不写记录、不改 stop 状态。
+- **信息展示**：卡片展示 `address`（最近记录）、`shopFieldOf(shopId,'phone').value`、`个人评价`（最近记录 `note`），并可直接编辑行程备注；缺失显示「暂无」。
+- **打卡**：`tripStopEat` 走原有记录表单并带入 `shopId/店名/城市`，确认后仍是同一条店铺档案。
+- **分享与导入导出**：`buildTripPayload` / `buildTripLink` 不变，payload 里的 stop 仍保留 `day`、`priority` 等字段。
+
+### 11.5 架构收口
+
+- **监听器**：全局委托集中在 `document` 的 `click / input / change / keydown` 与 `window` 的 `resize / popstate / focusin`；`homeUIInit()`、`blindBallInit()`、地图指针事件都只在启动时绑定一次。CDP `DOMDebugger.getEventListeners` 实测 10 轮「切页 + 开关弹层」后 window 10、document 12，增长为 0。
+- **定时器**：盲盒转速、等待计时、嵌入地图 ping 都自带 `clear`；`renderReminder` 的 60s 轮询与 `maybeNotify()` 在 `document.hidden` 时直接跳过，回到前台由 `visibilitychange` 补一次。
+- **失败分支可见**：主库 `save()`、收藏、反馈（`saveFeedbackStore` 返回布尔 + 内存回滚）、旅行（`tripsPersist`）、菜品、一周菜单（`homeWeekPersist`）、食材（`pantryAdd/pantryRemove`）、分享包、备份恢复、合并失败、撤销拒绝，都走 `toast()` 或弹层文案，不再只写 `logError`。
+- **初始化失败不静默**：`homeUIInit()` / `blindBallInit()` 抛错时 `logError` 之外还会提示「初始化失败，部分功能可能不可用」。
+
+### 11.6 第二阶段实测
+
+| 脚本 | 结果 | 覆盖重点 |
+| --- | --- | --- |
+| `.tmp/feedback-test.js` | 0 FAIL | 六档、七入口、改判/撤销、历史、备份、旧数据、性能 |
+| `.tmp/feedback-v3-test.js` | 19/19 | surface 取值、朋友/聚会/健身真实面板、history、旧 v2 raw |
+| `.tmp/merge-enhance-test.js` | 21/21 | 预览并排、迁移 7 类、源键不残留、去重、撤销逐字节、拒绝覆盖、扫描不自动合并 |
+| `.tmp/trip-multistop-test.js` | 18/18 | 分组、预算、必去/备选、上移下移、直线排序与文案、四筛、随机不落库、展示、打卡、分享、备份、旧数据、375 |
+| `.tmp/arch-audit-test.js` | 5/5 | 监听器不增长、interval 不残留、无重复委托、四类写失败提示、0 异常 |

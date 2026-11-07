@@ -7359,14 +7359,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       });
       day.dishes = dishes;
     });
-    homeWeekPersist(wk);
+    if(!homeWeekPersist(wk)) toast('一周菜单保存失败：本机存储空间不足');
     renderHomeWeek();
   }
   function homeWeekToggleLock(idx){
     var wk = homeWeekLoad();
     if(!wk.days[idx]) return false;
-    wk.days[idx].locked = !wk.days[idx].locked;
-    homeWeekPersist(wk);
+    var next = !wk.days[idx].locked;
+    wk.days[idx].locked = next;
+    if(!homeWeekPersist(wk)){ toast('锁定失败：本机存储空间不足'); wk.days[idx].locked = !next; renderHomeWeek(); return !next; }
     renderHomeWeek();
     return wk.days[idx].locked;
   }
@@ -7374,8 +7375,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var n = Number(v);
     if(!isFinite(n) || n < 20 || n > 500) return false;
     var wk = homeWeekLoad();
+    var prev = wk.budget;
     wk.budget = Math.round(n);
-    homeWeekPersist(wk);
+    if(!homeWeekPersist(wk)){ toast('预算保存失败：本机存储空间不足'); wk.budget = prev; return false; }
     if($('#homeWeekBudgetTotal')) $('#homeWeekBudgetTotal').textContent = '¥' + (wk.budget * HOME_WEEK_DAYS);
     return true;
   }
@@ -7723,7 +7725,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var st = homeRecipesLoad();
     var next = JSON.parse(JSON.stringify(st));
     next.lastPicks = (next.lastPicks || []).concat([recipeId]).slice(-HOME_LAST_PICKS);
-    homeRecipesPersist(next);
+    if(!homeRecipesPersist(next) && !homeRecoSave._warned){ homeRecoSave._warned = true; toast('推荐历史未保存：本机存储空间不足'); }
     homeState.recoId = recipeId;
   }
 
@@ -8391,8 +8393,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
     /* 食材录入：手动输入，不做克数/保质期 */
     function homePantryAddFromForm(){
-      var item = pantryAdd($('#hpName') ? $('#hpName').value : '', $('#hpAmount') ? $('#hpAmount').value : '', $('#hpUnit') ? $('#hpUnit').value : '');
-      if(!item){ toast('请先填写食材名称'); return; }
+      var nm = $('#hpName') ? $('#hpName').value : '';
+      if(!String(nm || '').trim()){ toast('请先填写食材名称'); return; }
+      var item = pantryAdd(nm, $('#hpAmount') ? $('#hpAmount').value : '', $('#hpUnit') ? $('#hpUnit').value : '');
+      if(!item){ toast('食材保存失败：本机存储空间不足'); return; }
       if($('#hpName')) $('#hpName').value = '';
       if($('#hpAmount')) $('#hpAmount').value = '';
       if($('#hpUnit')) $('#hpUnit').value = '';
@@ -8408,6 +8412,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       if(!del) return;
       var id = del.getAttribute('data-hpdel');
       if(pantryRemove(id)){ toast('已移除食材'); renderHomePantry(); }
+      else toast('移除失败：本机存储空间不足，食材仍保留');
     });
     if($('#hlQ')) $('#hlQ').addEventListener('input', renderHomeLog);
     if($('#hlMonth')) $('#hlMonth').addEventListener('change', renderHomeLog);
@@ -12400,9 +12405,25 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function saveFeedbackStore(){
     try{ localStorage.setItem(FB_KEY, JSON.stringify({ version:FB_VERSION, items:feedbackStore.items, history:feedbackStore.history || [] })); }
-    catch(e){ logError('反馈保存', e); toast('反馈保存失败：本机存储可能已满'); }
+    catch(e){ logError('反馈保存', e); toast('反馈保存失败：本机存储可能已满'); return false; }
     invalidateProfile();
     renderProfile();
+    return true;
+  }
+  /* 写失败时把内存状态回滚到快照，避免界面显示「已生效」但实际没落库 */
+  function fbSnapshot(){
+    return {
+      items: feedbackStore.items.slice(),
+      history: (feedbackStore.history || []).slice(),
+      today: JSON.parse(JSON.stringify(feedbackToday.items)),
+      blacklist: db.blacklist.slice()
+    };
+  }
+  function fbRestore(snap){
+    feedbackStore.items = snap.items;
+    feedbackStore.history = snap.history;
+    feedbackToday.items = snap.today;
+    db.blacklist = snap.blacklist;
   }
   function ensureFeedbackToday(){
     var d = todayStr();
@@ -12480,17 +12501,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       feedbackStore.items.push(item);
     }
     feedbackLog(key, store.name, action, surf, prevIt ? prevIt.action : '', item ? item.until : null);
-    saveFeedbackStore();
+    if(!saveFeedbackStore()) return false;
     return item;
   }
   function applyFeedback(action, store, surface){
     if(!store || !FB_ACTIONS[action]) return false;
     ensureFeedbackToday();
     var key = feedbackKeyOf(store);
+    var snap = fbSnapshot();
     if(action === 'today'){
       feedbackToday.items[key] = { key:key, name:String(store.name || ''), at:new Date().toISOString() };
       feedbackLog(key, store.name, 'today', surface, '', null);
-      saveFeedbackStore();
+      if(!saveFeedbackStore()){ fbRestore(snap); return false; }
       toast('已把「'+(store.name||'这家店')+'」从今天的推荐中排除，明天恢复');
       refreshAfterFeedback();
       return true;
@@ -12498,14 +12520,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(action === 'never'){
       if(!confirm('把「'+(store.name||'这家店')+'」设为永不推荐？\n\n将从推荐、抽签、盲盒、聚会与旅行候选中彻底排除，可在「我的 → 推荐反馈」或黑名单里移除。')) return false;
       delete feedbackToday.items[key];
+      if(feedbackPersist('never', store, surface) === false){ fbRestore(snap); return false; }
       if(!isBlack(store)) blackStore(store);
-      feedbackPersist('never', store, surface);
       toast('已标记为永不推荐');
       refreshAfterFeedback();
       return true;
     }
     delete feedbackToday.items[key];
-    feedbackPersist(action, store, surface);
+    if(feedbackPersist(action, store, surface) === false){ fbRestore(snap); return false; }
     var msg = action === 'neutral' ? '已标记为可以考虑，之前的正负反馈已替换'
       : action === 'want' ? '已标记想吃，推荐会适度提高这家店'
       : action === 'tired' ? '已标记吃腻了，'+FB_TIRED_DAYS+' 天内降权，到期自动恢复'
@@ -12526,11 +12548,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function undoFeedback(key, action){
     ensureFeedbackToday();
+    var snap = fbSnapshot();
     var dbChanged = false;
     if(action === 'today'){
       delete feedbackToday.items[key];
       feedbackLog(key, '', 'undo', '', 'today', null);
-      saveFeedbackStore();
+      if(!saveFeedbackStore()){ fbRestore(snap); return false; }
     }else{
       var cur = feedbackActiveFor(key);
       feedbackStore.items = feedbackStore.items.filter(function(it){
@@ -12544,7 +12567,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         return false;
       });
       feedbackLog(key, cur ? cur.name : '', 'undo', cur ? cur.surface : '', action, null);
-      saveFeedbackStore();
+      if(!saveFeedbackStore()){ fbRestore(snap); return false; }
     }
     if(dbChanged) save();
     toast('已撤销反馈');
@@ -12563,12 +12586,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     feedbackStore.items.forEach(function(it){
       if(it.action === 'never'){ blackKeys[it.blackKey || it.key] = 1; blackKeys[it.key] = 1; }
     });
+    var snap = fbSnapshot();
     feedbackStore.items = [];
     feedbackStore.history = [];
     feedbackToday.items = {};
     var before = db.blacklist.length;
     db.blacklist = db.blacklist.filter(function(b){ return !blackKeys[b.key]; });
-    saveFeedbackStore();
+    if(!saveFeedbackStore()){ fbRestore(snap); return false; }
     if(before !== db.blacklist.length) save();
     toast('已清空全部推荐反馈');
     renderFeedback();
@@ -29105,17 +29129,25 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   initLauncherIcon();
   initTheme();
   renderAll();
-  try{ homeUIInit(); }catch(e){ logError('在家吃初始化', e); }
+  try{ homeUIInit(); }catch(e){ logError('在家吃初始化', e); toast('「在家吃」初始化失败，部分功能可能不可用'); }
   webdavInit();
   showView('record');
-  try{ blindBallInit(); blindShakeBind(); }catch(e){ logError('盲盒初始化', e); }
+  try{ blindBallInit(); blindShakeBind(); }catch(e){ logError('盲盒初始化', e); toast('盲盒初始化失败，摇一摇可能不可用'); }
   setTimeout(function(){ try{ updateBlindShakeUi(); }catch(e){} }, 5000);
   showV2PostAction();
   bootMs = nowMs() - BOOT_START;
   registerSW();
   updateNotifyUI();
   setTimeout(function(){ renderReminder(); maybeNotify(); }, 400);
-  setInterval(function(){ try{ renderReminder(); maybeNotify(); }catch(e){ logError('饭点提醒', e); } }, 60000);
+  /* 页面不可见时不做无意义的提醒重算与通知判定，回到前台立刻补一次 */
+  setInterval(function(){
+    if(document.hidden) return;
+    try{ renderReminder(); maybeNotify(); }catch(e){ logError('饭点提醒', e); }
+  }, 60000);
+  document.addEventListener('visibilitychange', function(){
+    if(document.hidden) return;
+    try{ renderReminder(); maybeNotify(); }catch(e){ logError('饭点提醒', e); }
+  });
   window.__fandaziDiag = function(){
     return {
       records: db.records.length, stores: getStores().length,
