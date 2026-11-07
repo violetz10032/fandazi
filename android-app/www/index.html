@@ -5151,6 +5151,396 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       ingredients:[{name:'豆腐',amount:'半',unit:'盒'},{name:'木耳',amount:'20',unit:'g'},{name:'鸡蛋',amount:'1',unit:'个'},{name:'醋',amount:'15',unit:'ml'},{name:'白胡椒',amount:'2',unit:'g'}],
       steps:['豆腐木耳切丝，加水煮开。','勾薄芡。','淋蛋液。','加醋和白胡椒调味。'],
       tips:'醋最后放，酸味更明显。' });
+    /* ===== 第一批扩容：只追加，不改动上面 26 道的顺序与内容 ===== */
+    add({ name:'水煮肉片', emoji:'🌶️', category:'川菜', tags:['下饭','麻辣'], difficulty:3, minutes:30, servings:3, kcal:420, protein:28,
+      ingredients:[{name:'里脊肉',amount:'300',unit:'g'},{name:'豆芽',amount:'200',unit:'g'},{name:'干辣椒',amount:'10',unit:'个'},{name:'花椒',amount:'5',unit:'g'},{name:'豆瓣酱',amount:'20',unit:'g'}],
+      steps:['里脊切薄片，加盐和淀粉抓匀腌 10 分钟。','豆芽焯水 1 分钟铺碗底。','炒香豆瓣酱，加水烧开，下肉片煮 2 分钟。','连汤倒入碗中，撒干辣椒花椒，浇热油激香。'],
+      tips:'火候：汤微沸再下肉片，煮 2 分钟即可；失败：久煮发柴；可换：里脊换牛肉或鸡胸。' });
+    add({ name:'回锅肉', emoji:'🥓', category:'川菜', tags:['下饭','微辣'], difficulty:2, minutes:25, servings:3, kcal:450, protein:24,
+      ingredients:[{name:'五花肉',amount:'300',unit:'g'},{name:'青蒜',amount:'2',unit:'根'},{name:'豆瓣酱',amount:'15',unit:'g'},{name:'生抽',amount:'10',unit:'ml'},{name:'糖',amount:'5',unit:'g'}],
+      steps:['五花肉冷水下锅煮 20 分钟，捞出切薄片。','锅中不放油，煸肉片到出油微卷。','下豆瓣酱炒出红油。','加青蒜、生抽和糖，翻炒 1 分钟出锅。'],
+      tips:'火候：中火煸到肉片边缘卷起才香；失败：肉太厚不易出油；可换：五花肉换二刀肉。' });
+    add({ name:'酸菜鱼', emoji:'🐟', category:'川菜', tags:['下饭','酸辣'], difficulty:3, minutes:35, servings:3, kcal:380, protein:32,
+      ingredients:[{name:'草鱼',amount:'1',unit:'条'},{name:'酸菜',amount:'200',unit:'g'},{name:'泡椒',amount:'5',unit:'个'},{name:'姜',amount:'3',unit:'片'},{name:'蛋清',amount:'1',unit:'个'}],
+      steps:['鱼片加蛋清和淀粉腌 10 分钟。','炒酸菜、泡椒和姜片，加水烧开煮 5 分钟。','下鱼片煮 2 分钟，色变白即关火。','撒花椒和葱花，浇热油。'],
+      tips:'火候：鱼片下锅后不要搅动以免碎；失败：汤没烧开就下鱼易腥；可换：草鱼换黑鱼片。' });
+    add({ name:'口水鸡', emoji:'🍗', category:'川菜', tags:['凉菜','麻辣'], difficulty:2, minutes:40, servings:3, kcal:360, protein:26,
+      ingredients:[{name:'鸡腿',amount:'2',unit:'个'},{name:'姜',amount:'3',unit:'片'},{name:'葱',amount:'2',unit:'根'},{name:'辣椒油',amount:'30',unit:'ml'},{name:'生抽',amount:'15',unit:'ml'},{name:'醋',amount:'10',unit:'ml'}],
+      steps:['鸡腿冷水下锅，加姜葱煮 15 分钟，关火焖 10 分钟。','捞出过冰水，斩块摆盘。','辣椒油、生抽、醋和花椒粉调汁。','淋在鸡块上，撒葱花和熟芝麻。'],
+      tips:'火候：煮后焖熟比一直煮更嫩；失败：没过冰水皮不弹；可换：鸡腿换整鸡腿肉。' });
+    add({ name:'蒜泥白肉', emoji:'🥓', category:'川菜', tags:['凉菜','蒜香'], difficulty:2, minutes:35, servings:3, kcal:400, protein:22,
+      ingredients:[{name:'五花肉',amount:'300',unit:'g'},{name:'蒜',amount:'6',unit:'瓣'},{name:'生抽',amount:'15',unit:'ml'},{name:'辣椒油',amount:'10',unit:'ml'},{name:'黄瓜',amount:'1',unit:'根'}],
+      steps:['五花肉冷水下锅煮 25 分钟，关火泡 10 分钟。','捞出放凉切薄片，黄瓜切丝垫底。','蒜捣成泥，加生抽和辣椒油调匀。','肉片摆盘，淋蒜泥汁。'],
+      tips:'火候：煮到筷子能穿透即可；失败：热切易碎，放凉再切；可换：黄瓜换莴笋丝。' });
+    add({ name:'干锅花菜', emoji:'🥦', category:'川菜', tags:['下饭','微辣'], difficulty:2, minutes:20, servings:2, kcal:210, protein:7,
+      ingredients:[{name:'花菜',amount:'1',unit:'颗'},{name:'五花肉',amount:'100',unit:'g'},{name:'干辣椒',amount:'5',unit:'个'},{name:'蒜',amount:'3',unit:'瓣'},{name:'生抽',amount:'10',unit:'ml'}],
+      steps:['花菜掰小朵，焯水 1 分钟沥干。','五花肉切片煸出油。','下花菜和干辣椒大火炒 3 分钟。','加蒜末和生抽翻匀出锅。'],
+      tips:'火候：花菜大火炒到边缘微焦最香；失败：焯水过头会软塌；可换：花菜换西兰花。' });
+    add({ name:'酸辣粉', emoji:'🍜', category:'川菜', tags:['主食','酸辣'], difficulty:1, minutes:20, servings:1, kcal:420, protein:10,
+      ingredients:[{name:'红薯粉',amount:'100',unit:'g'},{name:'花生米',amount:'20',unit:'g'},{name:'醋',amount:'15',unit:'ml'},{name:'辣椒油',amount:'10',unit:'ml'},{name:'生抽',amount:'10',unit:'ml'}],
+      steps:['红薯粉用温水泡软 10 分钟。','碗中调醋、生抽、辣椒油和少量盐。','水开下粉煮 3 分钟。','捞入碗中，加热汤，撒花生米和葱花。'],
+      tips:'火候：粉煮到透明即可；失败：煮久易断；可换：红薯粉换宽粉。' });
+
+    add({ name:'剁椒鱼头', emoji:'🐟', category:'湘菜', tags:['下饭','辣'], difficulty:2, minutes:30, servings:3, kcal:320, protein:30,
+      ingredients:[{name:'胖头鱼头',amount:'1',unit:'个'},{name:'剁椒',amount:'80',unit:'g'},{name:'姜',amount:'3',unit:'片'},{name:'蒸鱼豉油',amount:'15',unit:'ml'},{name:'葱',amount:'2',unit:'根'}],
+      steps:['鱼头剖开洗净，抹薄盐腌 10 分钟。','铺姜片，再铺剁椒。','水开后大火蒸 12 分钟。','淋蒸鱼豉油，撒葱花。'],
+      tips:'火候：水开上汽后再放鱼；失败：蒸久肉散；可换：胖头鱼头换鲢鱼头。' });
+    add({ name:'辣椒炒肉', emoji:'🌶️', category:'湘菜', tags:['下饭','辣'], difficulty:2, minutes:15, servings:2, kcal:380, protein:22,
+      ingredients:[{name:'五花肉',amount:'200',unit:'g'},{name:'螺丝椒',amount:'4',unit:'个'},{name:'蒜',amount:'3',unit:'瓣'},{name:'生抽',amount:'10',unit:'ml'}],
+      steps:['五花肉切薄片，辣椒切段。','干锅煸辣椒 30 秒盛出。','下肉片煸出油。','回锅辣椒，加蒜末和生抽炒 2 分钟。'],
+      tips:'火候：全程中大火，辣椒要煸出虎皮；失败：辣椒久炒发黄；可换：螺丝椒换杭椒。' });
+    add({ name:'小炒黄牛肉', emoji:'🥩', category:'湘菜', tags:['下饭','辣'], difficulty:2, minutes:18, servings:2, kcal:360, protein:30,
+      ingredients:[{name:'黄牛肉',amount:'250',unit:'g'},{name:'小米椒',amount:'5',unit:'个'},{name:'芹菜',amount:'100',unit:'g'},{name:'蒜',amount:'3',unit:'瓣'},{name:'生抽',amount:'10',unit:'ml'}],
+      steps:['牛肉逆纹切薄片，加生抽腌 10 分钟。','大火下锅炒 30 秒，变色盛出。','炒香小米椒、芹菜和蒜。','回锅牛肉，翻炒 1 分钟出锅。'],
+      tips:'火候：锅要够热，牛肉分两次下；失败：炒久出水变韧；可换：黄牛肉换牛里脊。' });
+    add({ name:'腊味合蒸', emoji:'🥓', category:'湘菜', tags:['蒸菜','咸鲜'], difficulty:2, minutes:45, servings:3, kcal:480, protein:24,
+      ingredients:[{name:'腊肉',amount:'150',unit:'g'},{name:'腊肠',amount:'100',unit:'g'},{name:'姜',amount:'3',unit:'片'},{name:'豆豉',amount:'10',unit:'g'}],
+      steps:['腊肉腊肠切片，温水泡 10 分钟去咸。','码入碗中，加姜片和豆豉。','水开上锅蒸 40 分钟。','取出倒扣盘中。'],
+      tips:'火候：中小火蒸透，油脂才融；失败：不泡直接蒸过咸；可换：腊肠换腊鸭。' });
+    add({ name:'酸豆角炒肉末', emoji:'🫘', category:'湘菜', tags:['下饭','酸辣'], difficulty:1, minutes:15, servings:2, kcal:260, protein:14,
+      ingredients:[{name:'酸豆角',amount:'150',unit:'g'},{name:'肉末',amount:'100',unit:'g'},{name:'小米椒',amount:'3',unit:'个'},{name:'蒜',amount:'2',unit:'瓣'}],
+      steps:['酸豆角切小丁，挤去多余水分。','热锅炒肉末到变色。','下酸豆角、小米椒和蒜末炒 3 分钟。','尝味后补少量盐出锅。'],
+      tips:'火候：大火快炒，豆角才脆；失败：豆角不挤水会出水；可换：酸豆角换酸萝卜丁。' });
+    add({ name:'啤酒鸭', emoji:'🦆', category:'湘菜', tags:['炖煮','下饭'], difficulty:3, minutes:60, servings:4, kcal:520, protein:30,
+      ingredients:[{name:'鸭肉',amount:'500',unit:'g'},{name:'啤酒',amount:'500',unit:'ml'},{name:'姜',amount:'4',unit:'片'},{name:'干辣椒',amount:'4',unit:'个'},{name:'生抽',amount:'15',unit:'ml'}],
+      steps:['鸭块冷水焯水 3 分钟，捞出沥干。','锅中煸鸭块到出油微黄。','倒啤酒，加姜、干辣椒和生抽。','小火炖 40 分钟，再大火收汁。'],
+      tips:'火候：小火慢炖去腥，最后收汁；失败：啤酒没过鸭块易夹生；可换：啤酒换花雕酒。' });
+    add({ name:'粉蒸肉', emoji:'🍖', category:'湘菜', tags:['蒸菜','软糯'], difficulty:2, minutes:70, servings:4, kcal:500, protein:22,
+      ingredients:[{name:'五花肉',amount:'400',unit:'g'},{name:'蒸肉米粉',amount:'80',unit:'g'},{name:'生抽',amount:'10',unit:'ml'},{name:'姜',amount:'2',unit:'片'}],
+      steps:['五花肉切厚片，加生抽和姜末腌 20 分钟。','逐片裹匀蒸肉米粉。','码入碗中压实。','水开上锅中小火蒸 60 分钟。'],
+      tips:'火候：中小火久蒸才糯；失败：米粉裹太厚发干；可换：五花肉换排骨。' });
+
+    add({ name:'白切鸡', emoji:'🐔', category:'粤菜', tags:['清淡','原味'], difficulty:2, minutes:45, servings:4, kcal:420, protein:32,
+      ingredients:[{name:'三黄鸡',amount:'半',unit:'只'},{name:'姜',amount:'4',unit:'片'},{name:'葱',amount:'2',unit:'根'},{name:'盐',amount:'5',unit:'g'}],
+      steps:['水烧开，下鸡和姜葱，转小火浸煮 18 分钟。','关火再焖 10 分钟。','捞出立即过冰水 10 分钟。','斩件装盘，配姜葱蓉。'],
+      tips:'火候：水保持微沸不翻滚；失败：火大皮破肉柴；可换：三黄鸡换清远鸡。' });
+    add({ name:'豉汁蒸排骨', emoji:'🍖', category:'粤菜', tags:['蒸菜','咸鲜'], difficulty:2, minutes:30, servings:2, kcal:380, protein:20,
+      ingredients:[{name:'排骨',amount:'300',unit:'g'},{name:'豆豉',amount:'15',unit:'g'},{name:'蒜',amount:'3',unit:'瓣'},{name:'生抽',amount:'10',unit:'ml'},{name:'淀粉',amount:'10',unit:'g'}],
+      steps:['排骨剁小块，加豆豉、蒜末、生抽和淀粉抓匀。','腌 20 分钟。','平铺在盘中，不要叠太厚。','水开蒸 15 分钟。'],
+      tips:'火候：全程大火，蒸汽足才嫩；失败：腌的时间不够不入味；可换：豆豉换豆豉酱。' });
+    add({ name:'蜜汁叉烧', emoji:'🍖', category:'粤菜', tags:['烤制','甜咸'], difficulty:3, minutes:70, servings:4, kcal:460, protein:28,
+      ingredients:[{name:'梅花肉',amount:'500',unit:'g'},{name:'叉烧酱',amount:'40',unit:'g'},{name:'蜂蜜',amount:'15',unit:'ml'},{name:'生抽',amount:'10',unit:'ml'}],
+      steps:['梅花肉切长条，加叉烧酱和生抽腌 4 小时。','烤箱 180 度烤 20 分钟。','翻面刷蜂蜜，再烤 10 分钟。','静置 5 分钟后切片。'],
+      tips:'火候：中途翻面刷蜜上色均匀；失败：不腌透只有表层有味；可换：梅花肉换猪颈肉。' });
+    add({ name:'干炒牛河', emoji:'🍝', category:'粤菜', tags:['主食','锅气'], difficulty:3, minutes:15, servings:2, kcal:520, protein:22,
+      ingredients:[{name:'河粉',amount:'300',unit:'g'},{name:'牛肉',amount:'150',unit:'g'},{name:'豆芽',amount:'100',unit:'g'},{name:'生抽',amount:'15',unit:'ml'},{name:'韭黄',amount:'50',unit:'g'}],
+      steps:['牛肉切片，加生抽和淀粉腌 10 分钟。','大火炒牛肉到变色盛出。','下河粉快速翻炒，加生抽上色。','下豆芽、韭黄和牛肉，炒 1 分钟出锅。'],
+      tips:'火候：锅要烧到冒烟，一次别炒太多；失败：火小会粘锅断粉；可换：韭黄换葱段。' });
+    add({ name:'腊味煲仔饭', emoji:'🍚', category:'粤菜', tags:['主食','一锅出'], difficulty:3, minutes:45, servings:2, kcal:560, protein:24,
+      ingredients:[{name:'大米',amount:'200',unit:'g'},{name:'腊肠',amount:'1',unit:'根'},{name:'腊肉',amount:'100',unit:'g'},{name:'青菜',amount:'100',unit:'g'}],
+      steps:['砂锅下米和水，大火煮开转小火煮 10 分钟。','铺腊肠腊肉，盖盖焖 12 分钟。','下青菜再焖 3 分钟。','淋豉油，拌匀开吃。'],
+      tips:'火候：小火焖出锅巴，听到滋滋声即可；失败：火大会糊底；可换：腊味换排骨。' });
+    add({ name:'皮蛋瘦肉粥', emoji:'🥣', category:'粤菜', tags:['清淡','早餐'], difficulty:1, minutes:50, servings:2, kcal:260, protein:14,
+      ingredients:[{name:'大米',amount:'100',unit:'g'},{name:'皮蛋',amount:'2',unit:'个'},{name:'瘦肉',amount:'100',unit:'g'},{name:'姜',amount:'2',unit:'片'}],
+      steps:['大米淘洗，加水大火烧开转小火煮 30 分钟。','瘦肉切片，下锅加姜煮 10 分钟。','皮蛋切丁下锅再煮 5 分钟。','加盐和白胡椒调味。'],
+      tips:'火候：小火慢煮并偶尔搅动；失败：不搅会粘底；可换：瘦肉换鸡丝。' });
+    add({ name:'白灼虾', emoji:'🍤', category:'粤菜', tags:['清淡','快手'], difficulty:1, minutes:15, servings:2, kcal:180, protein:28,
+      ingredients:[{name:'鲜虾',amount:'500',unit:'g'},{name:'姜',amount:'3',unit:'片'},{name:'葱',amount:'2',unit:'根'},{name:'生抽',amount:'15',unit:'ml'}],
+      steps:['水开加姜葱。','下虾煮 2 分钟，变红卷曲即捞出。','立即过冰水 1 分钟。','生抽加姜末调蘸料。'],
+      tips:'火候：水大开下虾，久煮肉柴；失败：煮后不冰镇口感软；可换：鲜虾换基围虾。' });
+    add({ name:'蒜蓉粉丝蒸扇贝', emoji:'🐚', category:'粤菜', tags:['蒸菜','鲜'], difficulty:2, minutes:20, servings:2, kcal:220, protein:18,
+      ingredients:[{name:'扇贝',amount:'6',unit:'个'},{name:'粉丝',amount:'50',unit:'g'},{name:'蒜',amount:'6',unit:'瓣'},{name:'蒸鱼豉油',amount:'10',unit:'ml'}],
+      steps:['扇贝刷洗干净，取肉去砂。','粉丝泡软，剪段垫在壳中。','铺扇贝肉和炒香的蒜蓉。','水开蒸 6 分钟，淋豉油。'],
+      tips:'火候：大火 6 分钟，久了贝肉缩；失败：粉丝没泡透会硬；可换：扇贝换生蚝。' });
+    add({ name:'香菇滑鸡', emoji:'🍗', category:'粤菜', tags:['蒸菜','嫩滑'], difficulty:2, minutes:30, servings:3, kcal:380, protein:26,
+      ingredients:[{name:'鸡腿肉',amount:'300',unit:'g'},{name:'香菇',amount:'6',unit:'朵'},{name:'姜',amount:'3',unit:'片'},{name:'生抽',amount:'10',unit:'ml'},{name:'淀粉',amount:'10',unit:'g'}],
+      steps:['鸡腿肉切块，加生抽和淀粉腌 15 分钟。','香菇切片，铺在盘底。','摆上鸡块，撒姜丝。','水开蒸 15 分钟。'],
+      tips:'火候：大火足汽蒸，肉才滑；失败：蒸过头肉变老；可换：香菇换滑子菇。' });
+    add({ name:'梅菜扣肉', emoji:'🍖', category:'粤菜', tags:['蒸菜','下饭'], difficulty:3, minutes:90, servings:4, kcal:560, protein:24,
+      ingredients:[{name:'五花肉',amount:'500',unit:'g'},{name:'梅干菜',amount:'100',unit:'g'},{name:'生抽',amount:'15',unit:'ml'},{name:'老抽',amount:'10',unit:'ml'}],
+      steps:['五花肉煮 20 分钟，捞出抹老抽。','皮朝下炸到起泡，切厚片。','梅干菜泡洗后炒香，铺在肉片上。','上锅蒸 60 分钟，倒扣装盘。'],
+      tips:'火候：蒸足时间肉才软糯；失败：梅菜不泡洗会牙碜；可换：梅干菜换芽菜。' });
+    add({ name:'蒜香排骨', emoji:'🍖', category:'粤菜', tags:['炸制','蒜香'], difficulty:2, minutes:35, servings:3, kcal:460, protein:24,
+      ingredients:[{name:'排骨',amount:'500',unit:'g'},{name:'蒜',amount:'6',unit:'瓣'},{name:'生抽',amount:'15',unit:'ml'},{name:'淀粉',amount:'15',unit:'g'}],
+      steps:['排骨剁段，加蒜末和生抽腌 30 分钟。','裹一层薄淀粉。','中火炸 6 分钟至金黄熟透。','捞出沥油，撒蒜末。'],
+      tips:'火候：中火慢炸，内部才熟；失败：油温太高外焦里生；可换：排骨换鸡翅。' });
+    add({ name:'洋葱炒牛肉', emoji:'🧅', category:'粤菜', tags:['快手','咸鲜'], difficulty:2, minutes:18, servings:2, kcal:340, protein:28,
+      ingredients:[{name:'牛肉',amount:'250',unit:'g'},{name:'洋葱',amount:'1',unit:'个'},{name:'生抽',amount:'15',unit:'ml'},{name:'淀粉',amount:'10',unit:'g'}],
+      steps:['牛肉切片，加生抽和淀粉腌 10 分钟。','大火炒牛肉 1 分钟盛出。','下洋葱炒 2 分钟到透明。','回锅牛肉，翻匀出锅。'],
+      tips:'火候：牛肉只要变色就盛出；失败：同炒太久牛肉发韧；可换：洋葱换彩椒。' });
+
+    add({ name:'糖醋鲤鱼', emoji:'🐟', category:'鲁菜', tags:['硬菜','酸甜'], difficulty:3, minutes:40, servings:4, kcal:460, protein:30,
+      ingredients:[{name:'鲤鱼',amount:'1',unit:'条'},{name:'淀粉',amount:'60',unit:'g'},{name:'糖',amount:'30',unit:'g'},{name:'醋',amount:'25',unit:'ml'},{name:'番茄酱',amount:'20',unit:'g'}],
+      steps:['鲤鱼两面打花刀，裹匀淀粉。','油温七成热下鱼，炸到金黄定型。','糖、醋、番茄酱加水煮浓。','浇在鱼身上即可。'],
+      tips:'火候：先定型再翻面，避免破皮；失败：油温低会吸油；可换：鲤鱼换鲈鱼。' });
+    add({ name:'油焖大虾', emoji:'🍤', category:'鲁菜', tags:['下饭','咸甜'], difficulty:2, minutes:20, servings:2, kcal:320, protein:28,
+      ingredients:[{name:'大虾',amount:'400',unit:'g'},{name:'葱',amount:'2',unit:'根'},{name:'姜',amount:'2',unit:'片'},{name:'生抽',amount:'15',unit:'ml'},{name:'糖',amount:'10',unit:'g'}],
+      steps:['大虾剪须开背去虾线。','热锅少油，煎虾到两面变红。','加葱姜、生抽、糖和少量水。','盖盖焖 5 分钟，大火收汁。'],
+      tips:'火候：焖的时间别超过 5 分钟；失败：糖多易糊；可换：大虾换基围虾。' });
+    add({ name:'木须肉', emoji:'🥚', category:'鲁菜', tags:['家常','快手'], difficulty:2, minutes:18, servings:2, kcal:300, protein:20,
+      ingredients:[{name:'猪里脊',amount:'150',unit:'g'},{name:'鸡蛋',amount:'2',unit:'个'},{name:'木耳',amount:'30',unit:'g'},{name:'黄瓜',amount:'1',unit:'根'},{name:'生抽',amount:'10',unit:'ml'}],
+      steps:['鸡蛋打散炒成块盛出。','里脊切片滑炒到变色。','下木耳和黄瓜片炒 2 分钟。','回锅鸡蛋，加生抽翻匀。'],
+      tips:'火候：鸡蛋炒到刚凝固就盛出；失败：三样一起下锅会出水；可换：黄瓜换胡萝卜。' });
+    add({ name:'醋溜白菜', emoji:'🥬', category:'鲁菜', tags:['快手','酸香'], difficulty:1, minutes:12, servings:2, kcal:110, protein:4,
+      ingredients:[{name:'白菜',amount:'400',unit:'g'},{name:'醋',amount:'15',unit:'ml'},{name:'干辣椒',amount:'2',unit:'个'},{name:'糖',amount:'5',unit:'g'}],
+      steps:['白菜斜刀切片。','热锅下油爆香干辣椒。','下白菜大火炒 2 分钟。','加醋和糖，勾薄芡出锅。'],
+      tips:'火候：全程大火，白菜才脆；失败：炒久出水变软；可换：白菜换娃娃菜。' });
+    add({ name:'黄焖鸡', emoji:'🍗', category:'鲁菜', tags:['下饭','炖煮'], difficulty:2, minutes:40, servings:3, kcal:480, protein:30,
+      ingredients:[{name:'鸡腿肉',amount:'400',unit:'g'},{name:'香菇',amount:'5',unit:'朵'},{name:'土豆',amount:'1',unit:'个'},{name:'生抽',amount:'20',unit:'ml'},{name:'老抽',amount:'5',unit:'ml'}],
+      steps:['鸡腿肉切块，煎到表面微黄。','下香菇和土豆块翻炒。','加生抽、老抽和水没过食材。','小火炖 25 分钟，收汁。'],
+      tips:'火候：小火焖到土豆边角发软；失败：水太少易糊；可换：鸡腿肉换鸡翅根。' });
+
+    add({ name:'清炖狮子头', emoji:'🍲', category:'苏菜', tags:['炖煮','清淡'], difficulty:3, minutes:80, servings:4, kcal:520, protein:26,
+      ingredients:[{name:'猪肉馅',amount:'400',unit:'g'},{name:'荸荠',amount:'4',unit:'个'},{name:'鸡蛋',amount:'1',unit:'个'},{name:'淀粉',amount:'20',unit:'g'},{name:'青菜',amount:'100',unit:'g'}],
+      steps:['肉馅加荸荠末、蛋液和淀粉，搅打上劲。','团成 4 个大丸子。','小火清汤炖 60 分钟。','下青菜煮 5 分钟，加盐。'],
+      tips:'火候：汤面微沸不翻滚，丸子才不散；失败：搅打不足会散；可换：荸荠换藕丁。' });
+    add({ name:'盐水鸭', emoji:'🦆', category:'苏菜', tags:['凉菜','咸鲜'], difficulty:3, minutes:70, servings:4, kcal:460, protein:30,
+      ingredients:[{name:'鸭腿',amount:'2',unit:'只'},{name:'盐',amount:'20',unit:'g'},{name:'花椒',amount:'5',unit:'g'},{name:'姜',amount:'3',unit:'片'}],
+      steps:['盐和花椒炒香，趁热抹匀鸭腿，腌 4 小时。','冷水下锅，加姜片。','小火煮 40 分钟，保持水面微沸。','关火泡凉后斩件。'],
+      tips:'火候：小火浸煮，肉才嫩；失败：大火煮皮破肉柴；可换：鸭腿换半只鸭。' });
+    add({ name:'大煮干丝', emoji:'🍲', category:'苏菜', tags:['清淡','汤'], difficulty:2, minutes:30, servings:2, kcal:180, protein:14,
+      ingredients:[{name:'豆腐干',amount:'300',unit:'g'},{name:'鸡汤',amount:'500',unit:'ml'},{name:'虾仁',amount:'50',unit:'g'},{name:'青菜',amount:'50',unit:'g'}],
+      steps:['豆腐干切细丝，焯水 1 分钟去豆味。','加鸡汤煮 10 分钟。','下虾仁和青菜煮 3 分钟。','加盐调味。'],
+      tips:'火候：小火煮到干丝吸饱汤；失败：切太粗不入味；可换：鸡汤换高汤块。' });
+    add({ name:'松鼠桂鱼', emoji:'🐟', category:'苏菜', tags:['硬菜','酸甜'], difficulty:3, minutes:60, servings:4, kcal:540, protein:34,
+      ingredients:[{name:'桂鱼',amount:'1',unit:'条'},{name:'淀粉',amount:'60',unit:'g'},{name:'番茄酱',amount:'40',unit:'g'},{name:'糖',amount:'20',unit:'g'},{name:'醋',amount:'15',unit:'ml'}],
+      steps:['桂鱼去骨改花刀，拍匀淀粉。','油温六成热，提着鱼尾炸定型。','复炸到金黄酥脆装盘。','番茄酱、糖、醋煮浓，浇在鱼上。'],
+      tips:'火候：先定型再全浸炸；失败：花刀太浅不成形；可换：桂鱼换鲈鱼。' });
+    add({ name:'糖醋排骨', emoji:'🍖', category:'苏菜', tags:['下饭','酸甜'], difficulty:2, minutes:45, servings:3, kcal:460, protein:22,
+      ingredients:[{name:'排骨',amount:'500',unit:'g'},{name:'糖',amount:'25',unit:'g'},{name:'醋',amount:'20',unit:'ml'},{name:'生抽',amount:'15',unit:'ml'},{name:'姜',amount:'3',unit:'片'}],
+      steps:['排骨焯水 3 分钟。','少油煎到两面微黄。','加糖、醋、生抽、姜和水。','小火炖 30 分钟，大火收汁。'],
+      tips:'火候：最后收汁要不停翻动；失败：糖早放易焦；可换：排骨换小排。' });
+
+    add({ name:'西湖醋鱼', emoji:'🐟', category:'浙菜', tags:['硬菜','酸甜'], difficulty:3, minutes:35, servings:3, kcal:360, protein:28,
+      ingredients:[{name:'草鱼',amount:'1',unit:'条'},{name:'醋',amount:'25',unit:'ml'},{name:'糖',amount:'20',unit:'g'},{name:'姜',amount:'3',unit:'片'},{name:'淀粉',amount:'10',unit:'g'}],
+      steps:['草鱼剖开成两片，鱼皮朝下。','水微沸下鱼浸煮 8 分钟。','捞出摆盘，留少量鱼汤。','糖醋加鱼汤勾芡，浇在鱼上。'],
+      tips:'火候：水不能大滚，鱼皮才完整；失败：煮久肉散；可换：草鱼换鲈鱼。' });
+    add({ name:'龙井虾仁', emoji:'🍤', category:'浙菜', tags:['清淡','快手'], difficulty:2, minutes:20, servings:2, kcal:210, protein:24,
+      ingredients:[{name:'虾仁',amount:'300',unit:'g'},{name:'龙井茶',amount:'3',unit:'g'},{name:'蛋清',amount:'1',unit:'个'},{name:'淀粉',amount:'10',unit:'g'}],
+      steps:['虾仁加蛋清和淀粉腌 10 分钟。','热锅温油，滑炒虾仁 1 分钟。','泡开龙井茶，取茶汤两勺。','倒入茶汤和茶叶，翻炒 30 秒出锅。'],
+      tips:'火候：油温四成热，虾仁才嫩；失败：茶汤太多变煮；可换：龙井换碧螺春。' });
+    add({ name:'片儿川', emoji:'🍜', category:'浙菜', tags:['主食','汤面'], difficulty:1, minutes:25, servings:1, kcal:480, protein:14,
+      ingredients:[{name:'面条',amount:'150',unit:'g'},{name:'雪菜',amount:'50',unit:'g'},{name:'笋片',amount:'50',unit:'g'},{name:'肉片',amount:'80',unit:'g'}],
+      steps:['肉片、雪菜和笋片下锅炒香。','加水烧开煮 2 分钟。','下面条煮 3 分钟。','加盐调味出锅。'],
+      tips:'火候：面煮到八分熟就关火；失败：汤少易糊；可换：笋片换茭白。' });
+    add({ name:'醉鸡', emoji:'🐔', category:'浙菜', tags:['凉菜','酒香'], difficulty:2, minutes:60, servings:4, kcal:380, protein:30,
+      ingredients:[{name:'鸡腿',amount:'2',unit:'个'},{name:'黄酒',amount:'200',unit:'ml'},{name:'姜',amount:'3',unit:'片'},{name:'盐',amount:'5',unit:'g'}],
+      steps:['鸡腿煮熟，捞出过冰水。','黄酒加姜片和盐调成醉汁。','鸡腿浸入醉汁，冷藏 4 小时。','取出切片装盘。'],
+      tips:'火候：鸡腿煮 15 分钟再焖 5 分钟；失败：不冰镇皮不脆；可换：黄酒换花雕。' });
+    add({ name:'红烧带鱼', emoji:'🐟', category:'浙菜', tags:['下饭','咸鲜'], difficulty:2, minutes:30, servings:3, kcal:380, protein:26,
+      ingredients:[{name:'带鱼',amount:'400',unit:'g'},{name:'生抽',amount:'15',unit:'ml'},{name:'老抽',amount:'5',unit:'ml'},{name:'姜',amount:'3',unit:'片'},{name:'葱',amount:'2',unit:'根'}],
+      steps:['带鱼切段，擦干水分。','少油煎到两面金黄。','加生抽、老抽、姜和水。','小火炖 15 分钟，收汁撒葱。'],
+      tips:'火候：煎定型再翻面；失败：带鱼没擦干会粘锅；可换：带鱼换鲳鱼。' });
+
+    add({ name:'荔枝肉', emoji:'🍖', category:'闽菜', tags:['下饭','酸甜'], difficulty:2, minutes:30, servings:2, kcal:400, protein:20,
+      ingredients:[{name:'里脊肉',amount:'300',unit:'g'},{name:'荸荠',amount:'6',unit:'个'},{name:'番茄酱',amount:'30',unit:'g'},{name:'淀粉',amount:'40',unit:'g'},{name:'糖',amount:'15',unit:'g'}],
+      steps:['里脊切花刀块，裹淀粉。','油炸到金黄捞出。','荸荠切块，与肉块同炒。','番茄酱和糖调汁，翻匀裹上。'],
+      tips:'火候：复炸一次更脆；失败：汁太稀挂不住；可换：荸荠换菠萝块。' });
+    add({ name:'海蛎煎', emoji:'🦪', category:'闽菜', tags:['小吃','鲜'], difficulty:2, minutes:20, servings:2, kcal:340, protein:16,
+      ingredients:[{name:'海蛎',amount:'200',unit:'g'},{name:'鸡蛋',amount:'2',unit:'个'},{name:'地瓜粉',amount:'40',unit:'g'},{name:'青菜',amount:'50',unit:'g'}],
+      steps:['海蛎洗净沥干，拌入地瓜粉。','平底锅少油，倒入海蛎摊开。','定型后淋蛋液，放青菜。','煎到两面金黄出锅。'],
+      tips:'火候：中小火煎透，避免外焦内生；失败：海蛎水分多会散；可换：海蛎换虾仁。' });
+    add({ name:'沙茶面', emoji:'🍜', category:'闽菜', tags:['主食','汤面'], difficulty:2, minutes:30, servings:1, kcal:520, protein:20,
+      ingredients:[{name:'面条',amount:'150',unit:'g'},{name:'沙茶酱',amount:'30',unit:'g'},{name:'虾仁',amount:'80',unit:'g'},{name:'豆芽',amount:'80',unit:'g'}],
+      steps:['沙茶酱加水煮成汤底 5 分钟。','下面条煮 3 分钟。','下虾仁和豆芽煮 2 分钟。','加盐调味，撒葱花。'],
+      tips:'火候：汤底小火熬出香味；失败：沙茶酱太多会咸；可换：虾仁换鱿鱼。' });
+
+    add({ name:'臭鳜鱼', emoji:'🐟', category:'徽菜', tags:['硬菜','咸鲜'], difficulty:3, minutes:50, servings:3, kcal:420, protein:30,
+      ingredients:[{name:'臭鳜鱼',amount:'1',unit:'条'},{name:'姜',amount:'3',unit:'片'},{name:'蒜',amount:'3',unit:'瓣'},{name:'生抽',amount:'15',unit:'ml'},{name:'干辣椒',amount:'3',unit:'个'}],
+      steps:['臭鳜鱼冲洗干净，两面改刀。','少油煎到两面微黄。','下姜蒜和干辣椒，加生抽和少量水。','小火焖 15 分钟收汁。'],
+      tips:'火候：小火焖透才入味；失败：水多变成煮鱼；可换：臭鳜鱼换鲜鳜鱼。' });
+    add({ name:'笋干烧肉', emoji:'🍖', category:'徽菜', tags:['炖煮','下饭'], difficulty:3, minutes:80, servings:4, kcal:560, protein:24,
+      ingredients:[{name:'五花肉',amount:'400',unit:'g'},{name:'笋干',amount:'100',unit:'g'},{name:'生抽',amount:'20',unit:'ml'},{name:'老抽',amount:'5',unit:'ml'}],
+      steps:['笋干提前泡发 2 小时，切段。','五花肉切块，焯水 3 分钟。','肉和笋干加调料和水。','小火炖 60 分钟，收汁。'],
+      tips:'火候：小火慢炖，笋干才软；失败：笋干没泡透会硬；可换：笋干换干豆角。' });
+    add({ name:'徽州毛豆腐', emoji:'🧈', category:'徽菜', tags:['煎制','特色'], difficulty:2, minutes:25, servings:2, kcal:260, protein:18,
+      ingredients:[{name:'毛豆腐',amount:'6',unit:'块'},{name:'辣椒酱',amount:'10',unit:'g'},{name:'葱',amount:'2',unit:'根'}],
+      steps:['平底锅少油烧热。','毛豆腐下锅，中小火煎到两面金黄。','刷一层辣椒酱。','撒葱花出锅。'],
+      tips:'火候：中小火慢煎，外脆内嫩；失败：火大会外焦内凉；可换：辣椒酱换豆瓣酱。' });
+    add({ name:'板栗烧鸡', emoji:'🌰', category:'徽菜', tags:['炖煮','下饭'], difficulty:2, minutes:50, servings:3, kcal:520, protein:28,
+      ingredients:[{name:'鸡块',amount:'500',unit:'g'},{name:'板栗',amount:'200',unit:'g'},{name:'生抽',amount:'20',unit:'ml'},{name:'姜',amount:'3',unit:'片'}],
+      steps:['鸡块煸炒到表面微黄。','下板栗翻炒 2 分钟。','加生抽、姜和水没过食材。','小火炖 30 分钟，收汁。'],
+      tips:'火候：板栗后放不易碎；失败：水少易糊底；可换：板栗换土豆。' });
+    add({ name:'锅包肉', emoji:'🍖', category:'东北菜', tags:['硬菜','酸甜'], difficulty:3, minutes:40, servings:3, kcal:520, protein:24,
+      ingredients:[{name:'里脊肉',amount:'300',unit:'g'},{name:'淀粉',amount:'60',unit:'g'},{name:'糖',amount:'20',unit:'g'},{name:'醋',amount:'15',unit:'ml'},{name:'胡萝卜丝',amount:'30',unit:'g'}],
+      steps:['里脊切大片，裹匀淀粉。','油炸到金黄，复炸一次更脆。','糖和醋调汁煮到微稠。','下肉片和胡萝卜丝，快速翻匀出锅。'],
+      tips:'火候：复炸油温略高；失败：汁多会把脆皮泡软；可换：里脊换鸡胸。' });
+    add({ name:'小鸡炖蘑菇', emoji:'🍗', category:'东北菜', tags:['炖煮','下饭'], difficulty:2, minutes:50, servings:3, kcal:460, protein:28,
+      ingredients:[{name:'鸡块',amount:'500',unit:'g'},{name:'干蘑菇',amount:'50',unit:'g'},{name:'粉条',amount:'100',unit:'g'},{name:'生抽',amount:'20',unit:'ml'}],
+      steps:['干蘑菇温水泡发 20 分钟。','鸡块下锅煸炒到变色。','加蘑菇、生抽和水炖 30 分钟。','下粉条煮 10 分钟。'],
+      tips:'火候：小火慢炖出香味；失败：粉条久煮会断；可换：干蘑菇换榛蘑。' });
+    add({ name:'猪肉炖粉条', emoji:'🍲', category:'东北菜', tags:['炖煮','下饭'], difficulty:2, minutes:50, servings:3, kcal:520, protein:22,
+      ingredients:[{name:'五花肉',amount:'300',unit:'g'},{name:'粉条',amount:'150',unit:'g'},{name:'酸菜',amount:'100',unit:'g'},{name:'生抽',amount:'15',unit:'ml'}],
+      steps:['五花肉切块，煸炒出油。','下酸菜翻炒 2 分钟。','加水炖 30 分钟。','下粉条煮 10 分钟，调味。'],
+      tips:'火候：粉条最后下，避免糊汤；失败：水少粉条会粘底；可换：酸菜换白菜。' });
+    add({ name:'东北大拉皮', emoji:'🥗', category:'东北菜', tags:['凉菜','酸辣'], difficulty:1, minutes:20, servings:2, kcal:220, protein:6,
+      ingredients:[{name:'拉皮',amount:'200',unit:'g'},{name:'黄瓜',amount:'1',unit:'根'},{name:'胡萝卜',amount:'半',unit:'根'},{name:'蒜',amount:'3',unit:'瓣'},{name:'醋',amount:'10',unit:'ml'}],
+      steps:['拉皮切条，用凉水冲开。','黄瓜和胡萝卜切丝。','蒜泥加醋和生抽调汁。','全部拌匀，撒香菜。'],
+      tips:'火候：拉皮不用加热，拌前冲凉更筋道；失败：拌久出水；可换：拉皮换凉粉。' });
+
+    add({ name:'新疆大盘鸡', emoji:'🍗', category:'西北菜', tags:['硬菜','下饭'], difficulty:3, minutes:60, servings:4, kcal:620, protein:34,
+      ingredients:[{name:'鸡块',amount:'600',unit:'g'},{name:'土豆',amount:'2',unit:'个'},{name:'青椒',amount:'2',unit:'个'},{name:'皮带面',amount:'200',unit:'g'},{name:'豆瓣酱',amount:'15',unit:'g'}],
+      steps:['鸡块下锅煸炒到变色。','下土豆和豆瓣酱翻炒。','加水炖 25 分钟，下青椒。','拌入煮熟的皮带面，收汁。'],
+      tips:'火候：土豆炖到边角发软再下面；失败：汤太少拌不开面；可换：皮带面换宽面。' });
+    add({ name:'孜然羊肉', emoji:'🥩', category:'西北菜', tags:['快手','孜然'], difficulty:2, minutes:15, servings:2, kcal:420, protein:30,
+      ingredients:[{name:'羊肉',amount:'300',unit:'g'},{name:'孜然粉',amount:'5',unit:'g'},{name:'洋葱',amount:'1',unit:'个'},{name:'干辣椒',amount:'3',unit:'个'}],
+      steps:['羊肉切薄片，加盐和孜然腌 10 分钟。','大火下锅炒 2 分钟。','下洋葱和干辣椒炒 1 分钟。','再撒孜然粉翻匀出锅。'],
+      tips:'火候：全程大火，羊肉才不腥；失败：炒久出水变韧；可换：羊肉换牛肉。' });
+    add({ name:'兰州牛肉面', emoji:'🍜', category:'西北菜', tags:['主食','汤面'], difficulty:3, minutes:90, servings:2, kcal:520, protein:28,
+      ingredients:[{name:'牛肉',amount:'500',unit:'g'},{name:'面条',amount:'200',unit:'g'},{name:'萝卜',amount:'100',unit:'g'},{name:'姜',amount:'3',unit:'片'},{name:'香菜',amount:'20',unit:'g'}],
+      steps:['牛肉加姜和水炖 60 分钟。','汤中下萝卜煮 10 分钟。','另起锅煮面条 3 分钟。','面入碗，加牛肉、萝卜和汤，撒香菜。'],
+      tips:'火候：牛肉小火炖到筷子能穿透；失败：汤不撇沫会浑；可换：牛肉换牛腱。' });
+    add({ name:'凉皮', emoji:'🥗', category:'西北菜', tags:['凉菜','酸辣'], difficulty:2, minutes:40, servings:2, kcal:380, protein:10,
+      ingredients:[{name:'凉皮',amount:'200',unit:'g'},{name:'黄瓜',amount:'1',unit:'根'},{name:'醋',amount:'15',unit:'ml'},{name:'辣椒油',amount:'10',unit:'ml'},{name:'蒜',amount:'2',unit:'瓣'}],
+      steps:['凉皮切宽条。','黄瓜切丝垫底。','醋、蒜泥、辣椒油调汁。','淋上拌匀，撒熟芝麻。'],
+      tips:'火候：凉皮本身是熟的，拌前冲凉水；失败：汁太咸盖住酸香；可换：凉皮换面筋。' });
+
+    add({ name:'汽锅鸡', emoji:'🍲', category:'云南菜', tags:['蒸炖','清淡'], difficulty:3, minutes:90, servings:4, kcal:460, protein:34,
+      ingredients:[{name:'鸡块',amount:'600',unit:'g'},{name:'姜',amount:'3',unit:'片'},{name:'枸杞',amount:'10',unit:'g'},{name:'盐',amount:'5',unit:'g'}],
+      steps:['鸡块放入汽锅，加姜片和枸杞。','蒸锅加水，汽锅不加水，靠蒸汽凝结成汤。','大火蒸 90 分钟。','出锅后加盐调味。'],
+      tips:'火候：全程大火足汽；失败：汽锅密封不好不出汤；可换：鸡块换排骨。' });
+    add({ name:'过桥米线', emoji:'🍜', category:'云南菜', tags:['主食','汤'], difficulty:2, minutes:35, servings:1, kcal:560, protein:20,
+      ingredients:[{name:'米线',amount:'200',unit:'g'},{name:'鸡汤',amount:'800',unit:'ml'},{name:'鹌鹑蛋',amount:'2',unit:'个'},{name:'肉片',amount:'80',unit:'g'},{name:'青菜',amount:'50',unit:'g'}],
+      steps:['鸡汤烧到滚开，盛入深碗。','下肉片烫到变色。','下米线、鹌鹑蛋和青菜。','盖盖焖 2 分钟，加盐。'],
+      tips:'火候：汤必须滚烫才能烫熟肉片；失败：汤温不够肉片夹生；可换：鹌鹑蛋换鸡蛋。' });
+    add({ name:'傣味柠檬鸡', emoji:'🐔', category:'云南菜', tags:['凉菜','酸辣'], difficulty:2, minutes:35, servings:3, kcal:340, protein:26,
+      ingredients:[{name:'鸡胸肉',amount:'300',unit:'g'},{name:'柠檬',amount:'1',unit:'个'},{name:'小米椒',amount:'3',unit:'个'},{name:'香菜',amount:'30',unit:'g'}],
+      steps:['鸡胸肉煮熟放凉，撕成丝。','柠檬挤汁，小米椒切碎。','柠檬汁、辣椒、香菜和盐调汁。','浇在鸡丝上拌匀，腌 10 分钟。'],
+      tips:'火候：鸡肉煮熟即可，久了发柴；失败：柠檬汁放久会苦；可换：鸡胸换鸡腿肉。' });
+
+    add({ name:'酸汤鱼', emoji:'🐟', category:'贵州菜', tags:['炖煮','酸辣'], difficulty:2, minutes:40, servings:3, kcal:400, protein:30,
+      ingredients:[{name:'鱼片',amount:'400',unit:'g'},{name:'酸汤',amount:'500',unit:'ml'},{name:'番茄',amount:'1',unit:'个'},{name:'木姜子',amount:'3',unit:'g'}],
+      steps:['酸汤烧开，下番茄煮 3 分钟。','下鱼片煮 2 分钟。','加木姜子和盐调味。','撒葱花出锅。'],
+      tips:'火候：鱼片下锅后别搅动；失败：酸汤太浓会过酸；可换：酸汤换番茄汤。' });
+    add({ name:'贵州辣子鸡', emoji:'🌶️', category:'贵州菜', tags:['下饭','辣'], difficulty:3, minutes:45, servings:3, kcal:520, protein:26,
+      ingredients:[{name:'鸡块',amount:'500',unit:'g'},{name:'糍粑辣椒',amount:'80',unit:'g'},{name:'姜',amount:'3',unit:'片'},{name:'蒜',amount:'3',unit:'瓣'}],
+      steps:['鸡块下锅煸炒出油。','下糍粑辣椒、姜蒜炒香。','加少量水，小火焖 20 分钟。','收汁，尝味补盐。'],
+      tips:'火候：糍粑辣椒要小火炒香不糊；失败：火大辣椒发苦；可换：糍粑辣椒换豆瓣酱。' });
+
+    add({ name:'京酱肉丝', emoji:'🥩', category:'京菜', tags:['下饭','酱香'], difficulty:2, minutes:20, servings:2, kcal:380, protein:24,
+      ingredients:[{name:'里脊肉',amount:'300',unit:'g'},{name:'甜面酱',amount:'30',unit:'g'},{name:'葱',amount:'2',unit:'根'},{name:'淀粉',amount:'10',unit:'g'}],
+      steps:['里脊切丝，加淀粉腌 10 分钟。','滑炒肉丝到变色盛出。','下甜面酱小火炒香。','回锅肉丝翻匀，配葱丝卷饼。'],
+      tips:'火候：甜面酱要小火炒，避免发苦；失败：酱多会过咸；可换：甜面酱换黄豆酱加糖。' });
+    add({ name:'老北京炸酱面', emoji:'🍜', category:'京菜', tags:['主食','酱香'], difficulty:2, minutes:30, servings:2, kcal:560, protein:18,
+      ingredients:[{name:'面条',amount:'200',unit:'g'},{name:'五花肉',amount:'100',unit:'g'},{name:'黄豆酱',amount:'60',unit:'g'},{name:'黄瓜',amount:'1',unit:'根'}],
+      steps:['五花肉切小丁，煸炒出油。','下黄豆酱，小火炸 5 分钟。','面条煮熟过凉。','配黄瓜丝和炸酱拌匀。'],
+      tips:'火候：酱要小火慢炸才香；失败：火大酱会糊；可换：黄豆酱换甜面酱。' });
+
+    add({ name:'油面筋塞肉', emoji:'🍢', category:'本帮菜', tags:['下饭','咸鲜'], difficulty:2, minutes:50, servings:3, kcal:420, protein:20,
+      ingredients:[{name:'油面筋',amount:'8',unit:'个'},{name:'肉馅',amount:'250',unit:'g'},{name:'生抽',amount:'15',unit:'ml'},{name:'糖',amount:'5',unit:'g'}],
+      steps:['油面筋开小口，塞入调味肉馅。','下锅煎到表面微黄。','加生抽、糖和少量水。','小火炖 20 分钟收汁。'],
+      tips:'火候：小火炖到面筋吸汁；失败：塞太满会破；可换：油面筋换豆腐泡。' });
+    add({ name:'八宝辣酱', emoji:'🌶️', category:'本帮菜', tags:['下饭','酱香'], difficulty:2, minutes:25, servings:3, kcal:400, protein:16,
+      ingredients:[{name:'猪腿肉',amount:'150',unit:'g'},{name:'花生米',amount:'30',unit:'g'},{name:'香菇',amount:'4',unit:'朵'},{name:'豆瓣酱',amount:'20',unit:'g'},{name:'甜面酱',amount:'15',unit:'g'}],
+      steps:['肉切小丁炒到变色。','下香菇丁和花生米炒香。','加豆瓣酱和甜面酱。','小火翻炒 3 分钟出锅。'],
+      tips:'火候：两种酱一起小火炒才不糊；失败：酱多会咸；可换：花生米换笋丁。' });
+    add({ name:'三杯鸡', emoji:'🐔', category:'赣菜', tags:['下饭','酱香'], difficulty:2, minutes:30, servings:3, kcal:480, protein:30,
+      ingredients:[{name:'鸡腿肉',amount:'500',unit:'g'},{name:'米酒',amount:'100',unit:'ml'},{name:'生抽',amount:'50',unit:'ml'},{name:'香油',amount:'30',unit:'ml'},{name:'姜',amount:'4',unit:'片'}],
+      steps:['鸡块下锅煎到表面金黄。','下姜片炒香。','倒米酒、生抽和香油。','小火焖 20 分钟，大火收汁。'],
+      tips:'火候：收汁到酱汁裹住鸡块；失败：火大糖分易糊；可换：米酒换料酒。' });
+
+    add({ name:'韭菜炒蛋', emoji:'🥚', category:'家常', tags:['快手','家常'], difficulty:1, minutes:10, servings:2, kcal:220, protein:14,
+      ingredients:[{name:'韭菜',amount:'200',unit:'g'},{name:'鸡蛋',amount:'3',unit:'个'},{name:'盐',amount:'2',unit:'g'},{name:'食用油',amount:'15',unit:'ml'}],
+      steps:['韭菜洗净切段。','鸡蛋打散，下锅炒成块。','下韭菜大火炒 1 分钟。','加盐翻匀出锅。'],
+      tips:'火候：韭菜下锅只炒 1 分钟；失败：炒久出水发黄；可换：韭菜换韭黄。' });
+    add({ name:'苦瓜炒蛋', emoji:'🥒', category:'家常', tags:['快手','清淡'], difficulty:1, minutes:12, servings:2, kcal:180, protein:12,
+      ingredients:[{name:'苦瓜',amount:'1',unit:'根'},{name:'鸡蛋',amount:'3',unit:'个'},{name:'盐',amount:'2',unit:'g'}],
+      steps:['苦瓜切片，焯水 30 秒去苦味。','鸡蛋炒成块盛出。','下苦瓜炒 2 分钟。','回锅鸡蛋，加盐翻匀。'],
+      tips:'火候：苦瓜焯水别超过 30 秒；失败：不焯水苦味重；可换：苦瓜换丝瓜。' });
+    add({ name:'家常豆腐', emoji:'🍲', category:'家常', tags:['下饭','家常'], difficulty:2, minutes:25, servings:2, kcal:280, protein:16,
+      ingredients:[{name:'豆腐',amount:'1',unit:'块'},{name:'五花肉',amount:'50',unit:'g'},{name:'豆瓣酱',amount:'10',unit:'g'},{name:'青蒜',amount:'2',unit:'根'}],
+      steps:['豆腐切片，少油煎到两面微黄。','下五花肉片和豆瓣酱炒香。','放回豆腐，加少量水焖 3 分钟。','加青蒜翻匀出锅。'],
+      tips:'火候：焖 3 分钟让豆腐入味；失败：翻动太勤会碎；可换：豆腐换豆干。' });
+    add({ name:'皮蛋豆腐', emoji:'🥚', category:'家常', tags:['凉菜','快手'], difficulty:1, minutes:10, servings:2, kcal:160, protein:10,
+      ingredients:[{name:'内酯豆腐',amount:'1',unit:'盒'},{name:'皮蛋',amount:'2',unit:'个'},{name:'生抽',amount:'10',unit:'ml'},{name:'香油',amount:'5',unit:'ml'},{name:'葱',amount:'1',unit:'根'}],
+      steps:['内酯豆腐切块装盘。','皮蛋切丁铺在上面。','生抽和香油调汁淋上。','撒葱花即可。'],
+      tips:'火候：不用加热，现做现吃；失败：豆腐久放出水；可换：内酯豆腐换嫩豆腐。' });
+    add({ name:'香煎豆腐', emoji:'🍳', category:'家常', tags:['快手','家常'], difficulty:1, minutes:15, servings:2, kcal:230, protein:16,
+      ingredients:[{name:'北豆腐',amount:'1',unit:'块'},{name:'生抽',amount:'10',unit:'ml'},{name:'葱',amount:'2',unit:'根'}],
+      steps:['北豆腐切厚片，用厨房纸吸干水分。','平底锅少油，煎到两面金黄。','淋生抽，撒葱花。','出锅装盘。'],
+      tips:'火候：中小火慢煎，外脆内嫩；失败：豆腐不吸干会粘锅；可换：北豆腐换老豆腐。' });
+    add({ name:'豆干炒肉', emoji:'🥓', category:'家常', tags:['下饭','家常'], difficulty:1, minutes:18, servings:2, kcal:320, protein:20,
+      ingredients:[{name:'豆干',amount:'200',unit:'g'},{name:'五花肉',amount:'150',unit:'g'},{name:'青椒',amount:'1',unit:'个'},{name:'生抽',amount:'10',unit:'ml'}],
+      steps:['豆干和五花肉切片。','煸炒肉片到出油。','下豆干和青椒炒 3 分钟。','加生抽翻匀出锅。'],
+      tips:'火候：豆干炒到边缘微焦更香；失败：豆干切太厚不入味；可换：豆干换香干。' });
+    add({ name:'蒜蓉油麦菜', emoji:'🥬', category:'家常', tags:['快手','清淡'], difficulty:1, minutes:8, servings:2, kcal:90, protein:4,
+      ingredients:[{name:'油麦菜',amount:'400',unit:'g'},{name:'蒜',amount:'4',unit:'瓣'},{name:'盐',amount:'2',unit:'g'}],
+      steps:['油麦菜洗净切段。','蒜末下锅爆香。','下油麦菜大火炒 1 分钟。','加盐翻匀出锅。'],
+      tips:'火候：全程大火，1 分钟内出锅；失败：炒久出水变软；可换：油麦菜换生菜。' });
+    add({ name:'木耳炒山药', emoji:'🍄', category:'家常', tags:['清淡','家常'], difficulty:1, minutes:15, servings:2, kcal:150, protein:5,
+      ingredients:[{name:'山药',amount:'200',unit:'g'},{name:'木耳',amount:'30',unit:'g'},{name:'盐',amount:'2',unit:'g'},{name:'蒜',amount:'2',unit:'瓣'}],
+      steps:['山药去皮切片，泡水防氧化。','木耳泡发洗净。','蒜末爆香，下山药木耳炒 2 分钟。','加盐出锅。'],
+      tips:'火候：山药炒到断生即可；失败：山药不泡水会发黑；可换：山药换莲藕。' });
+    add({ name:'蚝油杏鲍菇', emoji:'🍄', category:'家常', tags:['快手','鲜'], difficulty:1, minutes:12, servings:2, kcal:120, protein:5,
+      ingredients:[{name:'杏鲍菇',amount:'300',unit:'g'},{name:'蚝油',amount:'15',unit:'ml'},{name:'蒜',amount:'2',unit:'瓣'}],
+      steps:['杏鲍菇切厚片。','少油煎到两面微黄。','加蒜末和蚝油。','翻炒 2 分钟出锅。'],
+      tips:'火候：先煎出水分再加蚝油；失败：蚝油早放会糊；可换：杏鲍菇换口蘑。' });
+    add({ name:'蒜泥茄子', emoji:'🍆', category:'家常', tags:['凉菜','蒜香'], difficulty:1, minutes:20, servings:2, kcal:110, protein:3,
+      ingredients:[{name:'长茄子',amount:'2',unit:'根'},{name:'蒜',amount:'5',unit:'瓣'},{name:'生抽',amount:'10',unit:'ml'},{name:'醋',amount:'10',unit:'ml'}],
+      steps:['茄子整根上锅蒸 15 分钟。','放凉后撕成条。','蒜捣泥，加生抽和醋。','淋在茄子上拌匀。'],
+      tips:'火候：蒸到筷子能轻松穿透；失败：茄子蒸久会烂；可换：长茄子换圆茄子。' });
+    add({ name:'凉拌木耳', emoji:'🍄', category:'家常', tags:['凉菜','爽口'], difficulty:1, minutes:15, servings:2, kcal:80, protein:3,
+      ingredients:[{name:'木耳',amount:'50',unit:'g'},{name:'黄瓜',amount:'1',unit:'根'},{name:'醋',amount:'15',unit:'ml'},{name:'蒜',amount:'2',unit:'瓣'}],
+      steps:['木耳泡发，焯水 2 分钟。','捞出过凉水沥干。','黄瓜切片，蒜切末。','加醋和盐拌匀。'],
+      tips:'火候：焯水 2 分钟足够；失败：泡发不充分会硬；可换：黄瓜换彩椒。' });
+    add({ name:'紫菜蛋花汤', emoji:'🥣', category:'家常', tags:['汤','快手'], difficulty:1, minutes:10, servings:2, kcal:70, protein:7,
+      ingredients:[{name:'紫菜',amount:'10',unit:'g'},{name:'鸡蛋',amount:'2',unit:'个'},{name:'盐',amount:'2',unit:'g'},{name:'香油',amount:'3',unit:'ml'}],
+      steps:['水烧开，下紫菜煮 1 分钟。','鸡蛋打散，慢慢淋入。','加盐和香油。','撒葱花出锅。'],
+      tips:'火候：淋蛋液时火调小，蛋花才细；失败：一次倒蛋会结块；可换：紫菜换裙带菜。' });
+    add({ name:'鲫鱼豆腐汤', emoji:'🐟', category:'家常', tags:['汤','清淡'], difficulty:2, minutes:30, servings:3, kcal:260, protein:22,
+      ingredients:[{name:'鲫鱼',amount:'1',unit:'条'},{name:'豆腐',amount:'1',unit:'盒'},{name:'姜',amount:'3',unit:'片'},{name:'盐',amount:'3',unit:'g'}],
+      steps:['鲫鱼煎到两面微黄。','加水和姜，大火煮 15 分钟到汤变白。','下豆腐煮 5 分钟。','加盐调味。'],
+      tips:'火候：先大火煮白再转小火；失败：鱼没煎透汤不发白；可换：鲫鱼换鲈鱼。' });
+    add({ name:'莲藕排骨汤', emoji:'🍲', category:'家常', tags:['汤','炖煮'], difficulty:2, minutes:60, servings:3, kcal:340, protein:18,
+      ingredients:[{name:'排骨',amount:'400',unit:'g'},{name:'莲藕',amount:'300',unit:'g'},{name:'姜',amount:'3',unit:'片'},{name:'盐',amount:'3',unit:'g'}],
+      steps:['排骨焯水 3 分钟。','加姜和水，小火炖 40 分钟。','下莲藕块炖 20 分钟。','加盐调味。'],
+      tips:'火候：小火慢炖，汤清不浑；失败：莲藕下太早会烂；可换：莲藕换玉米。' });
+    add({ name:'冬瓜丸子汤', emoji:'🥣', category:'家常', tags:['汤','清淡'], difficulty:1, minutes:25, servings:3, kcal:220, protein:14,
+      ingredients:[{name:'冬瓜',amount:'300',unit:'g'},{name:'肉馅',amount:'200',unit:'g'},{name:'姜',amount:'2',unit:'片'},{name:'盐',amount:'3',unit:'g'}],
+      steps:['肉馅加姜末和盐搅匀，挤成丸子。','丸子下开水，煮 5 分钟浮起。','下冬瓜片煮 10 分钟。','加盐调味。'],
+      tips:'火候：丸子浮起再下冬瓜；失败：肉馅没搅上劲会散；可换：冬瓜换萝卜。' });
+    add({ name:'土豆炖牛肉', emoji:'🥩', category:'家常', tags:['炖煮','下饭'], difficulty:2, minutes:70, servings:3, kcal:480, protein:30,
+      ingredients:[{name:'牛肉',amount:'500',unit:'g'},{name:'土豆',amount:'2',unit:'个'},{name:'胡萝卜',amount:'1',unit:'根'},{name:'生抽',amount:'20',unit:'ml'}],
+      steps:['牛肉切块，焯水 3 分钟。','加生抽和水，小火炖 40 分钟。','下土豆和胡萝卜炖 20 分钟。','加盐收汁。'],
+      tips:'火候：牛肉先炖软再下土豆；失败：土豆早放会烂成泥；可换：牛肉换牛腩。' });
+    add({ name:'番茄牛腩', emoji:'🍅', category:'家常', tags:['炖煮','酸甜'], difficulty:2, minutes:80, servings:3, kcal:460, protein:30,
+      ingredients:[{name:'牛腩',amount:'500',unit:'g'},{name:'番茄',amount:'3',unit:'个'},{name:'洋葱',amount:'1',unit:'个'},{name:'番茄酱',amount:'20',unit:'g'}],
+      steps:['牛腩焯水，加水炖 50 分钟。','番茄和洋葱切块，炒出汁。','加番茄酱炒匀，倒入牛腩锅。','再炖 20 分钟，加盐。'],
+      tips:'火候：番茄要炒出红汁；失败：番茄放太晚汤不浓；可换：牛腩换牛腱。' });
+    add({ name:'黄豆焖猪蹄', emoji:'🍖', category:'家常', tags:['炖煮','下饭'], difficulty:2, minutes:90, servings:4, kcal:560, protein:28,
+      ingredients:[{name:'猪蹄',amount:'600',unit:'g'},{name:'黄豆',amount:'100',unit:'g'},{name:'生抽',amount:'20',unit:'ml'},{name:'姜',amount:'3',unit:'片'}],
+      steps:['猪蹄剁块，焯水 5 分钟。','黄豆提前泡发 2 小时。','猪蹄、黄豆加生抽姜和水。','小火炖 70 分钟，收汁。'],
+      tips:'火候：小火久炖，皮才软糯；失败：水少易糊；可换：猪蹄换猪肘。' });
+    add({ name:'香煎黄花鱼', emoji:'🐟', category:'家常', tags:['快手','鲜'], difficulty:1, minutes:20, servings:2, kcal:240, protein:26,
+      ingredients:[{name:'黄花鱼',amount:'2',unit:'条'},{name:'盐',amount:'3',unit:'g'},{name:'面粉',amount:'20',unit:'g'}],
+      steps:['黄花鱼处理干净，抹盐腌 10 分钟。','两面拍薄面粉。','少油中小火煎。','煎到两面金黄熟透。'],
+      tips:'火候：中小火慢煎，别频繁翻面；失败：鱼没擦干会粘锅；可换：黄花鱼换小黄鱼。' });
+    add({ name:'猪肉白菜饺子', emoji:'🥟', category:'家常', tags:['主食','家常'], difficulty:2, minutes:60, servings:3, kcal:480, protein:20,
+      ingredients:[{name:'面粉',amount:'300',unit:'g'},{name:'猪肉馅',amount:'250',unit:'g'},{name:'白菜',amount:'300',unit:'g'},{name:'姜末',amount:'5',unit:'g'}],
+      steps:['面粉加水揉成团，醒 20 分钟。','白菜剁碎挤水，与肉馅姜末拌匀。','擀皮包成饺子。','水开下锅，点三次凉水煮到浮起。'],
+      tips:'火候：水开下饺子，点水三次；失败：白菜不挤水会破皮；可换：白菜换韭菜。' });
+    add({ name:'韭菜盒子', emoji:'🥟', category:'家常', tags:['主食','家常'], difficulty:2, minutes:40, servings:2, kcal:420, protein:14,
+      ingredients:[{name:'面粉',amount:'300',unit:'g'},{name:'韭菜',amount:'200',unit:'g'},{name:'鸡蛋',amount:'3',unit:'个'},{name:'粉丝',amount:'50',unit:'g'}],
+      steps:['面粉加水揉团，醒 20 分钟。','鸡蛋炒碎，与韭菜粉丝拌馅。','擀皮包成半月形盒子。','平底锅少油，煎到两面金黄。'],
+      tips:'火候：中小火煎，皮熟馅才热；失败：馅太多会漏；可换：韭菜换白菜。' });
+    add({ name:'葱花饼', emoji:'🫓', category:'家常', tags:['主食','家常'], difficulty:2, minutes:35, servings:2, kcal:380, protein:8,
+      ingredients:[{name:'面粉',amount:'300',unit:'g'},{name:'葱',amount:'4',unit:'根'},{name:'油',amount:'20',unit:'ml'},{name:'盐',amount:'3',unit:'g'}],
+      steps:['面粉加水揉团，醒 20 分钟。','擀薄，抹油撒葱和盐。','卷起再擀成饼。','平底锅煎到两面金黄。'],
+      tips:'火候：中小火煎，饼才酥；失败：油太多会腻；可换：葱换葱花加芝麻。' });
+    add({ name:'阳春面', emoji:'🍜', category:'家常', tags:['主食','清淡'], difficulty:1, minutes:15, servings:1, kcal:360, protein:8,
+      ingredients:[{name:'面条',amount:'150',unit:'g'},{name:'葱',amount:'2',unit:'根'},{name:'生抽',amount:'10',unit:'ml'},{name:'猪油',amount:'10',unit:'g'}],
+      steps:['碗中放猪油、生抽和盐。','冲入开水调成汤底。','另起锅煮面条 3 分钟。','捞入碗中，撒葱花。'],
+      tips:'火候：面煮到八分熟，靠余温焖熟；失败：汤底太咸；可换：猪油换香油。' });
+    add({ name:'番茄蛋汤', emoji:'🍅', category:'家常', tags:['汤','快手'], difficulty:1, minutes:12, servings:2, kcal:120, protein:8,
+      ingredients:[{name:'番茄',amount:'2',unit:'个'},{name:'鸡蛋',amount:'2',unit:'个'},{name:'盐',amount:'2',unit:'g'},{name:'葱',amount:'1',unit:'根'}],
+      steps:['番茄切块，下锅炒出汁。','加水烧开煮 3 分钟。','淋蛋液，加盐。','撒葱花出锅。'],
+      tips:'火候：番茄炒出汁再加水；失败：蛋液一次倒入会结块；可换：番茄换丝瓜。' });
+    add({ name:'芹菜炒香干', emoji:'🥬', category:'家常', tags:['快手','家常'], difficulty:1, minutes:15, servings:2, kcal:200, protein:12,
+      ingredients:[{name:'芹菜',amount:'200',unit:'g'},{name:'香干',amount:'150',unit:'g'},{name:'生抽',amount:'10',unit:'ml'},{name:'蒜',amount:'2',unit:'瓣'}],
+      steps:['芹菜切段，香干切片。','蒜末爆香。','下芹菜和香干炒 3 分钟。','加生抽翻匀出锅。'],
+      tips:'火候：芹菜炒到断生保持脆；失败：炒久发黄；可换：香干换豆干。' });
+    add({ name:'醋溜豆芽', emoji:'🌱', category:'家常', tags:['快手','酸香'], difficulty:1, minutes:10, servings:2, kcal:100, protein:5,
+      ingredients:[{name:'豆芽',amount:'300',unit:'g'},{name:'醋',amount:'10',unit:'ml'},{name:'干辣椒',amount:'2',unit:'个'},{name:'盐',amount:'2',unit:'g'}],
+      steps:['干辣椒下锅爆香。','下豆芽大火炒 1 分钟。','加醋和盐。','翻匀立即出锅。'],
+      tips:'火候：全程大火，1 分钟出锅；失败：炒久出水发软；可换：豆芽换绿豆芽。' });
+    add({ name:'蒜香秋葵', emoji:'🌿', category:'家常', tags:['凉菜','清淡'], difficulty:1, minutes:12, servings:2, kcal:100, protein:4,
+      ingredients:[{name:'秋葵',amount:'300',unit:'g'},{name:'蒜',amount:'4',unit:'瓣'},{name:'生抽',amount:'10',unit:'ml'}],
+      steps:['秋葵整根焯水 3 分钟。','捞出过凉，切段装盘。','蒜切末，加生抽调汁。','淋在秋葵上。'],
+      tips:'火候：整根焯水不易流失黏液；失败：焯水过头会软；可换：秋葵换芦笋。' });
+    add({ name:'清炒藕片', emoji:'🪷', category:'家常', tags:['快手','清淡'], difficulty:1, minutes:12, servings:2, kcal:120, protein:4,
+      ingredients:[{name:'莲藕',amount:'300',unit:'g'},{name:'蒜',amount:'2',unit:'瓣'},{name:'盐',amount:'2',unit:'g'},{name:'醋',amount:'5',unit:'ml'}],
+      steps:['莲藕去皮切薄片，泡水防氧化。','蒜末下锅爆香。','下藕片大火炒 2 分钟。','加盐和醋，翻匀出锅。'],
+      tips:'火候：大火快炒保持脆爽；失败：藕片不泡水会发黑；可换：莲藕换山药。' });
     return S;
   }
 
@@ -28345,6 +28735,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           return { id:r.id, name:r.name, category:r.category, minutes:r.minutes, kcal:r.kcal, favorite:r.favorite, source:r.source.type, ingredients:r.ingredients.length, steps:r.steps.length, cookedCount:r.cookedCount };
         });
       },
+      full: function(){ return homeRecipesLoad().items; },
       reco: function(opts){ var p = homeRecoPick(opts || {}); return p ? { id:p.recipe.id, name:p.recipe.name, weight:p.weight, candidates:p.candidates, relaxed:p.relaxed } : null; },
       fav: function(id){ return homeToggleFav(id); },
       detail: function(id){
