@@ -2048,6 +2048,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           <select class="input" id="fbFilter">
             <option value="">全部档位</option>
             <option value="want">想吃</option>
+            <option value="neutral">可以考虑</option>
             <option value="tired">最近吃腻了</option>
             <option value="dislike">不喜欢这家店</option>
             <option value="never">永不推荐</option>
@@ -2056,7 +2057,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           <button type="button" class="btn btn-danger" id="btnFbClear" style="flex:none">清空全部</button>
         </div>
         <div id="feedbackBox"></div>
-        <p class="dist-note">「今天不想吃」只在当天有效、不写入长期偏好；「永不推荐」等同黑名单。「可以考虑」会清除该店现有的负向反馈。</p>
+        <div class="section-head" style="margin:16px 0 8px">
+          <h2 style="font-size:14px">反馈历史</h2>
+          <span class="hint" id="fbHistHint"></span>
+        </div>
+        <div id="fbHistory"></div>
+        <p class="dist-note">六档分开：想吃会加权重；可以考虑不加权也不降权；今天不想吃只在当天有效；最近吃腻了按 21 天时间衰减自动恢复；不喜欢是长期降权、可撤销；永不推荐写入黑名单。任何反馈都只影响推荐排序，不生成到店记录，也不写 db.records。</p>
       </div>
 
       <div class="card">
@@ -11979,10 +11985,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
      key 现阶段沿用现有去重键「城市|店名」（与 keyOf 一致的小写形式）；
      v2 迁移时会把它映射为 shopId，避免以后改店名/换城市丢反馈。 */
   var FB_KEY = 'fandazi.feedback';
-  var FB_VERSION = 2;
+  var FB_VERSION = 3;
   var FB_TIRED_DAYS = 21;
-  /* surface 只用于追溯「这条反馈来自哪个推荐入口」：可选字段，旧数据缺省为空 */
-  var FB_SURFACES = { daily:'日常推荐', draw:'抽签', blind:'盲盒', trip:'旅行计划' };
+  var FB_HISTORY_MAX = 300;
+  /* surface 只用于追溯「这条反馈来自哪个推荐入口」：可选字段，旧数据缺省为空。
+     七个入口共享同一套反馈机制与数据；预算 / 距离 / 偏好权重仍由各场景自己算。 */
+  var FB_SURFACES = {
+    daily:'每日推荐', draw:'抽签', blind:'盲盒',
+    friend:'朋友推荐', gather:'聚会推荐', fitness:'健身推荐', trip:'旅行推荐'
+  };
   var FB_ACTIONS = {
     want:    { label:'喜欢 / 想吃', tone:'good' },
     neutral: { label:'可以考虑',    tone:'' },
@@ -11991,35 +12002,82 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     dislike: { label:'不喜欢这家店', tone:'warn' },
     never:   { label:'永不推荐',    tone:'warn' }
   };
+  var FB_HISTORY_ACTIONS = { want:1, neutral:1, today:1, tired:1, dislike:1, never:1, undo:1 };
   var feedbackStore = loadFeedbackStore();
   var feedbackToday = { date: todayStr(), items: {} };
 
+  function fbSurfaceOf(surface){
+    return Object.prototype.hasOwnProperty.call(FB_SURFACES, String(surface)) ? String(surface) : '';
+  }
+  function fbSurfaceText(surface){
+    var s = fbSurfaceOf(surface);
+    return s ? FB_SURFACES[s] : '未标注入口';
+  }
+  function fbActionText(action){
+    return FB_ACTIONS[action] ? FB_ACTIONS[action].label : (action === 'undo' ? '撤销' : String(action || ''));
+  }
+  function fbHistId(){ return 'fbh' + Math.random().toString(36).slice(2, 9); }
+  function fbHistNorm(it){
+    if(!it || typeof it.key !== 'string' || !it.key) return null;
+    if(!FB_HISTORY_ACTIONS[it.action]) return null;
+    var at = Date.parse(it.at);
+    var until = it.until ? Date.parse(it.until) : NaN;
+    return {
+      id: String(it.id || fbHistId()),
+      key: it.key,
+      name: String(it.name || ''),
+      action: it.action,
+      prev: FB_HISTORY_ACTIONS[it.prev] ? it.prev : '',
+      surface: fbSurfaceOf(it.surface),
+      at: new Date(isFinite(at) ? at : Date.now()).toISOString(),
+      until: isFinite(until) ? new Date(until).toISOString() : null
+    };
+  }
+  function feedbackLog(key, name, action, surface, prev, until){
+    var h = fbHistNorm({ key:key, name:name, action:action, surface:surface, prev:prev || '', until:until || null, at:new Date().toISOString() });
+    if(!h) return null;
+    feedbackStore.history = (feedbackStore.history || []).concat([h]).slice(-FB_HISTORY_MAX);
+    return h;
+  }
+
   function loadFeedbackStore(){
-    var out = { version:FB_VERSION, items:[] };
+    var out = { version:FB_VERSION, items:[], history:[] };
     try{
       var raw = JSON.parse(localStorage.getItem(FB_KEY) || 'null');
-      if(raw && typeof raw === 'object' && Array.isArray(raw.items)){
-        raw.items.forEach(function(it){
-          if(!it || typeof it.key !== 'string' || !it.key) return;
-          if(!FB_ACTIONS[it.action] || it.action === 'neutral' || it.action === 'today') return;
-          var at = Date.parse(it.at);
-          var until = it.until ? Date.parse(it.until) : NaN;
-          out.items.push({
-            key: it.key,
-            action: it.action,
-            at: new Date(isFinite(at) ? at : Date.now()).toISOString(),
-            until: isFinite(until) ? new Date(until).toISOString() : (it.action === 'tired' ? new Date(Date.now() + FB_TIRED_DAYS*86400000).toISOString() : null),
-            name: String(it.name || ''),
-            blackKey: it.blackKey ? String(it.blackKey) : null,
-            surface: Object.prototype.hasOwnProperty.call(FB_SURFACES, String(it.surface)) ? String(it.surface) : ''
+      if(raw && typeof raw === 'object'){
+        if(Array.isArray(raw.items)){
+          raw.items.forEach(function(it){
+            if(!it || typeof it.key !== 'string' || !it.key) return;
+            if(!FB_ACTIONS[it.action]) return;
+            /* 六档全部保留；旧版曾丢弃「可以考虑 / 今天不想吃」，现在可读可写 */
+            if(it.action === 'today'){
+              var h0 = fbHistNorm(it);
+              if(h0) out.history.push(h0);
+              return;
+            }
+            var at = Date.parse(it.at);
+            var until = it.until ? Date.parse(it.until) : NaN;
+            out.items.push({
+              key: it.key,
+              action: it.action,
+              at: new Date(isFinite(at) ? at : Date.now()).toISOString(),
+              until: isFinite(until) ? new Date(until).toISOString() : (it.action === 'tired' ? new Date(Date.now() + FB_TIRED_DAYS*86400000).toISOString() : null),
+              name: String(it.name || ''),
+              blackKey: it.blackKey ? String(it.blackKey) : null,
+              surface: fbSurfaceOf(it.surface)
+            });
           });
-        });
+        }
+        if(Array.isArray(raw.history)){
+          raw.history.forEach(function(it){ var h = fbHistNorm(it); if(h) out.history.push(h); });
+        }
       }
     }catch(e){ logError('反馈读取', e); }
+    out.history = out.history.slice(-FB_HISTORY_MAX);
     return out;
   }
   function saveFeedbackStore(){
-    try{ localStorage.setItem(FB_KEY, JSON.stringify({ version:FB_VERSION, items:feedbackStore.items })); }
+    try{ localStorage.setItem(FB_KEY, JSON.stringify({ version:FB_VERSION, items:feedbackStore.items, history:feedbackStore.history || [] })); }
     catch(e){ logError('反馈保存', e); toast('反馈保存失败：本机存储可能已满'); }
     invalidateProfile();
     renderProfile();
@@ -12089,17 +12147,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function feedbackPersist(action, store, surface){
     if(!store) return null;
     pruneFeedback();
-    var key = feedbackKeyOf(store), now = Date.now();
+    var key = feedbackKeyOf(store), now = Date.now(), surf = fbSurfaceOf(surface);
+    var prevIt = feedbackActiveFor(key);
     feedbackStore.items = feedbackStore.items.filter(function(it){ return it.key !== key; });
-    if(action === 'neutral' || action === 'today'){
-      saveFeedbackStore();
-      return null;
+    var item = null;
+    if(action !== 'today'){
+      item = { key:key, action:action, at:new Date(now).toISOString(), name:String(store.name || ''), surface:surf };
+      if(action === 'tired') item.until = new Date(now + FB_TIRED_DAYS*86400000).toISOString();
+      if(action === 'never') item.blackKey = store.key || key;
+      feedbackStore.items.push(item);
     }
-    var item = { key:key, action:action, at:new Date(now).toISOString(), name:String(store.name || ''),
-      surface: Object.prototype.hasOwnProperty.call(FB_SURFACES, String(surface)) ? String(surface) : '' };
-    if(action === 'tired') item.until = new Date(now + FB_TIRED_DAYS*86400000).toISOString();
-    if(action === 'never') item.blackKey = store.key || key;
-    feedbackStore.items.push(item);
+    feedbackLog(key, store.name, action, surf, prevIt ? prevIt.action : '', item ? item.until : null);
     saveFeedbackStore();
     return item;
   }
@@ -12109,24 +12167,27 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var key = feedbackKeyOf(store);
     if(action === 'today'){
       feedbackToday.items[key] = { key:key, name:String(store.name || ''), at:new Date().toISOString() };
+      feedbackLog(key, store.name, 'today', surface, '', null);
+      saveFeedbackStore();
       toast('已把「'+(store.name||'这家店')+'」从今天的推荐中排除，明天恢复');
       refreshAfterFeedback();
       return true;
     }
     if(action === 'never'){
-      if(!confirm('把「'+(store.name||'这家店')+'」设为永不推荐？\n\n将从推荐与抽签中彻底排除，可在「我的 → 推荐反馈」或黑名单里移除。')) return false;
+      if(!confirm('把「'+(store.name||'这家店')+'」设为永不推荐？\n\n将从推荐、抽签、盲盒、聚会与旅行候选中彻底排除，可在「我的 → 推荐反馈」或黑名单里移除。')) return false;
       delete feedbackToday.items[key];
       if(!isBlack(store)) blackStore(store);
-      else { feedbackPersist('never', store, surface); toast('已标记为永不推荐'); }
+      feedbackPersist('never', store, surface);
+      toast('已标记为永不推荐');
       refreshAfterFeedback();
       return true;
     }
     delete feedbackToday.items[key];
     feedbackPersist(action, store, surface);
-    var msg = action === 'neutral' ? '已恢复中性，负向反馈已清除'
+    var msg = action === 'neutral' ? '已标记为可以考虑，之前的正负反馈已替换'
       : action === 'want' ? '已标记想吃，推荐会适度提高这家店'
       : action === 'tired' ? '已标记吃腻了，'+FB_TIRED_DAYS+' 天内降权，到期自动恢复'
-      : '已标记不喜欢，长期降权（会缓慢恢复）';
+      : '已标记不喜欢，长期降权（可撤销，会缓慢恢复）';
     toast(msg);
     refreshAfterFeedback();
     return true;
@@ -12136,13 +12197,20 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     else safeRender('renderDecide', renderDecide, '#decideBox');
     safeRender('renderFeedback', renderFeedback);
     if(activeView === 'more') safeRender('renderBlacklist', renderBlacklist);
+    /* 其它推荐入口正开着时就地刷新，避免要关掉重开才看到高亮 */
+    if(typeof recoPanel !== 'undefined' && recoPanel === 'fitness') safeRender('renderFitness', renderFitness);
+    if(typeof recoPanel !== 'undefined' && recoPanel === 'friend') safeRender('renderFriend', renderFriend);
+    if($('#gatherModal') && gatherDraft) safeRender('renderGatherModal', renderGatherModal);
   }
   function undoFeedback(key, action){
     ensureFeedbackToday();
     var dbChanged = false;
     if(action === 'today'){
       delete feedbackToday.items[key];
+      feedbackLog(key, '', 'undo', '', 'today', null);
+      saveFeedbackStore();
     }else{
+      var cur = feedbackActiveFor(key);
       feedbackStore.items = feedbackStore.items.filter(function(it){
         if(it.key !== key || it.action !== action) return true;
         if(it.action === 'never'){
@@ -12153,6 +12221,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         }
         return false;
       });
+      feedbackLog(key, cur ? cur.name : '', 'undo', cur ? cur.surface : '', action, null);
       saveFeedbackStore();
     }
     if(dbChanged) save();
@@ -12165,13 +12234,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function clearAllFeedback(){
     ensureFeedbackToday();
     var n = feedbackStore.items.length + Object.keys(feedbackToday.items).length;
-    if(!n){ toast('没有可清空的反馈'); return false; }
-    if(!confirm('清空全部 '+n+' 条推荐反馈？\n\n「永不推荐」加入的黑名单也会一并移除；到访记录不受影响。')) return false;
+    var histN = (feedbackStore.history || []).length;
+    if(!n && !histN){ toast('没有可清空的反馈'); return false; }
+    if(!confirm('清空全部 '+n+' 条推荐反馈'+(histN ? '与 '+histN+' 条历史记录' : '')+'？\n\n「永不推荐」加入的黑名单也会一并移除；到访记录不受影响。')) return false;
     var blackKeys = {};
     feedbackStore.items.forEach(function(it){
       if(it.action === 'never'){ blackKeys[it.blackKey || it.key] = 1; blackKeys[it.key] = 1; }
     });
     feedbackStore.items = [];
+    feedbackStore.history = [];
     feedbackToday.items = {};
     var before = db.blacklist.length;
     db.blacklist = db.blacklist.filter(function(b){ return !blackKeys[b.key]; });
@@ -12195,7 +12266,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function feedbackBadgeHtml(store){
     var key = feedbackKeyOf(store), it = feedbackActiveFor(key), parts = [];
     if(feedbackTodaySkipped(store)) parts.push('今天不想吃');
-    if(it) parts.push(feedbackTierText(it));
+    if(it && it.action !== 'neutral') parts.push(feedbackTierText(it));
     if(!parts.length) return '';
     return '<span class="fb-badge">'+esc(parts.join(' · '))+'</span>';
   }
@@ -12204,7 +12275,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var surf = Object.prototype.hasOwnProperty.call(FB_SURFACES, String(surface)) ? String(surface) : 'daily';
     var on = {
       want: !!(cur && cur.action === 'want'),
-      neutral: !cur,
+      neutral: (!cur || cur.action === 'neutral'),
       today: today,
       tired: !!(cur && cur.action === 'tired'),
       dislike: !!(cur && cur.action === 'dislike'),
@@ -12215,6 +12286,57 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         return '<button type="button" class="fb-chip'+(on[a]?' on':'')+'" data-act="fb" data-key="'+esc(store.key)+'" data-fb="'+a+'" data-surface="'+surf+'">'+esc(FB_ACTIONS[a].label)+'</button>';
       }).join('')+
       '<span class="fb-note">'+esc(FB_SURFACES[surf])+'反馈 · 只影响推荐排序，不写到店记录；「想去」和「就吃这个」是另外两类。</span></div>';
+  }
+  /* 为什么这家被推荐 / 为什么被降权：当前档位 + 当前权重 + 最近一条历史 */
+  function feedbackReasonText(it){
+    if(!it) return '';
+    var m = feedbackTierMultiplier(it, Date.now());
+    var w = '×' + (Math.round(m * 100) / 100).toFixed(2);
+    if(it.action === 'want') return '想吃：推荐权重 '+w+'（随时间缓慢回落）';
+    if(it.action === 'tired'){
+      var end = Date.parse(it.until);
+      var remain = isFinite(end) ? Math.max(0, Math.ceil((end - Date.now())/86400000)) : 0;
+      return '最近吃腻了：临时降权 '+w+'，'+remain+' 天后自动恢复';
+    }
+    if(it.action === 'dislike') return '不喜欢这家：长期降权 '+w+'（可撤销，会缓慢恢复）';
+    if(it.action === 'never') return '永不推荐：已在黑名单，推荐 / 抽签 / 盲盒直接排除';
+    if(it.action === 'neutral') return '可以考虑：不加权也不降权（'+w+'）';
+    return '';
+  }
+  function feedbackExplainText(key){
+    if(!key) return '';
+    var it = feedbackActiveFor(key), lines = [];
+    if(it) lines.push(feedbackReasonText(it));
+    else if(db.blacklist.some(function(b){ return b && b.key === key; })) lines.push('永不推荐：已在黑名单，推荐 / 抽签 / 盲盒直接排除');
+    var m = feedbackMultiplier(key);
+    if(!lines.length) lines.push('没有被降权：仍按原有评分 / 距离 / 偏好与推荐理由排序（权重 ×'+(Math.round(m*100)/100).toFixed(2)+'）');
+    else lines.push('当前反馈权重 ×'+(Math.round(m*100)/100).toFixed(2));
+    var hist = (feedbackStore.history || []).filter(function(h){ return h.key === key; });
+    if(hist.length){
+      var last = hist[hist.length - 1];
+      lines.push('最近一条：'+fbActionText(last.action)+(last.action === 'undo' ? '（撤回「'+fbActionText(last.prev)+'」）' : '')+' · '+fbSurfaceText(last.surface)+' · '+String(last.at).slice(0,10));
+    }
+    return lines.join('；');
+  }
+  function feedbackHistoryHtml(n){
+    var hist = (feedbackStore.history || []).slice(-(n || 10)).reverse();
+    if(!hist.length) return '<p class="muted">还没有反馈历史。任何一档反馈、撤销与改判都会按时间记在这里，只用于追溯，不参与排序。</p>';
+    return hist.map(function(h){
+      var label = fbActionText(h.action);
+      var sub = String(h.at).slice(0,10) + ' · ' + fbSurfaceText(h.surface);
+      if(h.action === 'undo') sub += ' · 撤回「'+fbActionText(h.prev)+'」';
+      else if(h.prev) sub += ' · 改判自「'+fbActionText(h.prev)+'」';
+      return '<div class="vote-item">'+
+        '<div style="flex:1;min-width:0"><div style="font-size:13px"><b>'+esc(h.name || h.key)+'</b> <span class="tag '+(h.action === 'want' ? 'dim' : 'warn')+'">'+esc(label)+'</span></div>'+
+        '<p class="meta">'+esc(sub)+'</p></div></div>';
+    }).join('');
+  }
+  function renderFeedbackHistory(){
+    var box = $('#fbHistory'), hint = $('#fbHistHint');
+    if(!box) return;
+    var n = (feedbackStore.history || []).length;
+    if(hint) hint.textContent = n ? (n + ' 条') : '';
+    box.innerHTML = feedbackHistoryHtml(10);
   }
 
   /* ================= 饮食偏好画像（派生数据 + 手动设置） ================= */
@@ -13867,7 +13989,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<div class="actions" style="margin-top:10px">'+
           '<button class="btn btn-sm btn-soft" data-act="jumpStore" data-key="'+esc(s.key)+'">打开平台</button>'+
           '<button class="btn btn-sm" data-act="copyStore" data-key="'+esc(s.key)+'">复制店名</button>'+
-        '</div></article>';
+        '</div>'+
+        feedbackBarHtml(s, 'friend')+
+        '</article>';
     }).join('');
 
     var payload = buildSharePayload(st, st.ctx);
@@ -14531,7 +14655,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             (c.badNames.length ? ' · 忌口冲突：' + esc(c.badNames.join('、')) : '') + '</div>' +
         '</div>' +
         '<div class="vote-score">' + c.votes + '</div>' +
-      '</div></div>';
+      '</div>' + feedbackBarHtml(c, 'gather') + '</div>';
   }
   function gatherVoteHtml(g){
     if(!(g.candidates || []).length) return '';
@@ -15438,7 +15562,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<div class="actions" style="margin-top:10px">'+
           '<button class="btn btn-sm btn-primary" data-act="fastEat" data-key="'+esc(x.store.key)+'">记成一餐</button>'+
           '<button class="btn btn-sm btn-soft" data-act="jumpStore" data-key="'+esc(x.store.key)+'">打开平台</button>'+
-        '</div></article>';
+        '</div>'+
+        feedbackBarHtml(x.store, 'fitness')+
+        '</article>';
     }).join('');
   }
 
@@ -16726,6 +16852,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!box) return;
     ensureFeedbackToday();
     pruneFeedback();
+    renderFeedbackHistory();
     var filter = $('#fbFilter') ? String($('#fbFilter').value || '') : '';
     var rows = [];
     feedbackStore.items.forEach(function(it){
@@ -16740,16 +16867,25 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var hint = $('#fbHint');
     if(hint) hint.textContent = rows.length ? rows.length+' 条' : '';
     if(!rows.length){
-      box.innerHTML = '<p class="muted">还没有反馈。推荐卡片底部的一排小按钮会记在这里。</p>';
+      box.innerHTML = '<p class="muted">还没有反馈。七个推荐入口卡片底部都是同一排按钮，改判与撤销也会记进下面的历史。</p>';
       return;
     }
     box.innerHTML = rows.map(function(r){
-      var label = r.action === 'tired' ? feedbackTierText(r.item) : FB_ACTIONS[r.action].label;
+      var label = r.action === 'tired' ? feedbackTierText(r.item) : fbActionText(r.action);
       var tone = (r.action === 'want') ? 'dim' : 'warn';
-      return '<div class="vote-item">'+
-        '<div style="flex:1;min-width:0"><div style="font-size:13px"><b>'+esc(r.name)+'</b> <span class="tag '+tone+'">'+esc(label)+'</span></div>'+
-        '<p class="meta">'+esc(String(r.at || '').slice(0,10))+' · '+esc(r.key)+'</p></div>'+
-        '<button class="btn btn-sm" data-act="fbUndo" data-fbkey="'+esc(r.key)+'" data-fba="'+esc(r.action)+'">撤销</button>'+
+      var why = feedbackExplainText(r.key);
+      return '<div class="vote-item" style="flex-wrap:wrap">'+
+        '<div style="flex:1 0 100%;min-width:0"><div style="font-size:13px"><b>'+esc(r.name)+'</b> <span class="tag '+tone+'">'+esc(label)+'</span></div>'+
+        '<p class="meta">'+esc(String(r.at || '').slice(0,10))+' · '+esc(r.key)+'</p>'+
+        (why ? '<p class="meta">'+esc(why)+'</p>' : '')+'</div>'+
+        '<div class="frow" style="gap:8px;width:100%;margin-top:8px">'+
+          '<select class="input" data-act="fbJudge" data-fbkey="'+esc(r.key)+'" aria-label="改判反馈档位" style="flex:1;min-width:0;min-height:40px">'+
+            Object.keys(FB_ACTIONS).map(function(a){
+              return '<option value="'+a+'"'+(a === r.action ? ' selected' : '')+'>'+esc(FB_ACTIONS[a].label)+'</option>';
+            }).join('')+
+          '</select>'+
+          '<button class="btn btn-sm" data-act="fbUndo" data-fbkey="'+esc(r.key)+'" data-fba="'+esc(r.action)+'" style="flex:none">撤销</button>'+
+        '</div>'+
       '</div>';
     }).join('');
   }
@@ -24777,7 +24913,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function feedbackBackupData(){
     return {
       version: feedbackStore.version,
-      items: JSON.parse(JSON.stringify(feedbackStore.items || []))
+      items: JSON.parse(JSON.stringify(feedbackStore.items || [])),
+      history: JSON.parse(JSON.stringify(feedbackStore.history || []))
     };
   }
   /* 只校验不改写：旧备份（payload.feedback 缺失）返回 null，表示「保持现状」；
@@ -24794,21 +24931,29 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       if(!it || typeof it !== 'object' || typeof it.key !== 'string' || !it.key){
         throw new Error('备份里的反馈条目缺少店家标识（第 ' + (i+1) + ' 条）');
       }
-      if(!FB_ACTIONS[it.action] || it.action === 'neutral' || it.action === 'today'){
+      if(!FB_ACTIONS[it.action]){
         throw new Error('备份里的反馈条目类型无效（第 ' + (i+1) + ' 条：' + String(it.action) + '）');
       }
       if(it.action === 'never' && it.blackKey != null && typeof it.blackKey !== 'string'){
         throw new Error('备份里的反馈条目黑名单标识不正确（第 ' + (i+1) + ' 条）');
       }
     }
-    return { version: num(fb.version) || FB_VERSION, items: items };
+    var hist = fb.history == null ? [] : fb.history;
+    if(!Array.isArray(hist)) throw new Error('备份里的反馈历史格式不正确（' + where + '）');
+    for(var j=0;j<hist.length;j++){
+      var h = hist[j];
+      if(!h || typeof h !== 'object' || typeof h.key !== 'string' || !h.key || !FB_HISTORY_ACTIONS[h.action]){
+        throw new Error('备份里的反馈历史条目无效（第 ' + (j+1) + ' 条）');
+      }
+    }
+    return { version: num(fb.version) || FB_VERSION, items: items, history: hist };
   }
   /* 还原反馈到 localStorage 与内存；返回 {applied, count}。applied=false 表示旧备份，
      此时不碰任何反馈数据（不清空）。 */
   function applyBackupFeedback(fb){
     var norm = feedbackBackupValidate(fb, '恢复');
     if(!norm) return { applied:false, count:0, legacy:true };
-    var items = [];
+    var items = [], hist = [];
     norm.items.forEach(function(it){
       var at = Date.parse(it.at);
       var until = it.until ? Date.parse(it.until) : NaN;
@@ -24819,12 +24964,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         until: isFinite(until) ? new Date(until).toISOString() : (it.action === 'tired' ? new Date(Date.now() + FB_TIRED_DAYS * 86400000).toISOString() : null),
         name: String(it.name || ''),
         blackKey: it.blackKey ? String(it.blackKey) : null,
-        surface: Object.prototype.hasOwnProperty.call(FB_SURFACES, String(it.surface)) ? String(it.surface) : ''
+        surface: fbSurfaceOf(it.surface)
       });
     });
-    feedbackStore = { version: norm.version, items: items };
+    (norm.history || []).forEach(function(it){ var h = fbHistNorm(it); if(h) hist.push(h); });
+    hist = hist.slice(-FB_HISTORY_MAX);
+    feedbackStore = { version: norm.version, items: items, history: hist };
     feedbackToday = { date: todayStr(), items: {} };
-    try{ localStorage.setItem(FB_KEY, JSON.stringify({ version:norm.version, items:items })); }
+    try{ localStorage.setItem(FB_KEY, JSON.stringify({ version:norm.version, items:items, history:hist })); }
     catch(e){
       logError('反馈恢复', e);
       throw new Error('空间不足：反馈写入失败，本机数据未改动');
@@ -27586,6 +27733,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   $('#btnAddAvoid').addEventListener('click', addSettingAvoid);
   $('#btnAddPlace').addEventListener('click', addPlace);
   $('#fbFilter').addEventListener('change', renderFeedback);
+  /* 改判：在「我的 → 推荐反馈」里把某家店换成另一档，历史会记录「改判自 X」 */
+  if($('#feedbackBox')) $('#feedbackBox').addEventListener('change', function(e){
+    var el = e.target;
+    if(!el || el.getAttribute('data-act') !== 'fbJudge') return;
+    var key = el.getAttribute('data-fbkey');
+    var act = String(el.value || '');
+    if(!key || !FB_ACTIONS[act]) return;
+    var s = findStore(key) || { key:key, name:(key.split('|')[1] || key), city:(key.split('|')[0] || '') };
+    applyFeedback(act, s, '');
+  });
   $('#btnFbClear').addEventListener('click', clearAllFeedback);
   $('#newPlace').addEventListener('keydown', function(e){
     if(e.key === 'Enter'){ e.preventDefault(); addPlace(); }
@@ -31899,6 +32056,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         return {
           version:feedbackStore.version,
           items:JSON.parse(JSON.stringify(feedbackStore.items)),
+          history:JSON.parse(JSON.stringify(feedbackStore.history || [])),
           today:Object.keys(feedbackToday.items),
           raw:(function(){ try{ return localStorage.getItem(FB_KEY); }catch(e){ return null; } })()
         };
@@ -31906,20 +32064,33 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       keyOf: function(name, city){
         return String(city||'').trim().toLowerCase()+'|'+String(name||'').trim().toLowerCase();
       },
-      set: function(key, action){
+      set: function(key, action, surface){
         var s = findStore(key);
         if(!s){ var p = String(key).split('|'); s = { key:key, name:p.slice(1).join('|') || key, city:p[0] || '' }; }
-        return applyFeedback(action, s);
+        return applyFeedback(action, s, surface || 'daily');
       },
-      setRaw: function(key, action){
+      setRaw: function(key, action, surface){
         var s = findStore(key);
         if(!s){ var p = String(key).split('|'); s = { key:key, name:p.slice(1).join('|') || key, city:p[0] || '' }; }
         if(action === 'never'){
-          if(!isBlack(s)) blackStore(s); else feedbackPersist('never', s);
+          if(!isBlack(s)) blackStore(s);
+          feedbackPersist('never', s, surface || 'daily');
           refreshAfterFeedback();
           return true;
         }
-        return applyFeedback(action, s);
+        return applyFeedback(action, s, surface || 'daily');
+      },
+      surfaces: function(){ return JSON.parse(JSON.stringify(FB_SURFACES)); },
+      history: function(){ return JSON.parse(JSON.stringify(feedbackStore.history || [])); },
+      explain: function(key){ return feedbackExplainText(key); },
+      judge: function(key, action, surface){
+        var s = findStore(key);
+        if(!s){ var p = String(key).split('|'); s = { key:key, name:p.slice(1).join('|') || key, city:p[0] || '' }; }
+        return applyFeedback(action, s, surface || 'daily');
+      },
+      bar: function(key, surface){
+        var s = findStore(key);
+        return s ? feedbackBarHtml(s, surface || 'daily') : '';
       },
       mult: function(key){ return feedbackMultiplier(key); },
       active: function(key){ return feedbackActiveFor(key); },
@@ -31933,8 +32104,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         if(dailyState) runDecideNow(false);
         return JSON.parse(JSON.stringify(it));
       },
-      seed: function(items){
-        feedbackStore = { version:FB_VERSION, items:JSON.parse(JSON.stringify(items || [])) };
+      seed: function(items, history){
+        feedbackStore = { version:FB_VERSION, items:JSON.parse(JSON.stringify(items || [])), history:JSON.parse(JSON.stringify(history || [])) };
         feedbackToday = { date:todayStr(), items:{} };
         saveFeedbackStore();
         renderFeedback();
@@ -31957,7 +32128,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         return drawState && drawState.pool ? drawState.pool.map(function(x){ return x.store.name; }) : [];
       },
       clearSilent: function(){
-        feedbackStore = { version:FB_VERSION, items:[] };
+        feedbackStore = { version:FB_VERSION, items:[], history:[] };
         feedbackToday = { date:todayStr(), items:{} };
         saveFeedbackStore();
         renderFeedback();
@@ -31971,7 +32142,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         renderFeedback();
         return { text:$('#feedbackBox') ? $('#feedbackBox').innerText : '', hint:$('#fbHint') ? $('#fbHint').textContent : '' };
       },
-      filter: function(v){ $('#fbFilter').value = v || ''; renderFeedback(); return $('#feedbackBox').innerText; }
+      filter: function(v){ $('#fbFilter').value = v || ''; renderFeedback(); return $('#feedbackBox').innerText; },
+      historyText: function(){ renderFeedback(); return $('#fbHistory') ? $('#fbHistory').innerText : ''; }
     },
     profile: {
       auto: function(){
