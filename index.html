@@ -2615,7 +2615,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <button type="button" class="icon-btn" id="btnFanziClose" aria-label="关闭"><svg class="ico ico-16" viewBox="0 0 24 24" aria-hidden="true" data-ico="close"></svg></button>
     </div>
     <p class="muted">生成 .fanzi.json 文件或 <code>#fanzi=</code> 链接；全程本机生成，不经过服务器。</p>
-    <div class="field" style="margin-top:12px">
+    <div class="field" id="fanziScopeField" style="margin-top:12px">
       <label>分享范围</label>
       <div class="chips">
         <button type="button" class="chip-toggle" id="fanziSrcSel">已手选 <span id="fanziSelNum">0</span> 条</button>
@@ -2626,8 +2626,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <label>你的昵称（可选）</label>
       <input class="input" id="fanziSource" maxlength="20" placeholder="对方会看到「来自：…」">
     </div>
-    <label class="check"><input type="checkbox" id="fanziNote"> 包含私人备注（默认关闭）</label>
-    <label class="check"><input type="checkbox" id="fanziPhoto"> 包含照片（会显著增大文件，默认关闭）</label>
+    <label class="check" id="fanziNoteWrap"><input type="checkbox" id="fanziNote"> 包含私人备注（默认关闭）</label>
+    <label class="check" id="fanziPhotoWrap"><input type="checkbox" id="fanziPhoto"> 包含照片（会显著增大文件，默认关闭）</label>
     <div class="kw" style="color:var(--warn-ink);background:var(--warn-bg);margin:12px 0">分享内容会离开本机，请确认是否含隐私信息；默认不含照片和私人备注。</div>
     <p class="dist-note" id="fanziCount">未选择记录</p>
     <p class="dist-note hidden" id="fanziStatus"></p>
@@ -2679,7 +2679,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <label class="check"><input type="checkbox" id="importIncludeStats"> 计入我的统计</label>
         <p class="dist-note" style="margin-top:6px">默认不勾：好友导入的记录只作参考，不计入你的花费、排行榜与年度报告；之后可在「统计」页统一开启。旧分享包没有该字段时同样按不计入处理。</p>
       </div>
-      <div class="import-warn">对方评分与推荐理由仅代表对方个人观点，未经你核实；导入后可在「我的 → 本机数据」导出备份。</div>
+      <div class="import-warn" id="importWarn">对方评分与推荐理由仅代表对方个人观点，未经你核实；导入后可在「我的 → 本机数据」导出备份。</div>
       <p class="dist-note" id="importPlan" style="margin-top:10px"></p>
       <div class="actions" style="margin-top:10px">
         <button type="button" class="btn btn-primary" id="btnImportConfirm">确认导入</button>
@@ -3970,6 +3970,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         diaryKv('备注', esc(t.note || '未填')) +
       '</div>' +
       '<div class="actions" style="margin-top:0;margin-bottom:10px">' +
+        '<button type="button" class="btn" data-act="tripShare" data-tid="' + esc(t.id) + '" style="min-height:44px">分享行程</button>' +
         '<button type="button" class="btn" data-act="tripMap" data-tid="' + esc(t.id) + '" style="min-height:44px">在地图上看</button>' +
         '<button type="button" class="btn" data-act="tripEdit" data-tid="' + esc(t.id) + '" style="min-height:44px">编辑</button>' +
         '<button type="button" class="btn btn-danger" data-act="tripDel" data-tid="' + esc(t.id) + '" style="min-height:44px">删除</button>' +
@@ -4833,6 +4834,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return;
     }
     if(act === 'tripMap'){ tripShowOnMap(tid); return; }
+    if(act === 'tripShare'){ openTripFanzi(tid); return; }
   }
   function tripSheetChange(e){
     var tg = e.target;
@@ -17984,6 +17986,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var FANZI_LINK_RECORDS = 80;
   var FANZI_FILE_MAX = 10 * 1024 * 1024;
   var fanziScope = 'filter';
+  var fanziTrip = null;   /* 非空时，分享弹层处于「分享行程」模式 */
   var importPreviewState = null;
   var importSnapshot = null;
   var importBusy = false;
@@ -18006,6 +18009,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return scope === 'sel' ? fanziSelectedRecords() : fanziFilteredRecords();
   }
   function fanziUpdateCounts(){
+    if(fanziTrip){
+      $('#fanziSelNum').textContent = '0 条';
+      $('#fanziFilterNum').textContent = '0 条';
+      var ts = (fanziTrip.stops || []).length;
+      $('#fanziCount').textContent = '将分享行程「'+fanziTrip.name+'」：'+ts+' 家店铺（清单名、目的地、日期、店铺与状态）。';
+      return;
+    }
     renderList(true);
     var nSel = selectedCount();
     var nFil = (listState.items || []).length;
@@ -18020,6 +18030,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       : '未选择记录';
   }
   function openFanzi(scope){
+    fanziTrip = null;
+    $('#fanziTitle').textContent = '分享给好友';
+    $('#fanziScopeField').classList.remove('hidden');
+    $('#fanziNoteWrap').classList.remove('hidden');
+    $('#fanziPhotoWrap').classList.remove('hidden');
     fanziScope = scope || (selectedCount() ? 'sel' : 'filter');
     $('#fanziSource').value = '';
     $('#fanziNote').checked = false;
@@ -18034,7 +18049,97 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function closeFanzi(){
     $('#fanziMask').classList.add('hidden');
+    fanziTrip = null;
     hideTutHint();
+  }
+
+  /* 旅行清单专门互导：复用 .fanzi.json / #fanzi= / 二维码与 FANZI_VERSION，
+     只带清单名、目的地、日期、店铺编号与店名、状态，不带照片和私人备注。 */
+  function tripShareStops(t){
+    return (t.stops || []).map(function(s){
+      return { shopId:shopIdOf(s.name, s.city), name:s.name, city:s.city, area:s.area, status:s.status, day:s.day };
+    });
+  }
+  function buildTripPayload(t){
+    var source = String($('#fanziSource').value || '').trim().slice(0, 20) || '好友';
+    return {
+      format: FANZI_FORMAT,
+      version: FANZI_VERSION,
+      kind: 'trip',
+      exportedAt: new Date().toISOString(),
+      source: source,
+      disclaimer: '行程数据来自对方计划，仅供参考',
+      records: [],
+      trips: [{
+        name: t.name, destination: t.destination, startDate: t.startDate, endDate: t.endDate,
+        stops: tripShareStops(t)
+      }]
+    };
+  }
+  function buildTripLink(t){
+    var source = String($('#fanziSource').value || '').trim().slice(0, 20) || '好友';
+    var tr = {
+      n: t.name, d: t.destination, sd: t.startDate, ed: t.endDate,
+      st: tripShareStops(t).map(function(s){ return [s.shopId, s.name, s.city, s.area, s.status, s.day]; })
+    };
+    var pkg = { f:'fz', v:FANZI_VERSION, kind:'trip', s:source, e:new Date().toISOString(), tr:tr };
+    var encoded = b64urlEncode(JSON.stringify(pkg));
+    if(encoded.length > FANZI_LINK_MAX){
+      return { error:'压缩后 '+encoded.length+' 字符，超过链接上限 '+FANZI_LINK_MAX+'，请改用文件分享' };
+    }
+    return { url: location.href.split('#')[0] + '#fanzi=' + encoded, encoded:encoded,
+      count:(t.stops || []).length, unit:'家店铺' };
+  }
+  function openTripFanzi(tid){
+    var t = tripsLoad().items.filter(function(x){ return x.id === tid; })[0];
+    if(!t){ toast('清单不存在或已删除'); return; }
+    fanziTrip = t;
+    $('#fanziTitle').textContent = '分享行程';
+    $('#fanziScopeField').classList.add('hidden');
+    $('#fanziNoteWrap').classList.add('hidden');
+    $('#fanziPhotoWrap').classList.add('hidden');
+    $('#fanziSource').value = '';
+    $('#fanziLinkBox').classList.add('hidden');
+    $('#fanziLinkText').textContent = '';
+    $('#fanziQrHint').textContent = '';
+    setFanziStatus('');
+    fanziUpdateCounts();
+    $('#fanziMask').classList.remove('hidden');
+  }
+  function fanziShareTripFile(){
+    var t = fanziTrip;
+    var pkg = buildTripPayload(t);
+    var json = JSON.stringify(pkg);
+    var safeName = String(t.name || '行程').replace(/[\\/:*?"<>|]/g, '_').slice(0, 30);
+    var name = 'i吃饭-行程-'+safeName+'-'+todayStr()+'.fanzi.json';
+    var blob = new Blob([json], { type:'application/json' });
+    var file = null;
+    try{ file = new File([blob], name, { type:'application/json' }); }catch(e){ file = null; }
+    if(nativeFileBridge()){
+      nativeShareFile(name, utf8Base64(json), 'application/json', '行程分享')
+        .then(function(){ setFanziStatus('已调起系统分享（'+json.length+' 字符）'); })
+        .catch(function(e){
+          nativeFailMsg('行程分享', e, '分享');
+          setFanziStatus('分享失败，请重试或改用链接');
+        });
+      return;
+    }
+    if(file && navigator.share && navigator.canShare){
+      var ok = false;
+      try{ ok = navigator.canShare({ files:[file] }); }catch(e){ ok = false; }
+      if(ok){
+        navigator.share({ files:[file], title:'i吃饭 · 行程分享', text:'行程数据来自对方计划，仅供参考' })
+          .then(function(){ setFanziStatus('已调起系统分享（'+json.length+' 字符）'); })
+          .catch(function(err){
+            if(err && err.name === 'AbortError') return;
+            downloadBlob(blob, name);
+            setFanziStatus('系统分享不可用，已下载 '+name);
+          });
+        return;
+      }
+    }
+    downloadBlob(blob, name);
+    setFanziStatus('已下载 '+name+'（'+json.length+' 字符）');
   }
 
   function fanziRecordOf(r, opts, photoUrl){
@@ -18093,6 +18198,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     });
   }
   function fanziShareFile(){
+    if(fanziTrip){ fanziShareTripFile(); return; }
     var recs = fanziRecordsOf(fanziScope);
     if(!recs.length){ toast('请先选择要分享的记录'); return; }
     var opts = { note: $('#fanziNote').checked, photo: $('#fanziPhoto').checked };
@@ -18153,6 +18259,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     };
   }
   function buildFanziLink(){
+    if(fanziTrip) return buildTripLink(fanziTrip);
     var recs = fanziRecordsOf(fanziScope);
     if(!recs.length) return { error:'请先选择要分享的记录' };
     if(recs.length > FANZI_LINK_RECORDS){
@@ -18179,9 +18286,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var qr = null;
     try{ qr = drawFanziQr(r.url); }catch(e){ logError('二维码', e); qr = null; }
     if(qr){
-      setFanziStatus('已生成链接：'+r.count+' 条，'+r.url.length+' 字符；二维码可直接扫码');
+      setFanziStatus('已生成链接：'+r.count+' '+(r.unit || '条')+'，'+r.url.length+' 字符；二维码可直接扫码');
     }else{
-      setFanziStatus('已生成链接：'+r.count+' 条，'+r.url.length+' 字符');
+      setFanziStatus('已生成链接：'+r.count+' '+(r.unit || '条')+'，'+r.url.length+' 字符');
       $('#fanziQrHint').textContent = '链接较长，二维码容量放不下，请直接复制链接发送。';
     }
     return r;
@@ -18460,6 +18567,53 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var migrated = migrate({ records:[o], settings:{} }).records[0];
     return migrated && migrated.name ? migrated : null;
   }
+  /* ---- 旅行清单互导：解析与规范化（只带清单结构，不涉及记录/照片/私人备注） ---- */
+  function tripStopExpand(a){
+    if(Array.isArray(a)) return { name:a[1], city:a[2], area:a[3], status:a[4], day:a[5] };
+    a = a || {};
+    return { name:a.name != null ? a.name : a.n, city:a.city != null ? a.city : a.c,
+      area:a.area != null ? a.area : a.a, status:a.status != null ? a.status : a.st,
+      day:a.day != null ? a.day : a.d };
+  }
+  function tripImportNorm(tr){
+    if(!tr || typeof tr !== 'object' || Array.isArray(tr)) return null;
+    var name = String(tr.name != null ? tr.name : (tr.n || '')).trim().slice(0, 40);
+    if(!name) return null;
+    var src = Array.isArray(tr.stops) ? tr.stops : (Array.isArray(tr.st) ? tr.st : []);
+    var stops = [], seen = {};
+    for(var i = 0; i < src.length; i++){
+      var s = tripStopExpand(src[i]);
+      var sname = String(s.name == null ? '' : s.name).trim().slice(0, 40);
+      if(!sname) continue;
+      var city = String(s.city == null ? '' : s.city).trim().slice(0, 20);
+      var sid = shopIdOf(sname, city);
+      if(!sid || seen[sid]) continue;
+      seen[sid] = 1;
+      var status = String(s.status == null ? 'want' : s.status);
+      /* 对方的「已到店」不落成本机打卡；其余保留 想去/待办/不去 */
+      if(status !== 'want' && status !== 'planned' && status !== 'skip') status = 'want';
+      stops.push({ shopId:sid, name:sname, city:city,
+        area:String(s.area == null ? '' : s.area).trim().slice(0, 30),
+        status:status, day:tripDate(s.day) });
+    }
+    if(!stops.length) return null;
+    return { name:name,
+      destination:String(tr.destination != null ? tr.destination : (tr.d || '')).trim().slice(0, 40),
+      startDate:tripDate(tr.startDate != null ? tr.startDate : tr.sd),
+      endDate:tripDate(tr.endDate != null ? tr.endDate : tr.ed), stops:stops };
+  }
+  function tripImportSummary(trips){
+    var seen = {}, added = 0, skipped = 0, stops = 0;
+    (trips || []).forEach(function(tr){
+      (tr.stops || []).forEach(function(s){
+        stops++;
+        if(seen[s.shopId]) return;
+        seen[s.shopId] = 1;
+        if(tripStoreOf(s.shopId)) skipped++; else added++;
+      });
+    });
+    return { added:added, skipped:skipped, stops:stops, trips:(trips || []).length };
+  }
   function parseImportPayload(text){
     var raw = String(text == null ? '' : text).trim();
     if(!raw) throw new Error('内容为空');
@@ -18472,6 +18626,33 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     try{ obj = JSON.parse(raw); }
     catch(e){ throw new Error('不是有效的 JSON 或分享链接'); }
     var records = null, source = '好友', format = 'legacy', disclaimer = '数据来自对方记录，仅供参考', version = 0;
+    if(obj && typeof obj === 'object' && obj.f === 'fz' && obj.kind === 'trip'){
+      version = num(obj.v);
+      if(version > FANZI_VERSION) throw new Error('分享数据版本 '+version+' 高于当前支持的版本 '+FANZI_VERSION);
+      var linkTrs = Array.isArray(obj.tr) ? obj.tr : (obj.tr ? [obj.tr] : []);
+      var linkTrips = [];
+      for(var li = 0; li < linkTrs.length; li++){
+        var ln = tripImportNorm(linkTrs[li]);
+        if(ln) linkTrips.push(ln);
+      }
+      if(!linkTrips.length) throw new Error('分享链接里没有可导入的行程');
+      return { kind:'trip', source:String(obj.s || '好友').slice(0, 20) || '好友',
+        format:'fandazi-link', version:version, disclaimer:'行程数据来自对方计划，仅供参考', trips:linkTrips };
+    }
+    if(obj && typeof obj === 'object' && obj.format === FANZI_FORMAT && obj.kind === 'trip'){
+      version = num(obj.version);
+      if(!version) throw new Error('分享包缺少版本号');
+      if(version > FANZI_VERSION) throw new Error('分享包版本 '+version+' 高于当前支持的版本 '+FANZI_VERSION+'，请升级应用后再导入');
+      var fileTrips = [];
+      (Array.isArray(obj.trips) ? obj.trips : []).forEach(function(tr){
+        var n = tripImportNorm(tr);
+        if(n) fileTrips.push(n);
+      });
+      if(!fileTrips.length) throw new Error('分享包里没有可导入的行程');
+      return { kind:'trip', source:String(obj.source || '好友').slice(0, 20) || '好友',
+        format:'fandazi-share', version:version,
+        disclaimer:String(obj.disclaimer || '行程数据来自对方计划，仅供参考'), trips:fileTrips };
+    }
     if(obj && typeof obj === 'object' && obj.f === 'fz'){
       version = num(obj.v);
       if(version > FANZI_VERSION) throw new Error('分享数据版本 '+version+' 高于当前支持的版本 '+FANZI_VERSION);
@@ -18563,6 +18744,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     };
   }
   function renderImportPlan(){
+    var st = importPreviewState;
+    if(st && st.kind === 'trip'){ renderTripImportPreview(); return; }
     var plan = importPlan();
     $('#btnImportConfirm').textContent = '确认导入（' + plan.write + ' 条）';
     $('#btnImportConfirm').disabled = plan.write === 0;
@@ -18570,9 +18753,29 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       ? '将写入 '+plan.write+' 条（新增 '+plan.sum.new+'，覆盖 '+(plan.dupWrite + plan.confWrite)+'），跳过 '+plan.skip+' 条。'
       : '没有需要写入的记录：重复与冲突都选择了保留本机数据。';
   }
+  function renderTripImportPreview(){
+    var st = importPreviewState;
+    var sum = tripImportSummary(st.trips);
+    $('#importSum').innerHTML =
+      '<div><b data-k="new">'+sum.added+'</b><span>新增店铺</span></div>' +
+      '<div><b data-k="dup">'+sum.skipped+'</b><span>已存在跳过</span></div>' +
+      '<div><b data-k="conflict">'+sum.trips+'</b><span>行程</span></div>';
+    $('#importDupBox').classList.add('hidden');
+    $('#importConflictBox').innerHTML = '';
+    $('#importDiff').classList.add('hidden');
+    $('#importStatsBox').classList.add('hidden');
+    $('#importWarn').classList.add('hidden');
+    $('#btnImportConfirm').textContent = '导入行程（'+sum.trips+' 份）';
+    $('#btnImportConfirm').disabled = sum.trips === 0;
+    $('#importPlan').textContent = '将新增 '+sum.added+' 家 / 已存在 '+sum.skipped+' 家跳过；' +
+      '已存在的店铺不重复建档，不覆盖本地店铺档案与到店记录；导入的店铺进入想去/待办，不写打卡。';
+  }
   function renderImportPreview(){
     var st = importPreviewState;
     if(!st) return;
+    if(st.kind === 'trip'){ renderTripImportPreview(); return; }
+    $('#importStatsBox').classList.remove('hidden');
+    $('#importWarn').classList.remove('hidden');
     var sum = importSummary(st.rows);
     $('#importSum').innerHTML =
       '<div><b data-k="new">'+sum.new+'</b><span>新增</span></div>' +
@@ -18623,6 +18826,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     importPreviewState = null;
     if(opts.text != null) $('#importText').value = opts.text;
     $('#importLead').textContent = opts.lead || '先预览再写入：重复默认跳过，冲突可逐条选择；导入前会保留快照，可一次性撤销。';
+    $('#importStatsBox').classList.remove('hidden');
+    $('#importWarn').classList.remove('hidden');
+    $('#importDupBox').classList.remove('hidden');
     setImportStatus('');
     importBusy = false;
     showTutHint('recv');
@@ -18641,6 +18847,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     setImportStatus('正在解析…');
     try{
       var parsed = parseImportPayload(text);
+      if(parsed.kind === 'trip'){
+        var tsum = tripImportSummary(parsed.trips);
+        importPreviewState = {
+          kind:'trip', source:parsed.source, format:parsed.format, version:parsed.version,
+          disclaimer:parsed.disclaimer, trips:parsed.trips, sum:tsum
+        };
+        $('#importStep1').classList.add('hidden');
+        $('#importPreview').classList.remove('hidden');
+        $('#importResult').classList.add('hidden');
+        renderTripImportPreview();
+        setImportStatus('来源：'+parsed.source+' · '+(parsed.format === 'fandazi-share' ? '行程分享包' : '行程分享链接') +
+          ' · '+tsum.trips+' 份行程 / '+tsum.stops+' 家店铺；确认后才会写入。');
+        return { source:parsed.source, total:tsum.stops, trips:tsum.trips,
+          sum:{ new:tsum.added, dup:tsum.skipped, conflict:0 } };
+      }
       var rows = importClassify(parsed.records, parsed.source);
       importPreviewState = {
         source:parsed.source, format:parsed.format, version:parsed.version,
@@ -18681,10 +18902,67 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     };
     fr.readAsText(file);
   }
+  function applyTripImport(){
+    var st = importPreviewState;
+    if(!st || st.kind !== 'trip'){ toast('请先解析行程'); return Promise.resolve(null); }
+    importBusy = true;
+    var t0 = nowMs();
+    var beforeTrips = JSON.parse(JSON.stringify(tripsLoad().items));
+    var beforeWish = JSON.parse(JSON.stringify(db.wishlist));
+    var existing = {}, counted = {};
+    getStores().forEach(function(s){ existing[shopIdOf(s.name, s.city)] = 1; });
+    wishStores().forEach(function(s){ existing[shopIdOf(s.name, s.city)] = 1; });
+    var now = new Date().toISOString();
+    var addedShops = 0, skipped = 0, countedShop = {};
+    var newTrips = [];
+    st.trips.forEach(function(src){
+      if(beforeTrips.length + newTrips.length >= TRIPS_MAX) return;
+      var stops = [];
+      (src.stops || []).forEach(function(s){
+        var sid = shopIdOf(s.name, s.city);
+        if(!sid) return;
+        if(existing[sid]){
+          if(!countedShop[sid]){ countedShop[sid] = 1; skipped++; }
+        }else{
+          existing[sid] = 1;
+          countedShop[sid] = 1;
+          addedShops++;
+          /* 只进「想去」清单，不建档为到店记录，不改动已有店铺档案 */
+          db.wishlist.unshift({ id:newId('w'), name:s.name, city:s.city, area:s.area,
+            budget:null, note:'', createdAt:now });
+        }
+        stops.push({ shopId:sid, name:s.name, city:s.city, area:s.area,
+          status:s.status, day:s.day, note:'' });
+      });
+      var t = tripNorm({ id:newId('t'), name:src.name, destination:src.destination,
+        startDate:src.startDate, endDate:src.endDate, stops:stops,
+        createdAt:now, updatedAt:now });
+      if(t) newTrips.push(t);
+    });
+    if(newTrips.length) tripsPersist({ version:TRIPS_VERSION, items:newTrips.concat(beforeTrips) });
+    save();
+    renderTrips();
+    renderWishlist();
+    importBusy = false;
+    var elapsed = Math.round(nowMs() - t0);
+    importSnapshot = { kind:'trip', trips:beforeTrips, wishlist:beforeWish, at:Date.now() };
+    $('#importPreview').classList.add('hidden');
+    $('#importResult').classList.remove('hidden');
+    $('#importResult').innerHTML =
+      '<h3>行程导入完成</h3>' +
+      '<p class="muted">新增行程 '+newTrips.length+' 份 · 新增想去 '+addedShops+' 家 · 已存在跳过 '+skipped+' 家 · 用时 '+elapsed+' ms</p>' +
+      '<p class="muted">未创建任何打卡记录，也未修改已有店铺档案与到店记录。</p>' +
+      '<div class="actions"><button type="button" class="btn btn-danger" id="btnImportUndo">撤销这次导入</button>' +
+      '<button type="button" class="btn" id="btnImportDone">完成</button></div>' +
+      '<p class="dist-note">撤销保留导入前的行程与想去清单，仅在本次打开期间有效；关闭页面后请用导出备份恢复。</p>';
+    setImportStatus('行程导入完成：新增 '+newTrips.length+' 份，新增店铺 '+addedShops+' 家，跳过 '+skipped+' 家。');
+    return Promise.resolve({ trips:newTrips.length, added:addedShops, skipped:skipped, ms:elapsed });
+  }
   function applyImport(){
     if(importBusy) return Promise.resolve({ busy:true });
     var st = importPreviewState;
     if(!st){ toast('请先解析预览'); return Promise.resolve(null); }
+    if(st.kind === 'trip') return applyTripImport();
     var plan = importPlan();
     if(!plan.write){ toast('没有需要写入的记录'); return Promise.resolve({ write:0 }); }
     var rows = [];
@@ -18796,6 +19074,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!importSnapshot){ toast('没有可撤销的导入'); return false; }
     var snap = importSnapshot;
     importSnapshot = null;
+    if(snap.kind === 'trip'){
+      tripsPersist({ version:TRIPS_VERSION, items:snap.trips });
+      db.wishlist = snap.wishlist;
+      save();
+      renderTrips();
+      renderWishlist();
+      $('#importResult').innerHTML = '<h3>已撤销</h3><p class="muted">行程与想去清单已恢复到导入前的状态；已有店铺记录未被改动。</p>' +
+        '<div class="actions"><button type="button" class="btn" id="btnImportDone">关闭</button></div>';
+      setImportStatus('已撤销本次行程导入。');
+      toast('已撤销本次行程导入');
+      return true;
+    }
     db.records = snap.records;
     snap.photoIds.forEach(function(id){ photoDelete(id); });
     save();
@@ -24468,7 +24758,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         else{
           $('#fanziLinkText').textContent = r.url;
           r.qr = drawFanziQr(r.url);
-          setFanziStatus('已生成链接：'+r.count+' 条，'+r.url.length+' 字符');
+          setFanziStatus('已生成链接：'+r.count+' '+(r.unit || '条')+'，'+r.url.length+' 字符');
         }
         return r;
       },
@@ -24488,6 +24778,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       raw: function(text){
         try{
           var p = parseImportPayload(text);
+          if(p.kind === 'trip'){
+            var tsum = tripImportSummary(p.trips);
+            return { ok:true, kind:'trip', source:p.source, format:p.format, trips:p.trips.length, sum:{ new:tsum.added, dup:tsum.skipped, conflict:0, stops:tsum.stops } };
+          }
           var rows = importClassify(p.records, p.source);
           return { ok:true, source:p.source, format:p.format, rows:rows.length, sum:importSummary(rows) };
         }catch(e){ return { ok:false, error:String(e && e.message || e) }; }
@@ -24495,6 +24789,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       state: function(){
         var st = importPreviewState;
         if(!st) return null;
+        if(st.kind === 'trip'){
+          var ts = tripImportSummary(st.trips);
+          return { kind:'trip', sum:{ new:ts.added, dup:ts.skipped, conflict:0 }, trips:st.trips.length,
+            planText:$('#importPlan') ? $('#importPlan').textContent : '',
+            confirmText:$('#btnImportConfirm') ? $('#btnImportConfirm').textContent : '' };
+        }
         var cb = $('#importIncludeStats');
         return {
           sum:importSummary(st.rows), plan:importPlan(),
@@ -24945,6 +25245,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       add: function(tid, sid, name, city, area){ return tripAddStop(tid, sid, name || '', city || '', area || ''); },
       setStop: function(tid, sid, patch){ return tripStopSet(tid, sid, patch || {}); },
       eat: function(tid, sid){ tripStopEat(tid, sid); return true; },
+      sharePayload: function(tid){ var t = tripsGet(tid); return t ? buildTripPayload(t) : null; },
+      shareLink: function(tid){ var t = tripsGet(tid); return t ? buildTripLink(t) : null; },
+      shareOpen: function(tid){ openTripFanzi(tid); return true; },
       open: function(id){ openTripDetail(id); return true; },
       form: function(id){ openTripForm(id); return true; },
       close: function(){ closeTripSheet(); return true; },
