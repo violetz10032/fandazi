@@ -41,7 +41,7 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
     return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o);
   }
   var parentOrigin = '';
-  var FZ_PROTO = 3;   /* 与宿主握手协议版本：pong 回传，便于识别缓存里的旧内嵌页 */
+  var FZ_PROTO = 4;   /* 与宿主握手协议版本：pong 回传，便于识别缓存里的旧内嵌页；v4 起支持 fz:poi-search */
   var map = null;
   var markers = [];
   var pending = null;
@@ -216,6 +216,92 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
     if(!c) return;
     send({ type:'fz:view', center:[c.lng, c.lat], zoom:map.getZoom() });
   }
+  /* ---- POI 搜索（由宿主表单发起）----
+     宿主只发关键词与城市；本页执行 AMap.PlaceSearch 后只回传展示/回填所需字段：
+     店名、地址、类型、城市/区域、经纬度。不回传店铺备注、消费金额等任何记录隐私字段。 */
+  function compactPoi(p){
+    if(!p || !p.location) return null;
+    var lng = Number(p.location.lng), lat = Number(p.location.lat);
+    if(!isFinite(lng) || !isFinite(lat) || (lng === 0 && lat === 0)) return null;
+    if(lng < -180 || lng > 180 || lat < -90 || lat > 90) return null;
+    var city = Array.isArray(p.cityname) ? p.cityname.join('') : String(p.cityname || '');
+    return {
+      id:String(p.id || '').slice(0, 40),
+      name:String(p.name || '').slice(0, 80),
+      address:String(p.address || '').slice(0, 120),
+      adname:String(p.adname || '').slice(0, 40),
+      cityname:city.slice(0, 40),
+      type:String(p.type || '').slice(0, 80),
+      citycode:String(p.citycode || '').slice(0, 20),
+      location:{ lng:lng, lat:lat }
+    };
+  }
+  function poiSearch(d){
+    var reqId = String(d.reqId || '');
+    var keyword = String(d.keyword || '').slice(0, 60);
+    var city = String(d.city || '').slice(0, 40);
+    function reply(status, extra){
+      var m = { type:'fz:poi-result', reqId:reqId, status:String(status || '') };
+      if(extra){ for(var k in extra){ if(Object.prototype.hasOwnProperty.call(extra, k)) m[k] = extra[k]; } }
+      dbg('poi-result ' + m.status + ' · ' + (m.pois ? m.pois.length + ' 条' : '无候选'));
+      send(m);
+    }
+    function run(Cls){
+      var ps = null;
+      try{
+        ps = new Cls({ pageSize:10, pageIndex:1, extensions:'base', city:city, citylimit:!!city });
+      }catch(e){
+        reply('error', { message:'搜索初始化失败：' + ((e && e.message) || '未知错误') });
+        return;
+      }
+      try{
+        ps.search(keyword, function(status, result){
+          var extra = {};
+          if(result && (result.info || result.infocode)){
+            extra.info = String(result.info || '').slice(0, 40);
+            extra.infocode = String(result.infocode || '').slice(0, 20);
+          }
+          if(status === 'complete'){
+            var pois = (result && result.poiList && result.poiList.pois) || [];
+            extra.pois = pois.map(compactPoi).filter(Boolean).slice(0, 10);
+          }
+          reply(status, extra);
+        });
+      }catch(e){
+        reply('error', { message:'搜索请求失败：' + ((e && e.message) || '未知错误') });
+      }
+    }
+    if(!keyword){ reply('error', { message:'搜索关键词为空' }); return; }
+    ensure(function(err){
+      if(err){ reply('error', { message:'高德搜索不可用：' + err }); return; }
+      if(window.AMap && typeof window.AMap.PlaceSearch === 'function'){ run(window.AMap.PlaceSearch); return; }
+      if(!window.AMap || typeof window.AMap.plugin !== 'function'){
+        reply('error', { message:'高德搜索插件不可用（AMap.plugin 缺失）' });
+        return;
+      }
+      /* 插件按需加载；12 秒仍未注册就明确回 timeout，不假装搜到 */
+      var settled = false;
+      var timer = setTimeout(function(){
+        if(settled) return;
+        settled = true;
+        reply('timeout', { message:'搜索插件加载超时' });
+      }, 12000);
+      try{
+        window.AMap.plugin(['AMap.PlaceSearch'], function(){
+          if(settled) return;
+          settled = true; clearTimeout(timer);
+          if(typeof window.AMap.PlaceSearch !== 'function'){
+            reply('error', { message:'搜索插件未注册' }); return;
+          }
+          run(window.AMap.PlaceSearch);
+        });
+      }catch(e){
+        if(settled) return;
+        settled = true; clearTimeout(timer);
+        reply('error', { message:'搜索插件初始化失败：' + ((e && e.message) || '未知错误') });
+      }
+    });
+  }
   function init(d){
     if(map) return;
     var center = (d.center && isFinite(d.center[0]) && isFinite(d.center[1])) ? d.center : [116.397428, 39.90923];
@@ -249,6 +335,8 @@ window._AMapSecurityConfig = { securityJsCode: '78f8691c16bcd9c0ea947e808157ccd2
       });
     }else if(d.type === 'fz:pts' && map){
       draw(d.pts);
+    }else if(d.type === 'fz:poi-search'){
+      poiSearch(d);
     }else if(d.type === 'fz:camera' && map){
       if(d.center && isFinite(d.center[0]) && isFinite(d.center[1])){
         try{ map.setZoomAndCenter(Math.max(3, Math.min(19, Number(d.zoom) || 12)), d.center); }catch(err){}

@@ -311,18 +311,18 @@ APK 内接了 `@capacitor/app`（6.0.3），Android 的物理/手势返回键不
 
 | 入口 | 依赖 | 结果 |
 | --- | --- | --- |
-| 高德搜索 | 现有 Web 端 Key 的 JS API 插件（`AMap.PlaceSearch` / `AutoComplete` / `Geocoder`） | 候选列表 → 点「用这家」才回填店名 / 城市 / 商圈 / 地址 / 经纬度 |
+| 高德搜索 | 网页版：主页面 JS API 插件；APK：内嵌地图页里的同一套插件 | 候选列表 → 点「用这家」才回填店名 / 城市 / 商圈 / 地址 / 经纬度 |
 | 地图选点 | 高德 JS API 底图 | 点图放临时标记 → 「确认使用此位置」才写入；取消不改动原坐标 |
 | 手填经纬度 / 用当前位置 | 无 / 定位权限 | 始终可用，写入后来源记为「手动」或「当前定位」 |
 
-- **不另申请 Key**：搜索走 JS API 自带的 `PlaceSearch` / `AutoComplete`，与底图共用同一个 Web 端 Key 与 `securityJsCode`，插件只在点击搜索时按需加载，不改变启动路径。
+- **双路径、同一套交互**：网页版仍在主页面按需加载 `PlaceSearch` / `AutoComplete`；APK 内因主页面源 `https://localhost` 不在 Key 域名白名单，改为把关键词经既有 `fz:poi-search` postMessage 发给内嵌地图页（源 `violetz10032.github.io`），由内嵌页执行 `AMap.PlaceSearch` 后回传精简结果。宿主只发关键词与城市，只接收店名、地址、类型、城市/区域、经纬度；**不回传店铺备注、消费金额等记录隐私字段**。两端共用同一个候选列表、同样的 400ms 输入防抖、同样的「用这家」确认与错误码文案。
 - **必须显式确认**：搜索候选只展示，不自动选第一条、不自动写字段；点「用这家」才回填。
 - **失败给真码**：`INVALID_USER_DOMAIN(10006)`、`INVALID_USER_SCODE`、`USERKEY_PLAT_NOMATCH`、`INVALID_USER_KEY`、`DAILY_QUERY_OVER_LIMIT`、`OVER_QUERY_LIMIT` 原样显示并附处理建议；`no_data` / `timeout` 单独区分，不吞成一句「搜索失败」。
 - **距离自动带出**：回填坐标后，若「起点」已设经纬度，按 Haversine 实算直线距离写入「与我距离 km」，并标注「已按起点实算，可手改」；你手填过的距离不会被覆盖。
 - **坐标来源**：店铺级定位写入 `fandazi.shopmeta` 条目的可选 `location`（`coordinateSystem:'GCJ02'`、`source`、`amapPoiId`、`formattedAddress`、`cityCode`、`verified`），记录里新增可选 `locationSource`。旧数据没有这两个字段时按空读取，不迁移、不改键名。
 - **同一家店**：定位元数据按现有 `shopIdOf(店名, 城市)` 归并，与平台链接 / 补充字段同一套店铺档案，不重复建档。
-- **已知限制（与地图同源）**：搜索与底图共用同一 Key 与同一套域名校验，因此**网页版可用；APK 内随「高德图层」状态而定**——APK 主页源是 `https://localhost`（不在白名单，且高德不接受 localhost），主页面拿不到 `AMap` 插件对象，此时搜索会明确提示不可用并引导手填坐标，不会假装在搜。APK 内地图选点同理，失败时保留手填与「用当前位置」。
-- **测试**：`.tmp/poi-pick-test.js` **17/17 通过**（mock AMap）：归一化 / 错误码 / 候选渲染 / 必须确认 / 手改来源 / 搜索失败清空 / 起点距离 / 手填不覆盖 / 选点确认与取消 / shopmeta 定位 / 备份 v6 兼容 / 保存落库。
+- **已知限制（与地图同源）**：搜索与底图共用同一 Key 与同一套域名校验。网页版直接加载；APK 内经内嵌地图页执行（`fz:poi-search` / `fz:poi-result`），内嵌页为搜索按需**隐藏挂载**，不改变地图页当前可见状态。若内嵌页不可达或 8 秒未就绪、搜索 10 秒无响应，会明确提示原因并保留手填经纬度与「用当前位置」两条退路，不假装搜到；高德返回的 `INVALID_USER_KEY` / `DAILY_QUERY_OVER_LIMIT` 等真码原样透出。协议版本 `FZ_PROTO=4`，缓存里的旧内嵌页会因缺 `fz:poi-search` 而超时提示，重新部署 Pages 后即恢复。地图选点失败同样保留手填与「用当前位置」。
+- **测试**：`.tmp/poi-pick-test.js` **17/17 通过**（网页端 mock AMap）；`.tmp/poi-embed-test.js` **18/18 通过**（真实 `map-embed.html` + iframe 内 AMap 桩）：请求→内嵌页→回包→回填全链路、字段隐私白名单、输入防抖、错误码、搜索超时、内嵌页不可达回落手填、控制台无错误、375 宽无溢出。
 
 ## 教程与示例数据
 

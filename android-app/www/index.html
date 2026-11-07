@@ -2145,7 +2145,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <input class="input" id="f-poi" placeholder="输入店名后点搜索，也可直接用现有店名" autocomplete="off" maxlength="40">
         <button type="button" class="btn btn-soft btn-sm" id="btnPoiSearch">搜索</button>
       </div>
-      <p class="form-hint" id="poiState">用现有 Web 端 Key（JS API 插件）；搜索结果必须点「用这家」确认后才回填。</p>
+      <p class="form-hint" id="poiState">搜索结果必须点「用这家」确认后才回填；手填经纬度与「用当前位置」始终可用。</p>
       <div class="poi-list hidden" id="poiList"></div>
     </div>
     <div class="frow">
@@ -12871,10 +12871,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     /* 店铺定位：每次开表单清空搜索候选与来源，避免上一家的 POI 串到这一家 */
     poiPicked = null; poiCoordSource = ''; distAuto = false;
     poiState.items = []; poiState.loading = false; poiState.distNote = '';
+    poiState.lastAutoKw = '';
     poiState.seq++;
+    if(poiInputTimer){ clearTimeout(poiInputTimer); poiInputTimer = null; }
+    if(poiEmbedPending.timer){ clearTimeout(poiEmbedPending.timer); poiEmbedPending.timer = null; }
+    poiEmbedPending.id = '';
     if($('#f-poi')) $('#f-poi').value = '';
     poiStateRender();
-    poiStateMsg('用现有 Web 端 Key（JS API 插件）；搜索结果必须点「用这家」确认后才回填。');
+    poiStateMsg(poiHintText());
     if($('#poiSourceState')){ $('#poiSourceState').style.display = 'none'; $('#poiSourceState').textContent = ''; }
     if($('#smartPasteText')){
       $('#smartPasteText').value = '';
@@ -13938,7 +13942,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     embedMsgBound:false, embedSig:'', embedTimer:null,
     embedT0:0, embedLoadMs:0, embedReadyMs:0, embedStage:'', embedTrace:[],
     embedRetry:0, embedAttempts:0, embedNoteTimer:null, embedDiag:null,
-    embedReadyBy:'', embedVisible:false, embedPingTimer:null
+    embedReadyBy:'', embedVisible:false, embedPingTimer:null,
+    embedHidden:false, embedWaiters:[]
   };
 
   /* WGS84（GPS / 记录里的原始坐标）→ GCJ-02（高德底图）标准偏移算法；反向不回写记录。 */
@@ -15265,7 +15270,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function mapEmbedAbort(msg){
     var cb = amapState.embedCb;
-    if(!cb && !amapState.embedReady) return;
+    var waiters = amapState.embedWaiters.splice(0);
+    if(!cb && !waiters.length && !amapState.embedReady) return;
     mapEmbedDiagFail('', msg);
     amapState.embedCb = null;
     amapState.loading = false;
@@ -15277,7 +15283,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(amapState.embed === f) amapState.embed = null;
     try{ if(f && f.parentNode) f.parentNode.removeChild(f); }catch(e){}
     if(cb) cb(msg);
-    else mapAmapFail(msg);
+    else if(!waiters.length) mapAmapFail(msg);
+    waiters.forEach(function(w){ try{ w(msg); }catch(e){} });
   }
   function mapEmbedReadyNow(src){
     /* 已就绪是终态：任何 load / 计时 / 重试路径都不得再把状态清回去 */
@@ -15298,7 +15305,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var rc = null;
     try{ rc = f ? f.getBoundingClientRect() : null; }catch(e){}
     amapState.embedVisible = !!(rc && rc.width > 0 && rc.height > 0);
+    var waiters = amapState.embedWaiters.splice(0);
     if(first && cb) cb(null);
+    waiters.forEach(function(w){ try{ w(null); }catch(e){} });
   }
   /* 内嵌页只回传视野、点击编号与加载阶段打点 */
   function mapEmbedOnMessage(e){
@@ -15348,6 +15357,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       mapEmbedAbort('内嵌地图页加载失败：' + (d.message || d.code || '未知原因'));
       return;
     }
+    if(d.type === 'fz:poi-result'){ poiEmbedOnResult(d); return; }
     if(d.type === 'fz:view'){
       if(!amapState.embedReady || Date.now() < amapState.progUntil) return;
       mapAmapReadCam({ zoom:d.zoom, center:d.center });
@@ -15392,11 +15402,23 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return isFinite(o) && o > 0 ? o : MAP_EMBED_READY_TIMEOUT;
   }
   function mapEmbedStart(cb){ mapEmbedMount(cb, 0); }
-  function mapEmbedMount(cb, retry){
-    if(!retry && amapState.embedReady && amapState.embed){ cb(null); return; }
-    if(!retry && amapState.loading) return;
+  /* POI 搜索只需要内嵌页里的 AMap 插件，不需要把地图层显示出来：隐藏挂载，复用同一条加载/校验通道 */
+  function mapEmbedStartHidden(){ mapEmbedMount(null, 0, { hidden:true }); }
+  function mapEmbedMount(cb, retry, opts){
+    if(!retry && amapState.embedReady && amapState.embed){ if(cb) cb(null); return; }
+    /* 正在加载时不重开：调用方挂到等待队列，就绪/失败后统一回调（POI 搜索可能与地图页并发） */
+    if(!retry && amapState.loading){
+      if(cb) amapState.embedWaiters.push(cb);
+      return;
+    }
+    amapState.embedHidden = !!(opts && opts.hidden);
     var layer = $('#amapLayer');
-    if(!layer){ cb('缺少地图容器'); return; }
+    if(!layer){
+      var noLayerWaiters = amapState.embedWaiters.splice(0);
+      if(cb) cb('缺少地图容器');
+      noLayerWaiters.forEach(function(w){ try{ w('缺少地图容器'); }catch(e){} });
+      return;
+    }
     if(amapState.embedTimer){ clearTimeout(amapState.embedTimer); amapState.embedTimer = null; }
     var old = $('#mapEmbedFrame');
     if(old && old.parentNode) old.parentNode.removeChild(old);
@@ -15458,9 +15480,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         else if(amapState.embedPingTimer){ clearInterval(amapState.embedPingTimer); amapState.embedPingTimer = null; }
       }, 1200);
     };
-    layer.classList.remove('hidden');
-    layer.setAttribute('aria-hidden', 'false');
     layer.appendChild(f);
+    if(!amapState.embedHidden){
+      layer.classList.remove('hidden');
+      layer.setAttribute('aria-hidden', 'false');
+    }
   }
   /* 超时只重试一次；重试仍失败才回落，提示区分「还没加载完」与「确实报错」 */
   function mapEmbedTimeout(kind, retry){
@@ -15503,7 +15527,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     amapState.embedCb = null;
     var note = $('#mapNote');
     if(note) note.textContent = reason;
-    mapEmbedMount(cb, retry + 1);
+    mapEmbedMount(cb, retry + 1, { hidden:amapState.embedHidden });
   }
   function mapEmbedSetup(){
     var layer = $('#amapLayer');
@@ -15625,7 +15649,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
    * 搜索与地图共用同一 Key 与同一套域名校验：网页版可用；APK 内跟随高德图层状态（见 README 已知限制）。
    * 搜索失败一律显示高德真实错误码，不吞成一句「搜索失败」。
    * 手动填经纬度、「用当前位置」不依赖搜索，任何情况下都是可用路径。 */
-  var poiState = { seq:0, loading:false, items:[], picked:null, autoBound:false, distNote:'' };
+  var poiState = { seq:0, loading:false, items:[], picked:null, autoBound:false, distNote:'', lastAutoKw:'' };
   var poiPicked = null;        /* 本次表单里用户确认过的 POI */
   var poiCoordSource = '';     /* amap_poi | manual | device | '' */
   var distAuto = false;        /* #f-dist 是否为自动实算值（用户手改后不再覆盖） */
@@ -15662,13 +15686,105 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function poiEmbedBlocked(){
     return mapEmbedWanted();
   }
-  /* 确保主页面拿到 AMap 与插件；APK 内走内嵌页时主页面没有 AMap，明确告知而不是假装在搜 */
+  /* APK 内：搜索委托给内嵌地图页（源 violetz10032.github.io，能通过 Key 域名校验）。
+     宿主只发关键词与城市；内嵌页执行 AMap.PlaceSearch 后只回传展示/回填所需字段
+     （店名、地址、类型、城市/区域、经纬度），不回传店铺备注、消费金额等隐私数据。
+     网页端仍在主页面直接加载 AMap 插件，原有路径不变。 */
+  var POI_EMBED_READY_TIMEOUT = 8000;
+  var POI_EMBED_SEARCH_TIMEOUT = 10000;
+  var poiEmbedPending = { id:'', seq:0, timer:null };
+  var poiEmbedReqSeq = 0;
+  var poiInputTimer = null;
+  function poiEmbedReadyMs(){
+    var o = Number(window.__fzPoiReadyTimeout);
+    return isFinite(o) && o > 0 ? o : POI_EMBED_READY_TIMEOUT;
+  }
+  function poiEmbedSearchMs(){
+    var o = Number(window.__fzPoiSearchTimeout);
+    return isFinite(o) && o > 0 ? o : POI_EMBED_SEARCH_TIMEOUT;
+  }
+  function poiFallbackTail(){
+    return mapEmbedWanted() ? '；也可直接手填经纬度，或点「用当前位置」' : '';
+  }
+  function poiHintText(){
+    if(mapEmbedWanted()){
+      return '搜索由你主动发起，经内嵌地图页（violetz10032.github.io）执行；只回传店名、地址、类型与经纬度等展示字段，点「用这家」才回填。';
+    }
+    return '用现有 Web 端 Key（JS API 插件）；搜索结果必须点「用这家」确认后才回填。';
+  }
+  /* 等待内嵌页就绪：与地图层共用同一实例；若尚未挂载则隐藏挂载（不改变地图页当前可见状态）。
+     等待超时只影响这次搜索，内嵌页会在后台继续加载，后续仍可复用。 */
+  function poiEnsureEmbed(cb){
+    var done = false;
+    var timer = setTimeout(function(){
+      finish('内嵌地图页 ' + (poiEmbedReadyMs() / 1000) + ' 秒内未就绪，无法在线搜索' + poiFallbackTail());
+    }, poiEmbedReadyMs());
+    function finish(err){
+      if(done) return;
+      done = true;
+      if(timer){ clearTimeout(timer); timer = null; }
+      cb(err || null);
+    }
+    if(amapState.embedReady && amapState.embed){ finish(null); return; }
+    amapState.embedWaiters.push(finish);
+    if(!(amapState.loading && amapState.embed)) mapEmbedStartHidden();
+  }
+  function poiEmbedSearch(kw, seq){
+    var city = String(($('#f-city') && $('#f-city').value) || db.settings.city || '').trim();
+    var id = 'p' + (++poiEmbedReqSeq) + '-' + seq;
+    if(poiEmbedPending.timer){ clearTimeout(poiEmbedPending.timer); poiEmbedPending.timer = null; }
+    poiEmbedPending.id = id;
+    poiEmbedPending.seq = seq;
+    poiEmbedPending.timer = setTimeout(function(){
+      if(poiEmbedPending.id !== id) return;
+      poiEmbedPending.id = ''; poiEmbedPending.timer = null;
+      if(seq !== poiState.seq) return;      /* 过期结果直接丢弃 */
+      poiState.loading = false;
+      poiState.items = [];
+      poiStateRender();
+      poiStateMsg(poiErrDetail('timeout', null) + '（内嵌地图页 ' + (poiEmbedSearchMs() / 1000) +
+        ' 秒未响应；若刚更新过页面，可能是缓存里的旧版内嵌页）' + poiFallbackTail(), true);
+    }, poiEmbedSearchMs());
+    poiStateMsg('正在搜索「' + kw + '」…');
+    var posted = mapAmapPost({ type:'fz:poi-search', reqId:id, keyword:kw, city:city });
+    if(!posted){
+      if(poiEmbedPending.timer){ clearTimeout(poiEmbedPending.timer); poiEmbedPending.timer = null; }
+      poiEmbedPending.id = '';
+      poiState.loading = false;
+      poiStateRender();
+      poiStateMsg('内嵌地图页不可达，无法在线搜索' + poiFallbackTail(), true);
+    }
+  }
+  /* 内嵌页回传的精简 POI 结果：只接受本次请求的 reqId，过期/伪造结果一律丢弃 */
+  function poiEmbedOnResult(d){
+    var id = String(d.reqId || '');
+    if(!poiEmbedPending.id || id !== poiEmbedPending.id) return;
+    var seq = poiEmbedPending.seq;
+    poiEmbedPending.id = '';
+    if(poiEmbedPending.timer){ clearTimeout(poiEmbedPending.timer); poiEmbedPending.timer = null; }
+    if(seq !== poiState.seq) return;
+    poiState.loading = false;
+    var status = String(d.status || '');
+    if(status === 'complete'){
+      var pois = Array.isArray(d.pois) ? d.pois : [];
+      poiState.items = pois.map(poiNorm).filter(Boolean).slice(0, 10);
+      if(poiState.items.length) poiStateMsg('找到 ' + poiState.items.length + ' 个候选：点「用这家」才会回填。');
+      else poiStateMsg('没有找到匹配的店铺：换个关键词，或补上城市后重搜' + poiFallbackTail(), true);
+    }else{
+      poiState.items = [];
+      var msg = poiErrDetail(status, { info:String(d.info || ''), infocode:String(d.infocode || '') });
+      if(d.message) msg = String(d.message).slice(0, 160) + '（' + msg + '）';
+      poiStateMsg(msg + poiFallbackTail(), true);
+    }
+    poiStateRender();
+  }
+  /* 确保主页面拿到 AMap 与插件（网页端路径，保持不变） */
   function poiEnsureAmap(cb, tries){
     tries = tries || 0;
     if(window.AMap && typeof window.AMap.plugin === 'function'){ cb(null); return; }
     if(poiEmbedBlocked()){
       cb('APK 内高德搜索不可用：主页面源为 ' + mapAmapOrigin() +
-        '（不在该 Key 的域名白名单），搜索插件只能在内嵌地图页里加载；请直接手填经纬度，或先用「用当前位置」。');
+        '（不在该 Key 的域名白名单）；请直接手填经纬度，或先用「用当前位置」。');
       return;
     }
     if(amapState.loading){
@@ -15730,7 +15846,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     });
   }
   function runPoiSearch(){
-    if(poiState.loading) return;
+    var embed = !window.AMap && mapEmbedWanted();
+    if(poiState.loading && !embed) return;     /* 网页端保持原有行为：搜索中不重复发起 */
     var el = $('#f-poi');
     var kw = String((el && el.value) || '').trim() || String($('#f-name').value || '').trim();
     if(!kw){ poiStateMsg('先填店名或搜索关键词', true); return; }
@@ -15738,6 +15855,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     poiState.loading = true;
     poiState.items = [];
     poiStateRender();
+    if(embed){
+      poiStateMsg('正在准备内嵌地图页…');
+      poiEnsureEmbed(function(err){
+        if(seq !== poiState.seq) return;
+        if(err){ poiState.loading = false; poiStateMsg(err, true); return; }
+        poiEmbedSearch(kw, seq);
+      });
+      return;
+    }
     poiStateMsg('正在加载高德搜索插件…');
     poiEnsureAmap(function(err){
       if(seq !== poiState.seq) return;
@@ -15748,6 +15874,26 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         poiSearchDo(kw, seq);
       });
     });
+  }
+  /* 输入防抖（仅 APK 内嵌路径）：网页端由 AutoComplete 自带联想，这里用同样的 400ms 节奏
+     把最新关键词发给内嵌页，避免每敲一个字都发一次请求；候选仍走同一个列表、同样要「用这家」确认。 */
+  function poiAutoSearch(){
+    if(!mapEmbedWanted()) return;
+    if(window.AMap && typeof window.AMap.AutoComplete === 'function') return;
+    var el = $('#f-poi');
+    if(!el) return;
+    var kw = String(el.value || '').trim();
+    if(kw.length < 2 || kw === poiState.lastAutoKw) return;
+    poiState.lastAutoKw = kw;
+    runPoiSearch();
+  }
+  function poiInputSchedule(){
+    if(!mapEmbedWanted()) return;
+    if(poiInputTimer){ clearTimeout(poiInputTimer); poiInputTimer = null; }
+    poiInputTimer = setTimeout(function(){
+      poiInputTimer = null;
+      poiAutoSearch();
+    }, 400);
   }
   function poiStateRender(){
     var box = $('#poiList');
@@ -22059,6 +22205,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   if($('#f-poi')) $('#f-poi').addEventListener('keydown', function(e){
     if(e.key === 'Enter'){ e.preventDefault(); runPoiSearch(); }
   });
+  if($('#f-poi')) $('#f-poi').addEventListener('input', poiInputSchedule);
   if($('#poiList')) $('#poiList').addEventListener('click', function(e){
     var b = e.target.closest ? e.target.closest('[data-poi]') : null;
     if(!b) return;
@@ -24371,6 +24518,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         };
       },
       errorTip: function(code){ return mapAmapTipFor(code); },
+      hint: function(){ return poiHintText(); },
+      embed: function(){
+        return {
+          mode: mapEmbedWanted(), ready: amapState.embedReady, loading: amapState.loading,
+          hidden: amapState.embedHidden, waiters: amapState.embedWaiters.length,
+          pending: poiEmbedPending.id, seq: poiEmbedPending.seq,
+          frame: !!$('#mapEmbedFrame'), visible: amapState.embedVisible
+        };
+      },
       locationNorm: shopLocationNorm,
       locationSet: shopLocationSet,
       locationOf: shopLocationOf
