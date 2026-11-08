@@ -8063,9 +8063,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     (r.ingredients || []).forEach(function(x){ ctx.ings[homeKeyName(x.name)] = 1; });
     ctx.cats[r.category] = (ctx.cats[r.category] || 0) + 1;
   }
+  /* 返回 { ok, reason }：reason = '' | 'empty'（菜谱库为空，不覆盖原菜单）| 'storage'（写盘失败） */
   function homeWeekGenerate(){
     var wk = homeWeekLoad();
     var ctx = { pool:homeWeekPool(), used:{}, recent:homeWeekRecentIds(), ings:{}, cats:{} };
+    var poolEmpty = !ctx.pool.main.length && !ctx.pool.side.length && !ctx.pool.soup.length && !ctx.pool.staple.length;
+    if(poolEmpty) return { ok:false, reason:'empty' };
     wk.days.forEach(function(day){
       if(!day.locked) return;
       HOME_WEEK_ROLES.forEach(function(role){
@@ -8083,8 +8086,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       });
       day.dishes = dishes;
     });
-    if(!homeWeekPersist(wk)) toast('一周菜单保存失败：本机存储空间不足');
+    if(!homeWeekPersist(wk)){ renderHomeWeek(); return { ok:false, reason:'storage' }; }
     renderHomeWeek();
+    return { ok:true, reason:'' };
   }
   function homeWeekToggleLock(idx){
     var wk = homeWeekLoad();
@@ -9267,12 +9271,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
     /* 第三阶段：一周菜单 / 采购清单 / 烹饪模式 */
     if($('#homeWeekGen')) $('#homeWeekGen').addEventListener('click', function(){
-      homeWeekGenerate();
-      toast('已生成未来七天菜单');
+      var r = homeWeekGenerate();
+      if(r.ok) toast('已生成未来七天菜单');
+      else if(r.reason === 'empty') toast('菜谱库还没有菜，先添加菜谱再生成菜单');
+      else toast('一周菜单保存失败：本机存储空间不足');
     });
     if($('#homeWeekReroll')) $('#homeWeekReroll').addEventListener('click', function(){
-      homeWeekGenerate();
-      toast('已重排未锁定的天数');
+      var r = homeWeekGenerate();
+      if(r.ok) toast('已重排未锁定的天数');
+      else if(r.reason === 'empty') toast('菜谱库还没有菜，先添加菜谱再重排');
+      else toast('重排失败：本机存储空间不足');
     });
     if($('#homeWeekBudget')) $('#homeWeekBudget').addEventListener('change', function(){
       var v = $('#homeWeekBudget').value;
@@ -13189,8 +13197,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     lines.push('以上来自我个人的吃饭记录整理，仅供参考，不代表平台评价。');
     return lines.join('\n');
   }
+  /* 分享链接的基地址：APK 内 location.href 是 https://localhost，对方打不开，改用线上 Pages 地址；
+     双击 file:// 打开时同样无法对外分享，返回空串由调用方明确提示，不生成假链接。 */
+  var SHARE_PUBLIC_BASE = 'https://violetz10032.github.io/fandazi/';
+  function shareBaseUrl(){
+    try{
+      var C = window.Capacitor;
+      if(C && typeof C.isNativePlatform === 'function' && C.isNativePlatform()) return SHARE_PUBLIC_BASE;
+    }catch(e){}
+    if(/^file:/.test(location.protocol)) return '';
+    try{ return location.href.split('#')[0]; }catch(e){ return ''; }
+  }
   function shareLink(payload){
-    return location.href.split('#')[0] + '#share=' + b64urlEncode(JSON.stringify(payload));
+    var base = shareBaseUrl();
+    if(!base) return '';
+    return base + '#share=' + b64urlEncode(JSON.stringify(payload));
   }
   function readShareHash(){
     var h = String(location.hash||'');
@@ -15323,9 +15344,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<div class="share-box" id="shareTextBox">'+esc(text)+'</div>'+
         '<div class="actions" style="margin-top:12px">'+
           '<button class="btn btn-primary btn-sm" data-act="copyShareText">复制文案</button>'+
-          '<button class="btn btn-sm" data-act="copyShareLink">复制链接</button>'+
+          (link ? '<button class="btn btn-sm" data-act="copyShareLink">复制链接</button>' : '')+
         '</div>'+
-        '<p class="muted" style="margin-top:8px">链接把推荐内容编码在 #share= 片段里，不上传；对方打开本页面即可查看。</p>'+
+        (link
+          ? '<p class="muted" style="margin-top:8px">链接把推荐内容编码在 #share= 片段里，不上传；对方打开本页面即可查看。</p>'
+          : '<p class="muted" style="margin-top:8px">当前环境无法生成可分享链接（双击本地文件打开时没有可访问地址），请只复制上面的文案发给朋友。</p>')+
       '</div>';
     friendState.payload = payload;
     friendState.text = text;
@@ -25653,7 +25676,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(encoded.length > FANZI_LINK_MAX){
       return { error:'压缩后 '+encoded.length+' 字符，超过链接上限 '+FANZI_LINK_MAX+'，请改用文件分享' };
     }
-    return { url: location.href.split('#')[0] + '#fanzi=' + encoded, encoded:encoded,
+    var base = shareBaseUrl();
+    if(!base) return { error:'当前环境无法生成可分享链接（双击本地文件打开时没有可访问地址），请改用 .fanzi.json 文件分享' };
+    return { url: base + '#fanzi=' + encoded, encoded:encoded,
       count:(t.stops || []).length, unit:'家店铺' };
   }
   function openTripFanzi(tid){
@@ -25837,7 +25862,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(encoded.length > FANZI_LINK_MAX){
       return { error:'压缩后 '+encoded.length+' 字符，超过链接上限 '+FANZI_LINK_MAX+'，请改用文件分享' };
     }
-    return { url: location.href.split('#')[0] + '#fanzi=' + encoded, encoded:encoded, count:recs.length };
+    var base = shareBaseUrl();
+    if(!base) return { error:'当前环境无法生成可分享链接（双击本地文件打开时没有可访问地址），请改用 .fanzi.json 文件分享' };
+    return { url: base + '#fanzi=' + encoded, encoded:encoded, count:recs.length };
   }
   function fanziMakeLink(){
     var r = buildFanziLink();
@@ -26542,6 +26569,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var before = JSON.parse(JSON.stringify(db.records));
     makeSnapshot('before-import');
     var addedPhotos = [];
+    var addedIds = [];
+    var replaced = [];
     var includeStats = !!($('#importIncludeStats') && $('#importIncludeStats').checked);
     var stats = { added:0, overwritten:0, photos:0 };
     var i = 0;
@@ -26564,6 +26593,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           rec.importedAt = rec.createdAt;
           rec.statsExcluded = includeStats ? false : true;
           db.records.unshift(rec);
+          addedIds.push(rec.id);
           stats.added++;
           return;
         }
@@ -26585,6 +26615,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             if(old.photoId) merged.photoId = old.photoId;
             else if(old.photo) merged.photo = old.photo;
           }
+          replaced.push({ id: old.id, prev: JSON.parse(JSON.stringify(old)), afterAt: merged.updatedAt });
           db.records[pos] = merged;
           stats.overwritten++;
         }else{
@@ -26595,6 +26626,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           rec.importedAt = rec.createdAt;
           rec.statsExcluded = includeStats ? false : true;
           db.records.unshift(rec);
+          addedIds.push(rec.id);
           stats.added++;
         }
       }
@@ -26619,7 +26651,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         importBusy = false;
         save();
         var elapsed = Math.round(nowMs() - t0);
-        importSnapshot = { records:before, photoIds:addedPhotos, at:Date.now() };
+        importSnapshot = { kind:'records', records:before, addedIds:addedIds, replaced:replaced, photoIds:addedPhotos, at:Date.now() };
         $('#importPreview').classList.add('hidden');
         $('#importResult').classList.remove('hidden');
         $('#importResult').innerHTML =
@@ -26652,13 +26684,42 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       toast('已撤销本次行程导入');
       return true;
     }
-    db.records = snap.records;
-    snap.photoIds.forEach(function(id){ photoDelete(id); });
+    /* 精确回退：只移除本次导入新增的、且导入后没被再改动过的记录；
+       只还原被本次覆盖的、且覆盖后没被再改动过的记录。导入后用户自己新增的记录与后续编辑一律保留。 */
+    var removed = 0, restored = 0, keptEdited = 0;
+    if(snap.addedIds && snap.replaced){
+      var drop = {};
+      snap.addedIds.forEach(function(id){ drop[id] = 1; });
+      db.records = db.records.filter(function(r){
+        if(drop[r.id] !== 1) return true;
+        if(r.importedAt && r.updatedAt === r.importedAt){ removed++; return false; }
+        keptEdited++;
+        return true;
+      });
+      snap.replaced.forEach(function(it){
+        for(var k = 0; k < db.records.length; k++){
+          if(db.records[k].id !== it.id) continue;
+          if(db.records[k].updatedAt === it.afterAt){ db.records[k] = it.prev; restored++; }
+          else keptEdited++;
+          break;
+        }
+      });
+    }else{
+      db.records = snap.records;
+      removed = -1;
+    }
+    /* 照片只在确实没人再引用时才删，避免误删导入后新增记录的照片 */
+    var refIdx = photoRefIndex();
+    snap.photoIds.forEach(function(id){ if(!refIdx.used[id]) photoDelete(id); });
     save();
-    $('#importResult').innerHTML = '<h3>已撤销</h3><p class="muted">记录已恢复到导入前的状态。</p>' +
+    $('#importResult').innerHTML = '<h3>已撤销</h3><p class="muted">' +
+      (removed >= 0
+        ? '已移除导入新增 '+removed+' 条，恢复被覆盖 '+restored+' 条' +
+          (keptEdited ? '；有 '+keptEdited+' 条在导入后又被改动过，已保留现状未回退' : '') + '。'
+        : '记录已恢复到导入前的状态。') + '</p>' +
       '<div class="actions"><button type="button" class="btn" id="btnImportDone">关闭</button></div>';
     setImportStatus('已撤销本次导入。');
-    toast('已撤销本次导入');
+    toast(keptEdited ? ('已撤销导入，保留 '+keptEdited+' 条导入后的改动') : '已撤销本次导入');
     return true;
   }
   function handleFanziHash(){
@@ -29461,7 +29522,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       toast('已关闭全部筛选，重新推荐');
     }
     else if(act === 'copyShareText'){ if(friendState && friendState.text) copyText(friendState.text); }
-    else if(act === 'copyShareLink'){ if(friendState && friendState.link) copyText(friendState.link); }
+    else if(act === 'copyShareLink'){
+      if(friendState && friendState.link) copyText(friendState.link);
+      else toast('当前环境无法生成可分享链接，请复制文案发给朋友');
+    }
     else if(act === 'planVote'){ createVote(idx); renderParty(); }
     else if(act === 'voteUp' || act === 'voteDown'){
       var vv = voteById(vid);
@@ -33722,6 +33786,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         };
       },
       statsToggle: function(on){ var cb = $('#importIncludeStats'); if(cb) cb.checked = !!on; return !!(cb && cb.checked); },
+      decide: function(i, d){
+        var st = importPreviewState;
+        if(st && st.rows && st.rows[i]) st.rows[i].decision = d;
+        return st && st.rows && st.rows[i] ? st.rows[i].decision : '';
+      },
+      dupMode: function(v){ var el = $('#importDupMode'); if(el && v != null) el.value = String(v); return el ? el.value : ''; },
+      snapshot: function(){
+        return importSnapshot ? { kind:importSnapshot.kind, added:(importSnapshot.addedIds || []).length,
+          replaced:(importSnapshot.replaced || []).length, photos:(importSnapshot.photoIds || []).length } : null;
+      },
+      resultText: function(){ return $('#importResult') ? $('#importResult').innerText : ''; },
       confirm: function(){ return applyImport(); },
       undo: function(){ return undoImport(); },
       file: readImportFile,
