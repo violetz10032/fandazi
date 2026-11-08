@@ -26649,6 +26649,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var backupReminderMuted = false;
   var testFailPhotoWrite = false;
   var pendingRestore = null;
+  var pendingRestorePhotoGap = 0;
 
   /* ---- 规范化 JSON 与 SHA-256（Web Crypto 优先；非安全上下文用纯 JS 兜底） ---- */
   function canonicalJson(v){
@@ -27139,6 +27140,26 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     (norm.records || []).forEach(function(r){ if(r.photoId && !photoMap[r.photoId]) n++; });
     return n;
   }
+  /* 恢复预览：统计备份记录与菜品引用的照片，分别落在备份包 / 本机照片库 / 两边都没有 */
+  function countRestorePhotoRefs(norm, dishesSec, backupPhotoIds, localKeys){
+    var seen = {}, list = [];
+    function add(id){
+      id = String(id || '');
+      if(!id || seen[id]) return;
+      seen[id] = 1;
+      list.push(id);
+    }
+    (norm.records || []).forEach(function(r){ photosOfRecord(r).forEach(function(p){ add(p.id); }); });
+    var items = (dishesSec && Array.isArray(dishesSec.items)) ? dishesSec.items : [];
+    items.forEach(function(d){ (d.photoIds || []).forEach(function(p){ add(p && p.id); }); });
+    var inBackup = 0, localOnly = 0, missing = 0;
+    list.forEach(function(pid){
+      if(backupPhotoIds[pid]) inBackup++;
+      else if(localKeys[pid]) localOnly++;
+      else missing++;
+    });
+    return { total:list.length, inBackup:inBackup, localOnly:localOnly, missing:missing };
+  }
 
   /* ---- 恢复点（IndexedDB snapshots，保留最近 2 份；照片只存引用） ---- */
   function makeSnapshot(reason){
@@ -27625,29 +27646,42 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function uiOpenRestorePreview(obj){
     verifyBackup(obj).then(function(){
       pendingRestore = obj;
+      return photoAllKeys();
+    }).then(function(keys){
       var norm = migrate(obj.payload);
+      var backupPhotoIds = {};
+      obj.photos.forEach(function(p){ backupPhotoIds[p.id] = 1; });
+      var localKeys = {};
+      (keys || []).forEach(function(k){ localKeys[k] = 1; });
+      var refs = countRestorePhotoRefs(norm, obj.payload.dishes, backupPhotoIds, localKeys);
+      pendingRestorePhotoGap = refs.missing;
       var rows = importClassify(norm.records, '完整备份');
       var sum = importSummary(rows);
-      var missing = countMissingPhotos(norm, (function(){ var m = {}; obj.photos.forEach(function(p){ m[p.id] = 1; }); return m; })());
       var totalPhotoBytes = 0;
       obj.photos.forEach(function(p){ totalPhotoBytes += p.dataUrl.length; });
       var tripCount = obj.payload.trips ? obj.payload.trips.items.length : 0;
       var tripStopCount = obj.payload.trips ? obj.payload.trips.items.reduce(function(n,t){ return n + t.stops.length; }, 0) : 0;
+      var photoBox = refs.missing > 0
+        ? '<div class="import-warn">照片需完整备份：本次恢复有 ' + refs.missing + ' 张照片本机不存在，相关记录恢复后会没有照片' + (obj.photos.length ? '' : '（这份自动备份只保存记录与照片引用，不含照片本体）') + '。</div>'
+        : (obj.photos.length ? '' : '<p class="dist-note">这份自动备份只保存记录与照片引用（0 张照片本体）；照片需完整备份才能一起带回。</p>');
       var html =
         '<div class="sheet-head" style="margin-bottom:8px"><h3>恢复完整备份</h3>' +
           '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
         '<p class="muted">备份时间 ' + esc(backupDateText(obj.exportedAt)) + ' · 备份格式 v' + num(obj.schemaVersion) + '（当前 v' + BACKUP_SCHEMA_VERSION + '）</p>' +
         '<div class="stats" style="margin-top:10px">' +
           '<div class="stat"><b>' + norm.records.length + '</b><span>条记录</span></div>' +
-          '<div class="stat"><b>' + obj.photos.length + '</b><span>张照片</span></div>' +
-          '<div class="stat"><b>' + fmtBytes(totalPhotoBytes) + '</b><span>照片体积</span></div>' +
+          '<div class="stat"><b>' + obj.photos.length + '</b><span>张照片本体</span></div>' +
+          '<div class="stat"><b>' + refs.total + '</b><span>张照片引用</span></div>' +
+          '<div class="stat"><b>' + refs.missing + '</b><span>本机缺失</span></div>' +
         '</div>' +
+        photoBox +
+        '<p class="dist-note">备份内照片体积 ' + fmtBytes(totalPhotoBytes) + '；照片引用中 ' + refs.inBackup + ' 张随备份、' + refs.localOnly + ' 张本机已有、' + refs.missing + ' 张本机不存在。</p>' +
         '<p class="dist-note">旅行计划：' + (obj.payload.trips ? (tripCount + ' 个行程 / ' + tripStopCount + ' 个地点') : '无（旧备份，本机旅行计划保持现状）') + '。</p>' +
         '<p class="dist-note">菜品：' + (obj.payload.dishes && Array.isArray(obj.payload.dishes.items) ? (obj.payload.dishes.items.length + ' 道') : '无（旧备份，本机菜品保持现状）') + '。</p>' +
         '<p class="dist-note">配置：偏好 ' + Object.keys(norm.settings || {}).length + ' 项 · 黑名单 ' + norm.blacklist.length + ' · 常用地点 ' + norm.places.length + ' · 想去 ' + norm.wishlist.length + ' · 投票 ' + (obj.payload.votes ? obj.payload.votes.length : 0) +
           ' · 反馈 ' + (obj.payload.feedback && Array.isArray(obj.payload.feedback.items) ? obj.payload.feedback.items.length : 0) +
           ' · 口味设置 ' + (obj.payload.profile ? ((obj.payload.profile.boost || []).length + ' 提升 / ' + (obj.payload.profile.block || []).length + ' 拉黑' + (num(obj.payload.profile.budgetCap) > 0 ? ' / 上限 ¥' + Math.round(num(obj.payload.profile.budgetCap)) : '')) : '无（旧备份）') +
-          '；校验值已通过（SHA-256）。' + (missing ? ' 有 ' + missing + ' 条记录引用的照片不在备份里，这些记录会保留无图状态。' : '') +
+          '；校验值已通过（SHA-256）。' +
           ' 平台链接：' + (obj.payload.shopmeta && obj.payload.shopmeta.items ? (Object.keys(obj.payload.shopmeta.items).length + ' 家店 / ' + Object.keys(obj.payload.shopmeta.items).reduce(function(n,k){ return n + ((obj.payload.shopmeta.items[k].links || []).length); }, 0) + ' 条') : '无（旧备份，保持本机现状）') + '。</p>' +
         '<div class="field" style="margin-top:12px"><label>恢复方式</label>' +
           '<select class="input" id="restoreMode">' +
@@ -27664,6 +27698,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       openBackupModal(html);
     }).catch(function(e){
       pendingRestore = null;
+      pendingRestorePhotoGap = 0;
       backupErrorModal(e && e.message ? e.message : '校验失败');
     });
   }
@@ -27672,9 +27707,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(restoreBusy){ toast('正在恢复，请稍候'); return; }
     var mode = ($('#restoreMode') && $('#restoreMode').value === 'replace') ? 'replace' : 'merge';
     if(mode === 'replace' && !confirm('完整替换会用备份内容覆盖当前全部记录与配置，确定继续？\n（恢复前会自动保存本机恢复点）')) return;
+    if(pendingRestorePhotoGap > 0 && !confirm('本次恢复有 ' + pendingRestorePhotoGap + ' 张照片本机不存在，相关记录恢复后没有照片。\n照片需完整备份（含照片本体）才能带回，确定继续恢复？')) return;
     openBackupModal('<h3>正在恢复…</h3><p class="muted">正在写入照片并切换数据；期间请勿关闭页面。</p>');
     applyBackupRestore(pendingRestore, mode).then(function(res){
       pendingRestore = null;
+      pendingRestorePhotoGap = 0;
       openBackupModal(
         '<div class="sheet-head" style="margin-bottom:8px"><h3>恢复完成</h3>' +
           '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
@@ -27731,7 +27768,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         box.innerHTML = '<p class="dist-note">还没有恢复点。每次导入好友分享或恢复完整备份前，会自动保存一份（仅最近 2 份）。</p>';
         return;
       }
-      box.innerHTML = '<p class="dist-note">最近的恢复点（仅保留 2 份，下一次导入会覆盖最旧的一份；照片只存引用，不重复占空间）：</p>' +
+      box.innerHTML = '<p class="dist-note">最近的恢复点（仅保留 2 份，下一次导入会覆盖最旧的一份；恢复点只存照片引用，照片需完整备份才能带回）：</p>' +
         list.map(function(s){
           return '<div class="import-row"><div class="grow"><b>' + esc(backupDateText(s.at)) + '</b> · ' + num(s.records) + ' 条 · ' + esc(snapshotReasonText(s.reason)) +
             '<br><span class="muted">照片引用 ' + (s.photoIds ? s.photoIds.length : 0) + ' 张</span></div>' +
@@ -28162,7 +28199,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return '<option value="' + n + '"' + (n === keep ? ' selected' : '') + '>' + n + ' 份</option>';
     }).join('');
     box.innerHTML =
-      '<p class="dist-note" style="margin-top:0"><b>定时自动备份（手机文件目录）</b>：每天首次打开应用时检查，距上次自动备份超过 24 小时就在页面空闲时生成一份整包备份。保留最近 <select id="autoBakKeep" class="input" style="display:inline-block;width:auto;padding:1px 6px;font-size:12px">' + keepOpts + '</select>，超出按时间淘汰最旧的。照片默认只存引用，不复制图片本身。</p>' +
+      '<p class="dist-note" style="margin-top:0"><b>定时自动备份（手机文件目录）</b>：每天首次打开应用时检查，距上次自动备份超过 24 小时就在页面空闲时生成一份整包备份。保留最近 <select id="autoBakKeep" class="input" style="display:inline-block;width:auto;padding:1px 6px;font-size:12px">' + keepOpts + '</select>，超出按时间淘汰最旧的。只保存记录与照片引用，不含照片本体；照片需完整备份才能一起带走。</p>' +
       '<p class="dist-note">' + esc(status) + ' · ' + esc(dirTxt) + '</p>' + errTxt +
       (native
         ? '<p class="dist-note">手机端写入应用专属外部目录 fandazi-backups（Android/data/…/files/fandazi-backups）；系统限制写入时先申请存储权限并说明用途，被拒则降级到应用私有目录并在上方写明结果。</p>'
