@@ -1534,6 +1534,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .home-reco-tags{font-size:11px;color:var(--ink3);margin-bottom:8px}
   .home-reco-meta{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
   .home-pill{font-size:11px;padding:3px 8px;border-radius:999px;background:var(--chip);color:var(--ink2)}
+  .home-classchips{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  .home-classchip{font-size:12px;padding:5px 10px;border-radius:999px;background:var(--chip);color:var(--ink2);border:1px solid var(--line);cursor:pointer;font-family:inherit}
+  .home-classchip.on{background:var(--soft);color:var(--soft-ink);border-color:var(--accent-line);font-weight:600}
+  .home-classchips .input{width:auto;flex:none;min-width:128px;padding:5px 8px;font-size:12px}
   .home-reco-why{font-size:11.5px;line-height:1.6;color:var(--ink3)}
   .home-list{display:grid;gap:8px;margin-top:10px}
   .home-row{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);
@@ -2246,8 +2250,24 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       </div>
       <div id="homePanelLib" class="hidden">
         <div class="frow">
-          <input class="input" id="homeQ" placeholder="搜索菜名 / 食材" autocomplete="off">
+          <input class="input" id="homeQ" placeholder="搜索菜名 / 食材 / 减脂 / 空气炸锅" autocomplete="off" list="homeQSug">
           <select class="input" id="homeCat"><option value="">全部风味</option></select>
+        </div>
+        <datalist id="homeQSug">
+          <option value="减脂餐"></option>
+          <option value="减脂"></option>
+          <option value="空气炸锅"></option>
+          <option value="空气炸锅快手菜"></option>
+        </datalist>
+        <div class="home-classchips" id="homeClassRow">
+          <button type="button" class="home-classchip" data-hclass="减脂餐">减脂餐</button>
+          <button type="button" class="home-classchip" data-hclass="空气炸锅">空气炸锅快手菜</button>
+          <select class="input" id="homeKcal" aria-label="热量区间">
+            <option value="">热量不限</option>
+            <option value="low">≤400 kcal</option>
+            <option value="mid">400–600 kcal</option>
+            <option value="high">600+ kcal</option>
+          </select>
         </div>
         <div class="home-list" id="homeLibList"></div>
       </div>
@@ -5772,7 +5792,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var HOME_FB_COOLDOWN_DAYS = { nope: 21, tired: 14, fail: 7 };
   var homeRecipeStore = null;
   var homeFbStore = null;
-  var homeState = { panel: 'reco', recoId: '', q: '' };
+  var homeState = { panel: 'reco', recoId: '', q: '', classes: [], kcal: '' };
 
   /* 八档家庭烹饪反馈：配置驱动，任务书文案若不同只改这里，不动数据结构 */
   var HOME_FB_LEVELS = [
@@ -5859,9 +5879,22 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     });
     var diff = num(r.difficulty);
     if(!(diff >= 1 && diff <= 3)) diff = 1;
+    var kinds = [];
+    (Array.isArray(r.kinds) ? r.kinds : []).forEach(function(k){
+      var v = homeNormName(k, 8);
+      if((v === '减脂餐' || v === '空气炸锅') && kinds.indexOf(v) < 0) kinds.push(v);
+    });
+    var role = String(r.role || '');
+    if(['main','side','soup','staple'].indexOf(role) < 0) role = '';
+    var airTemp = homeNumOrNull(r.airTemp, 300);
+    if(airTemp != null){ airTemp = Math.round(airTemp); if(airTemp < 60) airTemp = null; }
+    var airMinutes = homeNumOrNull(r.airMinutes, 180);
+    if(airMinutes != null){ airMinutes = Math.round(airMinutes); if(airMinutes < 1) airMinutes = null; }
     return {
       id: id, name: name, emoji: homeNormName(r.emoji, 4) || '🍽️',
       category: cat, tags: tags,
+      kinds: kinds, role: role, nutritionEst: !!r.nutritionEst,
+      airTemp: airTemp, airMinutes: airMinutes, airNote: (airTemp != null && airMinutes != null) ? '不同机型需按实际调整' : '',
       difficulty: Math.round(diff),
       minutes: Math.max(0, Math.round(num(r.minutes))),
       servings: Math.max(1, Math.round(num(r.servings) || 2)),
@@ -6379,16 +6412,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       tips:'火候：大火快炒保持脆爽；失败：藕片不泡水会发黑；可换：莲藕换山药。' });
 
     /* ---- 第二批起用紧凑写法，产出的字段与上面完全同构（name/emoji/category/tags/difficulty/minutes/servings/kcal/protein/ingredients/steps/tips） ---- */
-    /* head = 菜名|emoji|菜系|标签(用 / 分隔)|难度|分钟|人份|kcal|蛋白 */
-    function addR(head, ings, steps, tips){
+    /* head = 菜名|emoji|菜系|标签(用 / 分隔)|难度|分钟|人份|kcal|蛋白
+       extra = 可选扩展字段（kinds / role / nutritionEst / airTemp / airMinutes），旧条目不传即保持原语义 */
+    function addR(head, ings, steps, tips, extra){
       var h = head.split('|');
-      add({
+      var o = {
         name:h[0], emoji:h[1], category:h[2], tags:h[3].split('/'),
         difficulty:Number(h[4]), minutes:Number(h[5]), servings:Number(h[6]),
         kcal:Number(h[7]), protein:Number(h[8]),
         ingredients:ings.split(',').map(function(s){ var a = s.split('|'); return { name:a[0], amount:a[1], unit:a[2] }; }),
         steps:steps.split('|'), tips:tips
-      });
+      };
+      if(extra){ for(var k in extra){ if(Object.prototype.hasOwnProperty.call(extra, k)) o[k] = extra[k]; } }
+      add(o);
     }
     /* 第二批 1/2：川 8 / 湘 6 / 粤 8 / 鲁 6 / 苏 5 / 浙 4 / 闽 4 */
     addR('水煮牛肉|🥩|川菜|麻辣/下饭|3|40|3|420|32',
@@ -7115,6 +7151,238 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '豆腐|400|g,肉末|60|g,豆瓣酱|10|g,醋|10|ml,糖|8|g',
       '豆腐切块煎到两面金黄。|肉末炒到变色。|加豆瓣酱、醋和糖调汁。|倒回豆腐烧 3 分钟。',
       '火候：肉末要炒到完全变色；失败：翻动太勤豆腐会碎；可换：豆腐换油豆腐。');
+
+    /* ============================================================
+       第三批：独立分类「减脂餐」20 道 + 「空气炸锅」4 道（双分类）
+       只追加在数组末尾，既有 300 道顺序与 local-1..local-300 的 id 不变。
+       热量 / 蛋白均为按食材与用量折算的估算值（nutritionEst），不是检测数据。
+       空气炸锅条目带温度与时间，均注明「不同机型需按实际调整」。
+       ============================================================ */
+    /* ---- 减脂餐：主菜 / 配菜 / 汤 / 主食 按每道菜实际角色标注 ---- */
+    addR('香煎鸡胸配芦笋|🍗|家常|减脂/高蛋白|1|18|1|320|38',
+      '鸡胸肉|200|g,芦笋|150|g,橄榄油|8|ml,黑胡椒|2|g,盐|2|g',
+      '鸡胸横刀片成两片，用盐和黑胡椒腌 10 分钟。|芦笋去老根，沸水焯 1 分钟捞出。|平底锅刷橄榄油，中火每面煎 4 分钟。|切开中心全白、完全熟透，配芦笋装盘。',
+      '火候：中火每面 4 分钟，中心必须全白；失败：火大外焦里生；可换：芦笋换西兰花。',
+      { kinds:['减脂餐'], role:'main', nutritionEst:true });
+    addR('鸡胸西兰花沙拉|🥗|家常|减脂/凉菜|1|20|1|300|36',
+      '鸡胸肉|150|g,西兰花|150|g,圣女果|6|个,橄榄油|5|ml,柠檬汁|10|ml',
+      '鸡胸冷水下锅煮 12 分钟煮熟，捞出撕成条。|西兰花掰小朵焯 1 分钟过凉。|圣女果对半切。|橄榄油、柠檬汁和盐调汁，拌匀。',
+      '火候：鸡胸煮到中心全白即可；失败：煮久肉柴；可换：鸡胸换虾仁。',
+      { kinds:['减脂餐'], role:'main', nutritionEst:true });
+    addR('清蒸鲈鱼配西兰花|🐟|粤菜|减脂/蒸菜|2|25|2|340|40',
+      '鲈鱼|1|条,西兰花|200|g,姜|3|片,葱|2|根,生抽|10|ml',
+      '鲈鱼处理干净，两面划刀，铺姜片。|水开上锅蒸 8 分钟，关火焖 2 分钟。|西兰花掰小朵焯 1 分钟摆盘。|淋生抽，撒葱丝。',
+      '火候：鱼眼凸出、鱼肉能整片剥离即熟；失败：蒸久肉会老；可换：鲈鱼换龙利鱼。',
+      { kinds:['减脂餐'], role:'main', nutritionEst:true });
+    addR('虾仁蒸蛋|🍤|粤菜|减脂/蒸菜|1|20|1|220|24',
+      '鸡蛋|2|个,虾仁|80|g,温水|100|ml,盐|2|g,香油|3|ml',
+      '鸡蛋加温水和盐打散，过筛去泡沫。|虾仁焯 30 秒捞出。|蛋液倒入碗，水开蒸 8 分钟。|放虾仁再蒸 2 分钟至熟透，淋香油。',
+      '火候：蛋液刚凝固即关火，久了会起蜂窝；失败：水多不成型；可换：虾仁换鸡胸丁。',
+      { kinds:['减脂餐'], role:'main', nutritionEst:true });
+    addR('西兰花炒虾仁|🥦|家常|减脂/快手|1|15|1|250|28',
+      '虾仁|150|g,西兰花|200|g,蒜|2|瓣,橄榄油|8|ml,盐|2|g',
+      '西兰花掰小朵焯 1 分钟。|虾仁去虾线。|蒜末下锅炒香，放虾仁炒到变红熟透。|下西兰花翻炒 1 分钟，加盐出锅。',
+      '火候：虾仁完全变红即熟；失败：炒久发硬；可换：虾仁换鸡胸。',
+      { kinds:['减脂餐'], role:'main', nutritionEst:true });
+    addR('芦笋炒虾仁|🦐|家常|减脂/快手|1|15|1|240|30',
+      '虾仁|150|g,芦笋|200|g,蒜|2|瓣,橄榄油|8|ml,盐|2|g',
+      '芦笋去老根切段，焯 1 分钟。|虾仁去虾线。|热锅下蒜末和虾仁炒到变红熟透。|加芦笋炒 1 分钟，加盐出锅。',
+      '火候：虾仁变红、芦笋断生即可；失败：久炒芦笋发黄；可换：芦笋换西兰花。',
+      { kinds:['减脂餐'], role:'main', nutritionEst:true });
+    addR('三文鱼藜麦沙拉|🐟|家常|减脂/轻食|2|25|1|420|34',
+      '三文鱼|150|g,藜麦|50|g,生菜|100|g,圣女果|6|个,橄榄油|5|ml',
+      '藜麦洗净，水开煮 15 分钟沥干。|三文鱼用盐和黑胡椒腌 5 分钟，平底锅每面煎 3 分钟。|生菜撕块，圣女果对半切。|全部拌匀，淋橄榄油和柠檬汁。',
+      '火候：三文鱼中心刚变色即离火；失败：煎久会散；可换：三文鱼换鸡胸。',
+      { kinds:['减脂餐'], role:'main', nutritionEst:true });
+    addR('鸡胸肉蔬菜卷|🌯|家常|减脂/快手|1|20|1|330|34',
+      '鸡胸肉|150|g,生菜|80|g,胡萝卜|1|根,黄瓜|1|根,全麦饼|2|张',
+      '鸡胸切条，用盐和黑胡椒腌 10 分钟，平底锅煎至熟透。|胡萝卜和黄瓜切丝。|全麦饼小火加热 30 秒。|铺生菜、蔬菜丝和鸡胸条，卷起切段。',
+      '火候：鸡胸条中心全白无血色；失败：饼加热过久会脆裂；可换：全麦饼换春卷皮。',
+      { kinds:['减脂餐'], role:'main', nutritionEst:true });
+    addR('番茄龙利鱼汤|🐟|家常|汤/减脂|1|25|2|260|30',
+      '龙利鱼|200|g,番茄|2|个,姜|2|片,盐|2|g,橄榄油|5|ml',
+      '番茄切块，少油炒出汁。|加水和姜片烧开。|龙利鱼切块下锅。|小火煮 6 分钟，加盐。',
+      '火候：鱼块变白卷曲即熟；失败：久煮鱼会散；可换：龙利鱼换鲈鱼。',
+      { kinds:['减脂餐'], role:'soup', nutritionEst:true });
+    addR('冬瓜海米汤|🥣|家常|汤/清淡|1|20|2|90|8',
+      '冬瓜|300|g,海米|15|g,姜|2|片,盐|2|g,香油|3|ml',
+      '冬瓜去皮切薄片。|海米温水泡 5 分钟。|水开下冬瓜、海米和姜片。|煮 10 分钟到冬瓜透明，加盐和香油。',
+      '火候：煮到冬瓜透明软透；失败：久煮会化；可换：冬瓜换丝瓜。',
+      { kinds:['减脂餐'], role:'soup', nutritionEst:true });
+    addR('番茄豆腐菌菇汤|🍲|家常|汤/减脂|1|20|2|150|12',
+      '番茄|2|个,嫩豆腐|200|g,香菇|4|朵,盐|2|g,橄榄油|5|ml',
+      '番茄切块炒出汁。|香菇切片下锅炒香。|加水和豆腐块烧开。|小火煮 8 分钟，加盐。',
+      '火候：豆腐下锅后小火，别大火滚；失败：翻动太勤豆腐碎；可换：嫩豆腐换北豆腐。',
+      { kinds:['减脂餐'], role:'soup', nutritionEst:true });
+    addR('低脂牛肉丸汤|🍲|家常|汤/高蛋白|2|30|2|280|32',
+      '牛里脊|200|g,蛋清|1|个,淀粉|10|g,白萝卜|150|g,盐|3|g',
+      '牛里脊剁末，加蛋清、淀粉和盐搅打上劲。|搓成小丸子。|水开下丸子煮到浮起熟透。|下萝卜片再煮 10 分钟。',
+      '火候：丸子浮起后再煮 2 分钟；失败：没搅上劲会散；可换：牛肉换鸡胸。',
+      { kinds:['减脂餐'], role:'soup', nutritionEst:true });
+    addR('凉拌鸡丝荞麦面|🍜|家常|主食/减脂|1|20|1|380|32',
+      '荞麦面|80|g,鸡胸肉|100|g,黄瓜|1|根,醋|10|ml,生抽|10|ml',
+      '荞麦面煮 5 分钟过凉沥干。|鸡胸煮熟撕成丝。|黄瓜切丝。|醋、生抽和少量盐调汁，全部拌匀。',
+      '火候：面煮到刚断生，过凉更弹；失败：煮久会糊；可换：荞麦面换全麦面。',
+      { kinds:['减脂餐'], role:'staple', nutritionEst:true });
+    addR('牛油果鸡蛋全麦吐司|🥑|家常|主食/快手|1|10|1|360|18',
+      '全麦吐司|2|片,牛油果|0.5|个,鸡蛋|1|个,黑胡椒|2|g',
+      '鸡蛋煮 8 分钟煮熟，过凉切片。|牛油果压成泥，加盐和黑胡椒。|吐司烤 2 分钟到微脆。|抹牛油果泥，摆鸡蛋片。',
+      '火候：吐司烤到边缘微黄即可；失败：烤久会焦硬；可换：吐司换欧包。',
+      { kinds:['减脂餐'], role:'staple', nutritionEst:true });
+    addR('燕麦牛奶杯|🥛|家常|主食/快手|1|10|1|300|14',
+      '即食燕麦|50|g,牛奶|200|ml,香蕉|1|根,蓝莓|30|g',
+      '燕麦倒入杯中。|牛奶加热到温热（无需煮沸），加燕麦拌匀静置 5 分钟。|香蕉切片。|铺香蕉和蓝莓即可。',
+      '火候：免煮燕麦用冷牛奶泡 5 分钟；失败：泡太久会过稠；可换：牛奶换无糖酸奶。',
+      { kinds:['减脂餐'], role:'staple', nutritionEst:true });
+    addR('鸡蛋蔬菜卷饼|🌯|家常|主食/快手|1|15|1|340|16',
+      '全麦饼|2|张,鸡蛋|2|个,生菜|60|g,胡萝卜|1|根,橄榄油|5|ml',
+      '鸡蛋打散，平底锅摊成蛋皮煎到熟透。|胡萝卜切丝。|全麦饼加热 30 秒。|铺蛋皮、生菜和胡萝卜丝，卷起切段。',
+      '火候：蛋皮刚凝固即出锅；失败：火大蛋皮会老；可换：全麦饼换米皮。',
+      { kinds:['减脂餐'], role:'staple', nutritionEst:true });
+    addR('凉拌豆腐皮黄瓜|🥒|家常|凉菜/减脂|1|10|1|160|10',
+      '豆腐皮|150|g,黄瓜|1|根,蒜|2|瓣,醋|10|ml,香油|3|ml',
+      '豆腐皮切丝焯 1 分钟过凉。|黄瓜切丝。|蒜末、醋、盐和香油调汁。|全部拌匀，静置 5 分钟。',
+      '火候：豆腐皮焯到变软即可；失败：焯久会烂；可换：豆腐皮换千张结。',
+      { kinds:['减脂餐'], role:'side', nutritionEst:true });
+    addR('蒜蓉蒸金针菇|🍄|家常|蒸菜/清淡|1|15|1|110|4',
+      '金针菇|250|g,蒜|5|瓣,生抽|10|ml,橄榄油|5|ml',
+      '金针菇撕开洗净铺盘。|蒜末加生抽和橄榄油调汁。|均匀淋在金针菇上。|水开蒸 8 分钟。',
+      '火候：蒸到金针菇完全变软；失败：蒸久会塞牙；可换：金针菇换蟹味菇。',
+      { kinds:['减脂餐'], role:'side', nutritionEst:true });
+    addR('白灼菜心|🥬|粤菜|清淡/快手|1|10|1|80|4',
+      '菜心|300|g,蒜|2|瓣,生抽|10|ml,橄榄油|5|ml',
+      '菜心洗净切段。|水开下锅烫 1 分钟。|捞出沥水摆盘。|蒜末用橄榄油炒香，加生抽淋上。',
+      '火候：烫 1 分钟到菜梗断生；失败：烫久会发黄；可换：菜心换芥蓝。',
+      { kinds:['减脂餐'], role:'side', nutritionEst:true });
+    addR('清炒西葫芦|🥒|家常|快手/清淡|1|10|1|90|3',
+      '西葫芦|300|g,蒜|2|瓣,盐|2|g,橄榄油|8|ml',
+      '西葫芦切半月片。|蒜末下锅炒香。|下西葫芦大火炒 2 分钟。|加盐翻匀出锅。',
+      '火候：大火快炒保持脆嫩；失败：炒久会出水塌软；可换：西葫芦换丝瓜。',
+      { kinds:['减脂餐'], role:'side', nutritionEst:true });
+
+    /* ---- 空气炸锅：双分类 4 道（同属减脂餐） ---- */
+    addR('空气炸锅鸡胸时蔬|🍗|家常|减脂/空气炸锅|1|20|1|340|38',
+      '鸡胸肉|200|g,西兰花|100|g,彩椒|1|个,橄榄油|8|ml,黑胡椒|2|g',
+      '鸡胸切块，用盐和黑胡椒腌 10 分钟。|西兰花掰小朵，彩椒切块。|食材拌橄榄油，平铺炸篮。|180℃ 12 分钟，中途翻一次，烤到熟透。',
+      '火候：鸡胸中心全白无血色；失败：堆叠会受热不均；可换：鸡胸换三文鱼。',
+      { kinds:['减脂餐','空气炸锅'], role:'main', nutritionEst:true, airTemp:180, airMinutes:12 });
+    addR('空气炸锅三文鱼|🐟|家常|减脂/空气炸锅|1|15|1|380|34',
+      '三文鱼|180|g,柠檬|0.5|个,黑胡椒|2|g,盐|2|g,橄榄油|5|ml',
+      '三文鱼用盐、黑胡椒和柠檬汁腌 10 分钟。|表面刷薄薄一层橄榄油。|平铺炸篮，皮朝下。|180℃ 10 分钟，出炉挤柠檬汁。',
+      '火候：鱼肉中心刚变色即熟；失败：时间过长会干柴；可换：三文鱼换龙利鱼。',
+      { kinds:['减脂餐','空气炸锅'], role:'main', nutritionEst:true, airTemp:180, airMinutes:10 });
+    addR('空气炸锅烤南瓜|🎃|家常|空气炸锅/清淡|1|20|2|160|3',
+      '南瓜|400|g,橄榄油|8|ml,盐|2|g,黑胡椒|2|g',
+      '南瓜去籽切 2 cm 厚片。|拌橄榄油、盐和黑胡椒。|平铺炸篮不重叠。|190℃ 15 分钟，中途翻面。',
+      '火候：边缘微焦、中心软透；失败：切片太厚会夹生；可换：南瓜换红薯。',
+      { kinds:['减脂餐','空气炸锅'], role:'side', nutritionEst:true, airTemp:190, airMinutes:15 });
+    addR('空气炸锅烤时蔬|🥕|家常|空气炸锅/清淡|1|20|2|170|4',
+      '西葫芦|1|根,彩椒|1|个,口蘑|6|朵,橄榄油|10|ml,盐|2|g',
+      '蔬菜切块，口蘑对半切。|拌橄榄油和盐。|平铺炸篮。|190℃ 14 分钟，中途翻一次。',
+      '火候：蔬菜边缘上色、口蘑出水收干；失败：切太小会烤干；可换：蔬菜按冰箱现有搭配。',
+      { kinds:['减脂餐','空气炸锅'], role:'side', nutritionEst:true, airTemp:190, airMinutes:14 });
+
+    /* ---- 空气炸锅：纯空气炸锅 20 道 ---- */
+    addR('空气炸锅鸡翅|🍗|家常|空气炸锅/烧烤|1|25|2|420|26',
+      '鸡翅|8|个,生抽|15|ml,蒜|3|瓣,黑胡椒|3|g,橄榄油|5|ml',
+      '鸡翅两面划刀，用生抽、蒜和黑胡椒腌 30 分钟。|表面刷橄榄油。|平铺炸篮，皮朝上。|200℃ 10 分钟，翻面再 8 分钟，中心无血水。',
+      '火候：翅根中心无血水才算熟透；失败：堆叠会外焦里生；可换：鸡翅换鸡腿。',
+      { kinds:['空气炸锅'], role:'main', nutritionEst:true, airTemp:200, airMinutes:18 });
+    addR('空气炸锅鸡腿|🍗|家常|空气炸锅/烧烤|2|35|2|480|34',
+      '鸡腿|2|个,盐|3|g,黑胡椒|3|g,蒜|3|瓣,橄榄油|8|ml',
+      '鸡腿用盐、黑胡椒和蒜末腌 30 分钟。|表面刷橄榄油。|平铺炸篮。|200℃ 12 分钟，翻面再 10 分钟，最厚处无血水。',
+      '火候：最厚处切开无血水；失败：整只不划刀会夹生；可换：鸡腿换鸡翅根。',
+      { kinds:['空气炸锅'], role:'main', nutritionEst:true, airTemp:200, airMinutes:22 });
+    addR('空气炸锅小酥肉|🥩|家常|空气炸锅/下饭|2|30|3|460|24',
+      '猪里脊|300|g,淀粉|30|g,鸡蛋|1|个,花椒粉|2|g,盐|3|g',
+      '里脊切条，加盐和花椒粉腌 10 分钟。|裹蛋液再裹淀粉。|平铺炸篮，表面刷薄油。|190℃ 12 分钟，中途翻面。',
+      '火候：表面金黄、里面断生；失败：淀粉太厚会夹干粉；可换：里脊换鸡胸。',
+      { kinds:['空气炸锅'], role:'main', nutritionEst:true, airTemp:190, airMinutes:12 });
+    addR('空气炸锅鸡米花|🍗|家常|空气炸锅/小吃|1|25|2|380|26',
+      '鸡胸肉|300|g,淀粉|30|g,鸡蛋|1|个,盐|3|g,黑胡椒|2|g',
+      '鸡胸切小块，加盐和黑胡椒腌 10 分钟。|裹蛋液和淀粉。|平铺炸篮。|200℃ 10 分钟，中途翻一次，中心熟透。',
+      '火候：表面金黄、中心全白；失败：块太大里面不熟；可换：鸡胸换鸡腿肉。',
+      { kinds:['空气炸锅'], role:'main', nutritionEst:true, airTemp:200, airMinutes:10 });
+    addR('空气炸锅蒜香排骨|🍖|家常|空气炸锅/蒜香|2|35|3|520|26',
+      '排骨|400|g,蒜|6|瓣,生抽|15|ml,淀粉|15|g,盐|2|g',
+      '排骨用蒜末、生抽和盐腌 30 分钟。|裹薄薄一层淀粉。|平铺炸篮。|200℃ 15 分钟，翻面再 8 分钟至熟透。',
+      '火候：骨边肉能轻松咬下；失败：排骨块太大不熟；可换：排骨换鸡翅。',
+      { kinds:['空气炸锅'], role:'main', nutritionEst:true, airTemp:200, airMinutes:23 });
+    addR('空气炸锅蒜香虾|🦐|家常|空气炸锅/快手|1|15|2|240|26',
+      '虾|300|g,蒜|5|瓣,橄榄油|10|ml,盐|2|g,黑胡椒|2|g',
+      '虾去虾线，用蒜末、盐和黑胡椒拌 10 分钟。|淋橄榄油拌匀。|平铺炸篮。|190℃ 8 分钟，虾身变红即熟。',
+      '火候：虾身完全变红卷曲即熟；失败：时间过长会发硬；可换：虾换虾仁。',
+      { kinds:['空气炸锅'], role:'main', nutritionEst:true, airTemp:190, airMinutes:8 });
+    addR('空气炸锅烤秋刀鱼|🐟|家常|空气炸锅/烧烤|1|20|2|300|24',
+      '秋刀鱼|2|条,盐|3|g,柠檬|0.5|个,黑胡椒|2|g',
+      '秋刀鱼去内脏洗净，两面划刀。|抹盐和黑胡椒腌 10 分钟。|平铺炸篮。|200℃ 12 分钟烤熟透，出炉挤柠檬汁。',
+      '火候：鱼皮焦香、鱼肉能整片剥离；失败：不划刀里面不熟；可换：秋刀鱼换鲭鱼。',
+      { kinds:['空气炸锅'], role:'main', nutritionEst:true, airTemp:200, airMinutes:12 });
+    addR('空气炸锅鸡肉串|🍢|家常|空气炸锅/烧烤|2|30|2|360|30',
+      '鸡腿肉|300|g,洋葱|0.5|个,彩椒|1|个,孜然|3|g,盐|3|g',
+      '鸡腿肉和洋葱、彩椒切块。|用盐和孜然拌 15 分钟。|交替穿成串。|200℃ 12 分钟，翻面再 5 分钟，鸡肉熟透。',
+      '火候：鸡肉中心全白；失败：块太大穿太紧不熟；可换：鸡腿肉换鸡胸。',
+      { kinds:['空气炸锅'], role:'main', nutritionEst:true, airTemp:200, airMinutes:17 });
+    addR('空气炸锅豆腐|🧈|家常|空气炸锅/素食|1|20|2|180|14',
+      '北豆腐|400|g,生抽|10|ml,孜然|3|g,橄榄油|8|ml,盐|2|g',
+      '豆腐切 2 cm 方块，用厨房纸吸干。|拌生抽、盐和孜然。|平铺炸篮，刷橄榄油。|190℃ 15 分钟，中途翻面。',
+      '火候：表面金黄结壳、内部仍嫩；失败：不吸干会粘篮；可换：北豆腐换豆干。',
+      { kinds:['空气炸锅'], role:'side', nutritionEst:true, airTemp:190, airMinutes:15 });
+    addR('空气炸锅薯条|🍟|家常|空气炸锅/小吃|1|25|2|280|5',
+      '土豆|400|g,橄榄油|10|ml,盐|3|g,黑胡椒|2|g',
+      '土豆切粗条，清水泡 10 分钟沥干。|拌橄榄油、盐和黑胡椒。|平铺炸篮不重叠。|200℃ 15 分钟，中途翻两次。',
+      '火候：表面金黄、能轻松咬断；失败：沥不干会软塌；可换：土豆换红薯。',
+      { kinds:['空气炸锅'], role:'side', nutritionEst:true, airTemp:200, airMinutes:15 });
+    addR('空气炸锅烤玉米|🌽|家常|空气炸锅/小吃|1|20|2|200|6',
+      '玉米|2|根,黄油|10|g,盐|2|g,黑胡椒|2|g',
+      '玉米剥皮洗净。|表面刷融化黄油，撒盐和黑胡椒。|放入炸篮。|200℃ 12 分钟，翻面再 5 分钟。',
+      '火候：玉米粒鼓起、表面微焦；失败：不翻面会一侧焦；可换：玉米换整根红薯。',
+      { kinds:['空气炸锅'], role:'side', nutritionEst:true, airTemp:200, airMinutes:17 });
+    addR('空气炸锅烤红薯|🍠|家常|空气炸锅/小吃|1|40|2|220|3',
+      '红薯|400|g,橄榄油|8|ml,盐|2|g',
+      '红薯洗净擦干。|表面刷橄榄油撒盐。|放入炸篮，不重叠，200℃ 25 分钟。|翻面再 15 分钟，捏起来软透即熟。',
+      '火候：捏起来整体软透；失败：红薯太大要延长时间；可换：红薯换紫薯。',
+      { kinds:['空气炸锅'], role:'side', nutritionEst:true, airTemp:200, airMinutes:40 });
+    addR('空气炸锅烤茄子|🍆|家常|空气炸锅/素食|1|25|2|180|5',
+      '茄子|2|个,蒜|4|瓣,生抽|10|ml,橄榄油|8|ml',
+      '茄子对半切开，表面划十字刀。|刷橄榄油。|平铺炸篮。|190℃ 15 分钟，淋蒜末生抽再烤 3 分钟。',
+      '火候：茄肉软透、能用筷子划开；失败：不划刀中心不熟；可换：茄子换西葫芦。',
+      { kinds:['空气炸锅'], role:'side', nutritionEst:true, airTemp:190, airMinutes:18 });
+    addR('空气炸锅椒盐蘑菇|🍄|家常|空气炸锅/小吃|1|20|2|200|9',
+      '口蘑|300|g,淀粉|20|g,椒盐|3|g,橄榄油|8|ml',
+      '口蘑切厚片。|拌橄榄油和淀粉。|平铺炸篮。|190℃ 12 分钟，出炉撒椒盐。',
+      '火候：表面微脆、内部多汁；失败：淀粉太多会糊；可换：口蘑换平菇。',
+      { kinds:['空气炸锅'], role:'side', nutritionEst:true, airTemp:190, airMinutes:12 });
+    addR('空气炸锅烤包菜|🥬|家常|空气炸锅/素食|1|20|2|120|4',
+      '包菜|400|g,橄榄油|10|ml,盐|2|g,黑胡椒|2|g',
+      '包菜切大块。|拌橄榄油、盐和黑胡椒。|平铺炸篮。|190℃ 12 分钟，中途翻一次。',
+      '火候：边缘焦香、菜梗断生；失败：切太小会烤干；可换：包菜换花菜。',
+      { kinds:['空气炸锅'], role:'side', nutritionEst:true, airTemp:190, airMinutes:12 });
+    addR('空气炸锅春卷|🌯|家常|空气炸锅/小吃|2|30|2|260|6',
+      '春卷皮|10|张,卷心菜|150|g,香菇|4|朵,粉丝|30|g,橄榄油|8|ml',
+      '卷心菜和香菇切丝，粉丝泡软。|少油炒软馅料，加盐调味后放凉。|用春卷皮包好，表面刷油。|200℃ 12 分钟，中途翻面。',
+      '火候：表面金黄起脆；失败：馅料太湿会破皮；可换：卷心菜换韭黄。',
+      { kinds:['空气炸锅'], role:'side', nutritionEst:true, airTemp:200, airMinutes:12 });
+    addR('空气炸锅烤馒头片|🍞|家常|主食/空气炸锅|1|10|2|260|7',
+      '馒头|2|个,黄油|15|g,蒜|2|瓣,盐|1|g',
+      '馒头切 1.5 cm 厚片。|黄油融化，加蒜末和盐拌匀。|刷在馒头片上。|190℃ 8 分钟，边角金黄即可。',
+      '火候：边角金黄、中心微脆；失败：刷太多油会软；可换：馒头换法棍。',
+      { kinds:['空气炸锅'], role:'staple', nutritionEst:true, airTemp:190, airMinutes:8 });
+    addR('空气炸锅花生米|🥜|家常|空气炸锅/小吃|1|15|3|300|12',
+      '花生米|200|g,盐|3|g,橄榄油|5|ml',
+      '花生米洗净沥干。|平铺炸篮。|170℃ 8 分钟。|取出撒盐，放凉后变脆。',
+      '火候：出炉略软，放凉后变脆；失败：时间过长会糊；可换：花生米换腰果。',
+      { kinds:['空气炸锅'], role:'side', nutritionEst:true, airTemp:170, airMinutes:8 });
+    addR('空气炸锅鸡胸肉饼|🍔|家常|空气炸锅/高蛋白|1|25|2|330|36',
+      '鸡胸肉|300|g,鸡蛋|1|个,淀粉|15|g,盐|3|g,黑胡椒|2|g',
+      '鸡胸剁成泥，加蛋液、淀粉和调味料搅匀。|分成 4 个圆饼。|平铺炸篮。|190℃ 15 分钟，中途翻面，中心熟透。',
+      '火候：中心全白、按压有弹性；失败：太厚会夹生；可换：鸡胸换虾仁。',
+      { kinds:['空气炸锅'], role:'main', nutritionEst:true, airTemp:190, airMinutes:15 });
+    addR('空气炸锅香菇酿肉|🍄|家常|空气炸锅/下饭|2|30|3|300|18',
+      '香菇|8|朵,猪肉末|150|g,鸡蛋|1|个,淀粉|10|g,生抽|10|ml',
+      '香菇去蒂，肉末加蛋液、淀粉和生抽搅匀。|把肉馅酿进香菇。|平铺炸篮。|190℃ 15 分钟，肉馅熟透即可。',
+      '火候：肉馅中心变色熟透；失败：香菇太小会漏馅；可换：香菇换口蘑。',
+      { kinds:['空气炸锅'], role:'main', nutritionEst:true, airTemp:190, airMinutes:15 });
     return S;
   }
 
@@ -7745,6 +8013,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function homeWeekRole(r){
     if(!r) return 'side';
+    /* 新增分类按每道菜自己的 role 归主菜/配菜/汤/主食，不按分类整类塞进同一角色 */
+    if(r.role && ['main','side','soup','staple'].indexOf(r.role) >= 0) return r.role;
     if((r.tags || []).indexOf('汤') >= 0) return 'soup';
     if((r.tags || []).indexOf('主食') >= 0) return 'staple';
     var meat = false;
@@ -8406,6 +8676,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function homeRowHtml(r){
     var cat = r.category + (r.minutes ? ' · ' + r.minutes + ' 分钟' : '');
+    var extras = (r.kinds || []).map(function(k){ return k === '空气炸锅' ? '空气炸锅' : k; });
+    if(r.nutritionEst && r.kcal) extras.push('约 ' + r.kcal + ' kcal');
+    cat += extras.length ? ' · ' + extras.join(' · ') : '';
     return '<div class="home-row" data-hopen="'+esc(r.id)+'">' +
       '<div class="hi-emoji">'+esc(r.emoji)+'</div>' +
       '<div class="grow"><b>'+esc(r.name)+'</b><span>'+esc(cat)+'</span></div>' +
@@ -8416,13 +8689,33 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var st = homeRecipesLoad();
     var q = String($('#homeQ') ? $('#homeQ').value : '').trim().toLowerCase();
     var cat = $('#homeCat') ? $('#homeCat').value : '';
+    var classes = homeState.classes || [];
+    var kcal = homeState.kcal || '';
     var list = st.items.filter(function(r){
+      /* 独立分类与菜系叠加：分类是 AND（同时选减脂餐+空气炸锅→两标签都要有），菜系照旧 */
       if(cat && r.category !== cat) return false;
+      if(classes.length && !classes.every(function(k){ return r.kinds.indexOf(k) >= 0; })) return false;
+      if(kcal){
+        var kc = num(r.kcal);
+        if(!kc) return false;
+        if(kcal === 'low' && kc > 400) return false;
+        if(kcal === 'mid' && (kc < 400 || kc > 600)) return false;
+        if(kcal === 'high' && kc < 600) return false;
+      }
       if(!q) return true;
       if(r.name.toLowerCase().indexOf(q) >= 0) return true;
+      if(String(r.category || '').toLowerCase().indexOf(q) >= 0) return true;
+      if((r.kinds || []).some(function(k){ return k.toLowerCase().indexOf(q) >= 0; })) return true;
       if(r.tags.some(function(t){ return t.toLowerCase().indexOf(q) >= 0; })) return true;
       return r.ingredients.some(function(x){ return x.name.toLowerCase().indexOf(q) >= 0; });
     });
+    var chipRow = $('#homeClassRow');
+    if(chipRow){
+      Array.prototype.forEach.call(chipRow.querySelectorAll('[data-hclass]'), function(b){
+        b.classList.toggle('on', classes.indexOf(b.getAttribute('data-hclass')) >= 0);
+      });
+    }
+    if($('#homeKcal')) $('#homeKcal').value = kcal;
     var box = $('#homeLibList');
     if(box) box.innerHTML = list.length ? list.map(homeRowHtml).join('') : '<div class="home-empty">没有匹配的菜谱</div>';
   }
@@ -8469,12 +8762,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!pick){ box.innerHTML = '<div class="home-empty">菜谱库为空</div>'; if($('#homeRecoMeta')) $('#homeRecoMeta').textContent = ''; return; }
     var r = pick.recipe;
     var meta = [
-      r.category,
+      r.category
+    ].concat(r.kinds).concat([
       r.minutes ? r.minutes + ' 分钟' : '',
       r.servings ? r.servings + ' 人份' : '',
       ['','简单','中等','有点难度'][r.difficulty] || '',
-      r.kcal ? r.kcal + ' kcal' : ''
-    ].filter(Boolean);
+      r.kcal ? ((r.nutritionEst ? '约 ' : '') + r.kcal + ' kcal' + (r.nutritionEst ? '（估算）' : '')) : '',
+      (r.kinds.indexOf('空气炸锅') >= 0 && r.airTemp && r.airMinutes ? r.airTemp + '℃ · ' + r.airMinutes + ' 分钟' : '')
+    ]).filter(Boolean);
     box.innerHTML =
       '<div class="home-reco">' +
         '<p class="home-reco-name">'+esc(r.emoji)+' '+esc(r.name)+'</p>' +
@@ -8573,11 +8868,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     });
   }
   function homeLogRowHtml(c){
+    var rr = c.recipeId ? homeRecipeBy(c.recipeId) : null;
+    var kindTxt = rr && rr.kinds && rr.kinds.length ? ' · ' + rr.kinds.join('/') : '';
     var sub = esc(c.date) + (c.people ? (' · ' + c.people + ' 人') : '') +
       (c.cost != null ? (' · ¥' + c.cost) : '') +
       (c.minutes != null ? (' · ' + c.minutes + ' 分钟') : '') +
       (c.rating != null ? (' · ★' + c.rating) : '') +
-      (c.photos.length ? (' · ' + c.photos.length + ' 张照片') : '');
+      (c.photos.length ? (' · ' + c.photos.length + ' 张照片') : '') + esc(kindTxt);
     return '<div class="home-log-row"><div class="grow">' +
       '<b>' + esc(c.title) + '</b><span class="hl-sub">' + sub + '</span>' +
       (c.note ? ('<span class="home-log-note">' + esc(c.note) + '</span>') : '') +
@@ -8847,13 +9144,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var mask = $('#homeDetailMask');
     if($('#homeDetailTitle')) $('#homeDetailTitle').textContent = r.emoji + ' ' + r.name;
     var meta = [
-      r.category,
+      r.category
+    ].concat(r.kinds).concat([
       r.minutes ? r.minutes + ' 分钟' : '',
       r.servings ? r.servings + ' 人份' : '',
       ['','简单','中等','有点难度'][r.difficulty] || '',
-      r.kcal ? r.kcal + ' kcal' : '',
-      r.protein ? '蛋白 ' + r.protein + ' g' : ''
-    ].filter(Boolean);
+      r.kcal ? ((r.nutritionEst ? '约 ' : '') + r.kcal + ' kcal' + (r.nutritionEst ? '（估算）' : '')) : '',
+      r.protein ? ((r.nutritionEst ? '蛋白约 ' : '蛋白 ') + r.protein + ' g' + (r.nutritionEst ? '（估算）' : '')) : ''
+    ]).filter(Boolean);
+    var extraSec =
+      (r.kinds.indexOf('空气炸锅') >= 0 && r.airTemp && r.airMinutes ?
+        '<div class="home-detail-sec"><h3>空气炸锅参数</h3><p class="muted">' +
+          esc(r.airTemp + '℃ · ' + r.airMinutes + ' 分钟') +
+          '（不同机型需按实际调整，以上为常见参考值）</p></div>' : '') +
+      (r.nutritionEst ?
+        '<div class="home-detail-sec"><h3>营养口径</h3><p class="muted">热量与蛋白为估算值：按食材与用量折算，不是检测数据，仅作减脂参考。</p></div>' : '');
     var body = $('#homeDetailBody');
     if(body){
       body.setAttribute('data-recipe', r.id);
@@ -8869,6 +9174,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           r.steps.map(function(s){ return '<li>'+esc(s.text)+(s.minutes?('（约 '+s.minutes+' 分钟）'):'')+'</li>'; }).join('') +
         '</ol></div>' +
         (r.tips ? '<div class="home-detail-sec"><h3>小贴士</h3><p class="muted">'+esc(r.tips)+'</p></div>' : '') +
+        extraSec +
         homeCookSummaryHtml(r) +
         homeDetailFbHtml(r) +
         '<p class="home-src">来源：'+esc(r.source.label) +
@@ -8955,6 +9261,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if($('#homeDetailClose')) $('#homeDetailClose').addEventListener('click', homeCloseDetail);
     if($('#homeQ')) $('#homeQ').addEventListener('input', renderHomeLib);
     if($('#homeCat')) $('#homeCat').addEventListener('change', renderHomeLib);
+    /* 独立分类：点击切换，可多选（与菜系、热量区间叠加） */
+    if($('#homeClassRow')) $('#homeClassRow').addEventListener('click', function(e){
+      var b = e.target.closest('[data-hclass]');
+      if(!b) return;
+      var k = b.getAttribute('data-hclass');
+      var i = homeState.classes.indexOf(k);
+      if(i >= 0) homeState.classes.splice(i, 1); else homeState.classes.push(k);
+      renderHomeLib();
+    });
+    if($('#homeKcal')) $('#homeKcal').addEventListener('change', function(){ homeState.kcal = this.value; renderHomeLib(); });
 
     /* 第三阶段：一周菜单 / 采购清单 / 烹饪模式 */
     if($('#homeWeekGen')) $('#homeWeekGen').addEventListener('click', function(){
