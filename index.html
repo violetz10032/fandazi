@@ -1647,6 +1647,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .chip-toggle,.pick-chip,.stat-tag,.diary-chip,.g-chip,.seg button,.stat-seg button{padding-top:8px;padding-bottom:8px}
   .input,select.input,textarea.input{min-height:var(--tap-min)}
   .icon-btn{min-width:var(--tap-min);width:var(--tap-min);height:var(--tap-min);display:inline-flex;align-items:center;justify-content:center}
+  /* 悬浮球：文案不折行；记录列表底部预留球高度，末条不被压住 */
+  .blind-ball{white-space:nowrap;letter-spacing:.2px;opacity:.94}
+  .blind-ball span,.blind-ball b{white-space:nowrap}
+  #panel-list{padding-bottom:48px}
+  /* P4：未选中的筛选 chip 回归中性底色，黄色只留在选中态 / 按钮 / 重点信息 */
+  html[data-skin="p4"] .chip-toggle{background:var(--card);border-color:var(--line);box-shadow:none}
+  html[data-skin="p4"] .chip-toggle.on{background:var(--soft);border-color:var(--accent-line);color:var(--soft-ink)}
 </style>
 </head>
 <body>
