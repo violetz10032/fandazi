@@ -27430,10 +27430,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           APK → Capacitor Filesystem 的 App 私有目录 fandazi-backups/，同时镜像一份到 IndexedDB。 */
   var AUTOB_KEY = 'fandazi.autobak';
   var AUTOB_VERSION = 1;
-  var AUTOB_KEEP = 5;
+  var AUTOB_KEEP_DEFAULT = 7;
+  var AUTOB_KEEP_KEY = 'fandazi.autobak.keep';
   var AUTOB_GAP = 24 * 3600 * 1000;
   var AUTOB_DB_NAME = 'fandazi.backups';
   var AUTOB_DIR = 'fandazi-backups';
+  var AUTOB_FILE_RE = /^fandazi-autobak-[0-9]{8}-[0-9]{6}(?:-[0-9]{1,4})?\.json$/;
   var autobMetaCache = null;
   var autobDbPromise = null;
   var autobBusy = false;
@@ -27447,7 +27449,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       lastAt: num(o.lastAt) > 0 ? Math.round(num(o.lastAt)) : 0,
       lastOkAt: num(o.lastOkAt) > 0 ? Math.round(num(o.lastOkAt)) : 0,
       lastErr: typeof o.lastErr === 'string' ? o.lastErr.slice(0, 180) : '',
+      lastNativeErr: typeof o.lastNativeErr === 'string' ? o.lastNativeErr.slice(0, 180) : '',
       dirPath: typeof o.dirPath === 'string' ? o.dirPath.slice(0, 260) : '',
+      dirKind: (o.dirKind === 'External' || o.dirKind === 'Data') ? o.dirKind : '',
+      degraded: typeof o.degraded === 'string' ? o.degraded.slice(0, 180) : '',
+      perm: typeof o.perm === 'string' ? o.perm.slice(0, 20) : '',
       nativeOk: o.nativeOk === true
     };
   }
@@ -27462,6 +27468,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     try{ localStorage.setItem(AUTOB_KEY, JSON.stringify(autobMetaCache)); }
     catch(e){ logError('自动备份状态', e); }
     return autobMetaCache;
+  }
+  function autobKeep(){
+    var n = 0;
+    try{ n = Math.round(num(localStorage.getItem(AUTOB_KEEP_KEY))); }catch(e){ n = 0; }
+    if(!(n >= 3 && n <= 20)) n = AUTOB_KEEP_DEFAULT;
+    return n;
+  }
+  function autobSetKeep(n){
+    var v = Math.round(num(n));
+    if(!(v >= 3 && v <= 20)) v = AUTOB_KEEP_DEFAULT;
+    try{ localStorage.setItem(AUTOB_KEEP_KEY, String(v)); }catch(e){ logError('自动备份保留份数', e); }
+    return v;
   }
   function autobOpenDb(){
     if(autobDbPromise) return autobDbPromise;
@@ -27506,7 +27524,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         var req = tx.objectStore('backups').getAll();
         req.onsuccess = function(){
           var arr = (req.result || []).map(function(r){
-            return { id:r.id, at:num(r.at), bytes:num(r.bytes), records:num(r.records), photos:num(r.photos), recipes:num(r.recipes), native:r.native === true };
+            return { id:r.id, at:num(r.at), bytes:num(r.bytes), records:num(r.records), photos:num(r.photos), recipes:num(r.recipes),
+              native:r.native === true, nativeName: typeof r.nativeName === 'string' ? r.nativeName : '' };
           });
           arr.sort(function(a, b){ return b.at - a.at; });
           resolve(arr);
@@ -27526,50 +27545,173 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }).catch(function(){ return null; });
   }
   function autobRotate(){
+    var keep = autobKeep();
     return autobAll().then(function(list){
-      if(list.length <= AUTOB_KEEP) return 0;
-      var extra = list.slice(AUTOB_KEEP);
+      if(list.length <= keep) return 0;
+      var extra = list.slice(keep);
       return Promise.all(extra.map(function(x){ return autobDel(x.id); })).then(function(){ return extra.length; });
     });
   }
 
-  /* ---- APK 原生目录（Capacitor Filesystem 已在 android-app 依赖里） ---- */
+  /* ---- APK 原生目录（Capacitor Filesystem） ---- */
   function autobFs(){
     try{ return (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Filesystem) || null; }catch(e){ return null; }
   }
-  function autobNativeWrite(id, text){
+  function autobPad2(n){ return (n < 10 ? '0' : '') + n; }
+  function autobFileName(at){
+    var d = new Date(num(at) > 0 ? num(at) : Date.now());
+    return 'fandazi-autobak-' + d.getFullYear() + autobPad2(d.getMonth() + 1) + autobPad2(d.getDate()) + '-' +
+      autobPad2(d.getHours()) + autobPad2(d.getMinutes()) + autobPad2(d.getSeconds()) + '-' +
+      ('00' + d.getMilliseconds()).slice(-3) + '.json';
+  }
+  function autobNameAt(name){
+    var m = /^fandazi-autobak-([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})(?:-([0-9]{1,4}))?\.json$/.exec(String(name || ''));
+    if(!m) return 0;
+    var ms = m[7] ? Number((m[7] + '000').slice(0, 3)) : 0;
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6]), ms).getTime();
+  }
+  function autobUtf8FromBase64(s){
+    try{ return decodeURIComponent(escape(atob(String(s || '')))); }
+    catch(e){ return String(s || ''); }
+  }
+  function autobReadDir(fs, kind){
+    if(!fs || typeof fs.readdir !== 'function') return Promise.resolve([]);
+    return Promise.resolve(fs.readdir({ directory:kind, path:AUTOB_DIR })).then(function(res){
+      var names = ((res && res.files) || []).map(function(f){ return typeof f === 'string' ? f : String((f && f.name) || ''); })
+        .filter(function(n){ return AUTOB_FILE_RE.test(n); });
+      return Promise.all(names.map(function(name){
+        return Promise.resolve(typeof fs.stat === 'function' ? fs.stat({ directory:kind, path:AUTOB_DIR + '/' + name }) : null)
+          .then(function(st){
+            return { name:name, dirKind:kind, bytes:num(st && st.size), at:(num(st && st.mtime) > 0 ? num(st.mtime) : 0) || autobNameAt(name) || 0 };
+          }, function(){
+            return { name:name, dirKind:kind, bytes:0, at:autobNameAt(name) || 0 };
+          });
+      }));
+    }).catch(function(){ return []; });
+  }
+  function autobNativeList(){
     var fs = autobFs();
-    if(!fs) return Promise.resolve({ ok:false, reason:'unavailable' });
-    return Promise.resolve().then(function(){
-      return fs.mkdir({ directory:'DATA', path:AUTOB_DIR, recursive:true }).catch(function(){ return true; });
-    }).then(function(){
-      return fs.writeFile({ directory:'DATA', path:AUTOB_DIR + '/' + id + '.json', data:text, encoding:'utf8', recursive:true });
-    }).then(function(){
-      return fs.getUri({ directory:'DATA', path:AUTOB_DIR + '/' + id + '.json' }).catch(function(){ return null; });
-    }).then(function(u){
-      var uri = (u && u.uri) ? String(u.uri) : '';
-      return { ok:true, uri:uri.replace(/^file:\/\//, ''), reason:'' };
-    }).catch(function(e){
-      return { ok:false, reason:String((e && e.message) || e || '原生写入失败').slice(0, 120) };
+    if(!fs) return Promise.resolve([]);
+    return Promise.all(['External', 'Data'].map(function(k){ return autobReadDir(fs, k); })).then(function(all){
+      var seen = {}, out = [];
+      all.forEach(function(list){
+        list.forEach(function(it){
+          if(seen[it.name]) return;
+          seen[it.name] = 1;
+          out.push(it);
+        });
+      });
+      out.sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
+      return out;
     });
   }
-  function autobNativeRotate(keepIds){
+  function autobNativeDelete(name){
     var fs = autobFs();
-    if(!fs || !fs.readdir) return Promise.resolve(0);
-    return fs.readdir({ directory:'DATA', path:AUTOB_DIR }).then(function(res){
-      var names = ((res && res.files) || []).map(function(f){ return String((f && f.name) || f); }).filter(function(n){ return /^ab-[0-9-]+\.json$/.test(n); });
-      var keep = {};
-      keepIds.forEach(function(id){ keep[id + '.json'] = 1; });
-      var drop = names.filter(function(n){ return !keep[n]; });
-      return Promise.all(drop.map(function(n){
-        return fs.deleteFile({ directory:'DATA', path:AUTOB_DIR + '/' + n }).catch(function(){ return false; });
-      })).then(function(){ return drop.length; });
-    }).catch(function(){ return 0; });
+    if(!fs) return Promise.resolve(false);
+    return Promise.all(['External', 'Data'].map(function(kind){
+      return Promise.resolve(fs.deleteFile({ directory:kind, path:AUTOB_DIR + '/' + name }))
+        .then(function(){ return true; }, function(){ return false; });
+    })).then(function(r){ return r.some(Boolean); });
+  }
+  function autobWriteFile(fs, kind, name, text){
+    return Promise.resolve().then(function(){
+      return fs.mkdir({ directory:kind, path:AUTOB_DIR, recursive:true });
+    }).catch(function(e){
+      var msg = String((e && e.message) || e || '');
+      if(/exist|already/i.test(msg)) return true;
+      throw e;
+    }).then(function(){
+      return fs.writeFile({ directory:kind, path:AUTOB_DIR + '/' + name, data:text, encoding:'utf8', recursive:true });
+    }).then(function(){
+      return Promise.resolve(typeof fs.getUri === 'function' ? fs.getUri({ directory:kind, path:AUTOB_DIR + '/' + name }) : null)
+        .then(function(u){
+          var uri = (u && u.uri) ? String(u.uri) : '';
+          return { ok:true, name:name, dirKind:kind, uri:uri.replace(/^file:\/\//, ''), reason:'' };
+        }, function(){ return { ok:true, name:name, dirKind:kind, uri:'', reason:'' }; });
+    }).catch(function(e){
+      return { ok:false, name:name, dirKind:kind, uri:'', reason:String((e && e.message) || e || '原生写入失败').slice(0, 140) };
+    });
+  }
+  /* 外部目录写不进去且是权限问题时，运行时申请一次；被拒后由调用方降级 */
+  function autobAskPermission(fs, reason){
+    var msg = String(reason || '');
+    if(!fs || typeof fs.requestPermissions !== 'function') return Promise.resolve({ needed:false, granted:false, state:'unknown' });
+    if(!/permission|denied|EACCES|EPERM|权限|拒绝/i.test(msg)) return Promise.resolve({ needed:false, granted:false, state:'not_needed' });
+    try{ toast('自动备份需要存储权限，用于把备份写入手机文件目录'); }catch(e){}
+    var check = (typeof fs.checkPermissions === 'function') ? fs.checkPermissions() : Promise.resolve({ publicStorage:'prompt' });
+    return Promise.resolve(check).catch(function(){ return { publicStorage:'prompt' }; }).then(function(st){
+      if(st && st.publicStorage === 'granted') return { needed:true, granted:true, state:'granted' };
+      return Promise.resolve(fs.requestPermissions()).then(function(r){
+        var ok = !!(r && r.publicStorage === 'granted');
+        return { needed:true, granted:ok, state:ok ? 'granted' : 'denied' };
+      }, function(){ return { needed:true, granted:false, state:'denied' }; });
+    });
+  }
+  function autobNativeWrite(rec){
+    var fs = autobFs();
+    if(!fs) return Promise.resolve({ ok:false, reason:'unavailable', dirKind:'', name:'', perm:'not_needed', degraded:'' });
+    var name = rec.nativeName || autobFileName(rec.at);
+    return autobWriteFile(fs, 'External', name, rec.text).then(function(first){
+      if(first.ok) return { ok:true, name:first.name, dirKind:'External', uri:first.uri, perm:'not_needed', degraded:'' };
+      return autobAskPermission(fs, first.reason).then(function(p){
+        var retry = p.granted ? autobWriteFile(fs, 'External', name, rec.text) : Promise.resolve(first);
+        return retry.then(function(second){
+          if(second.ok) return { ok:true, name:second.name, dirKind:'External', uri:second.uri, perm:p.state, degraded:'' };
+          return autobWriteFile(fs, 'Data', name, rec.text).then(function(third){
+            if(third.ok){
+              var why = (p.state === 'denied') ? '存储权限被拒' : ('外部目录写入失败：' + (second.reason || '未知原因'));
+              return { ok:true, name:third.name, dirKind:'Data', uri:third.uri, perm:p.state, degraded:why.slice(0, 140) };
+            }
+            return { ok:false, name:name, dirKind:'', reason:(third.reason || second.reason || '原生写入失败'), perm:p.state, degraded:'' };
+          });
+        });
+      });
+    });
+  }
+  function autobNativeRead(name){
+    var fs = autobFs();
+    if(!fs) return Promise.resolve('');
+    var kinds = ['External', 'Data'];
+    function step(i){
+      if(i >= kinds.length) return Promise.resolve('');
+      return Promise.resolve(fs.readFile({ directory:kinds[i], path:AUTOB_DIR + '/' + name, encoding:'utf8' })).then(function(r){
+        var data = r && r.data;
+        if(typeof data !== 'string') data = autobUtf8FromBase64(data);
+        return data || '';
+      }, function(){ return step(i + 1); });
+    }
+    return step(0);
+  }
+  function autobNativeRotate(){
+    var keep = autobKeep();
+    return autobNativeList().then(function(list){
+      if(list.length <= keep) return 0;
+      var extra = list.slice(keep);
+      return Promise.all(extra.map(function(x){ return autobNativeDelete(x.name); })).then(function(){ return extra.length; });
+    });
+  }
+  function autobClean(){
+    return Promise.all([autobRotate(), autobNativeRotate()]).then(function(r){
+      return { db:r[0], native:r[1], keep:autobKeep() };
+    });
   }
   function autobNativeProbePath(){
     var fs = autobFs();
     if(!fs) return Promise.resolve('');
-    return fs.getUri({ directory:'DATA', path:AUTOB_DIR }).then(function(u){ return String((u && u.uri) || '').replace(/^file:\/\//, ''); }).catch(function(){ return ''; });
+    var kinds = ['External', 'Data'];
+    function step(i){
+      if(i >= kinds.length) return Promise.resolve('');
+      return Promise.resolve(fs.getUri({ directory:kinds[i], path:AUTOB_DIR })).then(function(u){
+        return String((u && u.uri) || '').replace(/^file:\/\//, '');
+      }, function(){ return step(i + 1); });
+    }
+    return step(0).catch(function(){ return ''; });
+  }
+  function autobWebSave(rec){
+    try{
+      download('i吃饭-自动备份-' + new Date(num(rec.at)).toISOString().slice(0, 10) + '.fandazi-backup.json', rec.text, 'application/json');
+      return true;
+    }catch(e){ logError('网页端自动备份下载', e); return false; }
   }
 
   /* ---- 生成 / 执行 ---- */
@@ -27618,25 +27760,32 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }).then(function(b){
       var at = Date.now();
       rec = { id:'ab-' + at + '-' + (++autobSeq), at:at, bytes:b.text.length, records:b.obj.stats.records,
-        photos:b.obj.stats.photoRefs, recipes:b.obj.stats.recipes, text:b.text, native:false };
+        photos:b.obj.stats.photoRefs, recipes:b.obj.stats.recipes, text:b.text, native:false, nativeName:autobFileName(at) };
       return autobPut(rec);
     }).then(function(){
-      return autobNativeWrite(rec.id, rec.text);
+      if(!autobFs()) return { ok:false, reason:'unavailable', dirKind:'', name:'', perm:'not_needed', degraded:'' };
+      return autobNativeWrite(rec);
     }).then(function(nr){
       rec.native = nr.ok === true;
+      if(nr.ok && nr.name) rec.nativeName = nr.name;
       return autobPut(rec).then(function(){ return autobRotate(); }).then(function(removed){
-        return autobAll().then(function(keep){
-          return autobNativeRotate(keep.map(function(x){ return x.id; })).then(function(nativeRemoved){
-            var m = autobMetaLoad();
-            m.lastAt = rec.at;
-            m.lastOkAt = rec.at;
-            m.lastErr = '';
-            m.nativeOk = nr.ok === true;
-            if(nr.ok && nr.uri) m.dirPath = nr.uri;
-            autobMetaSave(m);
-            return { ok:true, at:rec.at, id:rec.id, bytes:rec.bytes, native:!!nr.ok,
-              nativeReason:nr.reason || '', rotated:removed + nativeRemoved, ms:Math.round(nowMs() - t0) };
-          });
+        return autobNativeRotate().then(function(nativeRemoved){
+          var m = autobMetaLoad();
+          m.lastAt = rec.at;
+          m.lastOkAt = rec.at;
+          m.lastErr = '';
+          m.nativeOk = nr.ok === true;
+          m.dirKind = nr.dirKind || '';
+          m.perm = nr.perm || 'not_needed';
+          m.degraded = nr.degraded || '';
+          m.lastNativeErr = (!autobFs() || nr.ok) ? '' : String(nr.reason || '未写入手机目录').slice(0, 180);
+          if(nr.ok && nr.uri) m.dirPath = nr.uri;
+          if(!autobFs()){ m.dirPath = ''; m.dirKind = ''; m.nativeOk = false; }
+          autobMetaSave(m);
+          if(!autobFs()) autobWebSave(rec);
+          return { ok:true, at:rec.at, id:rec.id, bytes:rec.bytes, native:!!nr.ok,
+            dirKind:nr.dirKind || '', degraded:nr.degraded || '', perm:nr.perm || 'not_needed',
+            nativeReason:nr.reason || '', rotated:removed + nativeRemoved, ms:Math.round(nowMs() - t0) };
         });
       });
     }).catch(function(e){
@@ -27679,37 +27828,68 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!box) return;
     var m = autobMetaLoad();
     var native = !!autobFs();
-    var nativeTxt = native
-      ? (m.dirPath ? '备份保存在：' + m.dirPath : '备份保存在：App 私有目录 fandazi-backups（首次写入后显示完整路径）')
-      : '备份保存在：浏览器 IndexedDB（清除站点数据会一并消失）';
+    var keep = autobKeep();
+    var dirTxt;
+    if(native){
+      var kindTxt = m.dirKind === 'Data' ? '应用私有目录（已降级）' : '应用专属外部目录';
+      dirTxt = '备份保存在：' + (m.dirPath ? m.dirPath : kindTxt + ' fandazi-backups（首次写入后显示完整路径）');
+    }else{
+      dirTxt = '备份保存在：本机 IndexedDB（网页端生成后还会触发一次浏览器下载，需你自己的下载目录保存）';
+    }
     var status = m.lastOkAt ? '上次成功：' + backupDateText(m.lastOkAt) : '还没有自动备份';
     if(m.nativeOk) status += ' · 已写入手机目录';
-    var errTxt = m.lastErr ? '<p class="notice" style="margin:6px 0 0">上次失败：' + esc(m.lastErr) + '（已自动重试一次）</p>' : '';
+    var errTxt = '';
+    if(m.degraded) errTxt += '<p class="notice" style="margin:6px 0 0">已降级到应用私有目录（原因：' + esc(m.degraded) + '）。备份仍可用，但清除 App 数据会一并删除。</p>';
+    if(m.lastNativeErr && !m.degraded) errTxt += '<p class="notice" style="margin:6px 0 0">手机目录写入失败：' + esc(m.lastNativeErr) + '（本机 IndexedDB 备份仍可用）</p>';
+    if(m.lastErr) errTxt += '<p class="notice" style="margin:6px 0 0">上次失败：' + esc(m.lastErr) + '（已自动重试一次）</p>';
+    var keepOpts = [3, 5, 7, 10, 15].map(function(n){
+      return '<option value="' + n + '"' + (n === keep ? ' selected' : '') + '>' + n + ' 份</option>';
+    }).join('');
     box.innerHTML =
-      '<p class="dist-note" style="margin-top:0"><b>本地定时自动备份</b>：每天首次打开应用时检查，距上次自动备份超过 24 小时就在页面空闲时生成一份整包备份；只保留最近 5 份，第 6 次会删掉最旧的一份。照片默认只存引用，不复制图片本身。</p>' +
-      '<p class="dist-note">' + esc(status) + ' · ' + esc(nativeTxt) + '</p>' + errTxt +
+      '<p class="dist-note" style="margin-top:0"><b>定时自动备份（手机文件目录）</b>：每天首次打开应用时检查，距上次自动备份超过 24 小时就在页面空闲时生成一份整包备份。保留最近 <select id="autoBakKeep" class="input" style="display:inline-block;width:auto;padding:1px 6px;font-size:12px">' + keepOpts + '</select>，超出按时间淘汰最旧的。照片默认只存引用，不复制图片本身。</p>' +
+      '<p class="dist-note">' + esc(status) + ' · ' + esc(dirTxt) + '</p>' + errTxt +
+      (native
+        ? '<p class="dist-note">手机端写入应用专属外部目录 fandazi-backups（Android/data/…/files/fandazi-backups）；系统限制写入时先申请存储权限并说明用途，被拒则降级到应用私有目录并在上方写明结果。</p>'
+        : '<p class="dist-note">网页端需你自己的下载目录保存，本机自动备份仍在 IndexedDB。</p>') +
       '<p class="dist-note">能防：误删记录、误合并、误恢复。不能防：在浏览器或 WebView 里清除站点数据（IndexedDB 会连同备份一起消失）' +
-        (native ? '；Android「清除数据」也会清掉 App 私有目录。需要长期留存请用「完整备份」导出到文件。' : '。需要长期留存请用「完整备份」导出到文件。') +
+        (native ? '；Android「清除数据」也会清掉应用私有目录。需要长期留存请用「完整备份」导出到文件。' : '。需要长期留存请用「完整备份」导出到文件。') +
       '</p>' +
       '<div class="actions" style="margin-top:8px">' +
-        '<button class="btn" data-autob="now">立即备份</button>' +
+        '<button class="btn" data-autob="now">立即备份一次</button>' +
+        '<button class="btn btn-soft" data-autob="clean">清理旧备份</button>' +
         '<button class="btn btn-soft" data-autob="full">导出含照片的完整备份</button>' +
       '</div>' +
-      '<div id="autoBakList" style="margin-top:8px"></div>';
-    autobAll().then(function(list){
+      '<p class="dist-note" style="margin:10px 0 0">最近 ' + keep + ' 份（本机 IndexedDB / 手机目录）</p>' +
+      '<div id="autoBakList"></div>';
+    Promise.all([autobAll(), autobNativeList()]).then(function(arr){
       if(activeView !== 'more') return;
       var el = $('#autoBakList');
       if(!el) return;
-      if(!list.length){
+      var dbList = arr[0] || [], nativeList = arr[1] || [];
+      var used = {}, rows = [];
+      nativeList.forEach(function(f){
+        var rec = null;
+        for(var i = 0; i < dbList.length; i++){ if(dbList[i].nativeName === f.name){ rec = dbList[i]; break; } }
+        if(rec) used[rec.id] = 1;
+        rows.push({ name:f.name, dirKind:f.dirKind, at:f.at || (rec ? rec.at : 0), bytes:f.bytes || (rec ? rec.bytes : 0), rec:rec, native:true });
+      });
+      dbList.forEach(function(x){ if(!used[x.id]) rows.push({ name:x.nativeName || '', at:x.at, bytes:x.bytes, rec:x, native:false }); });
+      rows.sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
+      if(!rows.length){
         el.innerHTML = '<p class="dist-note">还没有自动备份。打开应用满 24 小时后会自动生成第一份。</p>';
         return;
       }
-      el.innerHTML = list.map(function(x){
+      el.innerHTML = rows.map(function(x){
+        var meta = x.rec
+          ? num(x.rec.records) + ' 条记录 · ' + num(x.rec.photos) + ' 张照片引用 · ' + num(x.rec.recipes) + ' 道菜谱'
+          : '手机目录文件 · ' + (x.dirKind === 'Data' ? '应用私有目录' : '应用专属外部目录');
+        var where = x.native ? (' · 手机文件 ' + x.name) : ' · 仅本机';
+        var acts = x.rec
+          ? '<button type="button" class="btn btn-sm" data-autob-exp="' + esc(x.rec.id) + '">导出</button>' +
+            '<button type="button" class="btn btn-sm" data-autob-res="' + esc(x.rec.id) + '">还原</button>'
+          : '<button type="button" class="btn btn-sm" data-autob-nres="' + esc(x.name) + '">从文件还原</button>';
         return '<div class="import-row"><div class="grow"><b>' + esc(backupDateText(x.at)) + '</b> · ' + fmtBytes(x.bytes) +
-          '<br><span class="muted">' + num(x.records) + ' 条记录 · ' + num(x.photos) + ' 张照片引用 · ' + num(x.recipes) + ' 道菜谱' +
-          (x.native ? ' · 已写入手机目录' : '') + '</span></div>' +
-          '<button type="button" class="btn btn-sm" data-autob-exp="' + esc(x.id) + '">导出</button>' +
-          '<button type="button" class="btn btn-sm" data-autob-res="' + esc(x.id) + '">还原</button></div>';
+          '<br><span class="muted">' + esc(meta + where) + '</span></div>' + acts + '</div>';
       }).join('');
     });
   }
@@ -27733,6 +27913,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return true;
     }).catch(function(e){
       backupErrorModal('自动备份无法还原：' + ((e && e.message) || '未知错误'));
+      return false;
+    });
+  }
+  function autobNativeRestore(name){
+    return autobNativeRead(name).then(function(text){
+      if(!text){ backupErrorModal('读取手机备份文件失败：' + name); return false; }
+      var obj = parseBackupText(text);
+      uiOpenRestorePreview(obj);   /* 与完整备份/本机自动备份同一条校验与恢复流程 */
+      return true;
+    }).catch(function(e){
+      backupErrorModal('手机备份文件无法还原：' + ((e && e.message) || '未知错误'));
       return false;
     });
   }
@@ -28395,12 +28586,25 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var t = e.target;
     var act = t.closest ? t.closest('[data-autob]') : null;
     if(act){
-      if(act.getAttribute('data-autob') === 'now'){
+      var what = act.getAttribute('data-autob');
+      if(what === 'now'){
         if(autobBusy){ toast('正在生成自动备份，请稍候'); return; }
         autobRunOnce().then(function(res){
-          toast(res && res.ok ? '自动备份已完成（' + fmtBytes(res.bytes) + '）' : '自动备份未能完成');
+          if(!res || !res.ok){ toast('自动备份未能完成'); return; }
+          var t2 = '自动备份已完成（' + fmtBytes(res.bytes) + '）';
+          if(res.native) t2 += '，已写入手机目录';
+          else if(autobFs()) t2 += '，手机目录写入失败：' + (res.nativeReason || '未知原因');
+          else t2 += '，已触发浏览器下载';
+          toast(t2);
         }).catch(function(err){
           toast('自动备份失败：' + ((err && err.message) || '未知错误'));
+        });
+      }else if(what === 'clean'){
+        autobClean().then(function(r){
+          toast('已清理旧备份：本机 ' + r.db + ' 份、手机目录 ' + r.native + ' 份（当前保留 ' + r.keep + ' 份）');
+          autobRenderBox();
+        }).catch(function(err){
+          toast('清理旧备份失败：' + ((err && err.message) || '未知错误'));
         });
       }else{
         uiGenerateBackup();   /* 含照片的手动整包，沿用现有导出流程 */
@@ -28410,7 +28614,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var exp = t.closest ? t.closest('[data-autob-exp]') : null;
     if(exp){ autobExport(exp.getAttribute('data-autob-exp')); return; }
     var res = t.closest ? t.closest('[data-autob-res]') : null;
-    if(res) autobRestore(res.getAttribute('data-autob-res'));
+    if(res){ autobRestore(res.getAttribute('data-autob-res')); return; }
+    var nres = t.closest ? t.closest('[data-autob-nres]') : null;
+    if(nres) autobNativeRestore(nres.getAttribute('data-autob-nres'));
+  });
+  $('#autoBakBox').addEventListener('change', function(e){
+    if(!e.target || e.target.id !== 'autoBakKeep') return;
+    var n = autobSetKeep(e.target.value);
+    autobClean().then(function(r){
+      toast('保留份数已设为 ' + n + ' 份' + ((r.db + r.native) > 0 ? '，已清理 ' + (r.db + r.native) + ' 份旧备份' : ''));
+      autobRenderBox();
+    }).catch(function(){
+      autobRenderBox();
+    });
   });
   /* 进入「我的」时渲染自动备份区 */
   try{ autobRenderBox(); }catch(e){ logError('自动备份区渲染', e); }
@@ -32523,7 +32739,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         });
       },
       gapMs: function(){ return AUTOB_GAP; },
-      keep: function(){ return AUTOB_KEEP; },
+      keep: function(){ return autobKeep(); },
+      setKeep: function(n){ return autobSetKeep(n); },
+      clean: function(){ return autobClean(); },
+      nativeList: function(){ return autobNativeList(); },
+      nativeRead: function(name){ return autobNativeRead(name); },
+      nativeRestore: function(name){ return autobNativeRestore(name); },
       fail: function(on){ autobForceFail = !!on; return autobForceFail; },
       closeDb: function(){
         var p = autobDbPromise;
