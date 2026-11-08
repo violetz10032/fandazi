@@ -23736,6 +23736,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return (p && p[name]) || null;
     }catch(e){ return null; }
   }
+  /* 桥接调用统一兜底：插件方法同步抛错时也转成 rejected Promise，绝不冒泡到 Capacitor 线程 */
+  function capSafe(fn){
+    try{ return Promise.resolve(fn()); }
+    catch(e){ return Promise.reject(e); }
+  }
   function nativeFileBridge(){
     return capNative() && !!capPlugin('Filesystem') && !!capPlugin('Share');
   }
@@ -23763,18 +23768,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var FS = capPlugin('Filesystem'), Share = capPlugin('Share');
     if(!FS || !Share) return Promise.reject(new Error('原生插件不可用'));
     if(!base64) return Promise.reject(new Error('文件内容为空'));
-    return FS.writeFile({ path: filename, data: base64, directory: 'CACHE', recursive: true })
-      .then(function(){ return FS.getUri({ path: filename, directory: 'CACHE' }); })
+    return capSafe(function(){ return FS.writeFile({ path: filename, data: base64, directory: 'CACHE', recursive: true }); })
+      .then(function(){ return capSafe(function(){ return FS.getUri({ path: filename, directory: 'CACHE' }); }); })
       .then(function(res){
         var uri = (res && res.uri) || '';
         if(!uri) throw new Error('无法取得文件地址');
-        return Share.share({ title: title || 'i吃饭', text: mime === 'image/png' ? '数据来自本人记录' : '', files: [uri], dialogTitle: title || 'i吃饭' });
+        return capSafe(function(){ return Share.share({ title: title || 'i吃饭', text: mime === 'image/png' ? '数据来自本人记录' : '', files: [uri], dialogTitle: title || 'i吃饭' }); });
       });
   }
   function nativeShareText(text, title){
     var Share = capPlugin('Share');
     if(!Share) return Promise.reject(new Error('原生插件不可用'));
-    return Share.share({ title: title || 'i吃饭', text: text, dialogTitle: title || 'i吃饭' });
+    return capSafe(function(){ return Share.share({ title: title || 'i吃饭', text: text, dialogTitle: title || 'i吃饭' }); });
   }
   function nativeFailMsg(where, e, action){
     logError(where, e);
@@ -25625,8 +25630,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var it = items[idx++];
       blobBase64(it.blob, function(b64){
         if(!b64){ step(); return; }
-        FS.writeFile({ path: it.name, data: b64, directory: 'CACHE', recursive: true })
-          .then(function(){ return FS.getUri({ path: it.name, directory: 'CACHE' }); })
+        capSafe(function(){ return FS.writeFile({ path: it.name, data: b64, directory: 'CACHE', recursive: true }); })
+          .then(function(){ return capSafe(function(){ return FS.getUri({ path: it.name, directory: 'CACHE' }); }); })
           .then(function(r){ if(r && r.uri) uris.push(r.uri); step(); })
           .catch(function(e){ logError('长图写入', e); step(); });
       });
@@ -25638,7 +25643,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(nativeFileBridge()){
       nativeShareBlobs(longBlobs.slice(0, 10), function(err, uris){
         if(err || !uris.length){ nativeFailMsg('保存长图', err || new Error('文件写入失败'), '保存'); return; }
-        capPlugin('Share').share({ title:'i吃饭 · 长图', files: uris, dialogTitle:'保存长图' })
+        capSafe(function(){ return capPlugin('Share').share({ title:'i吃饭 · 长图', files: uris, dialogTitle:'保存长图' }); })
           .then(function(){ toast('已生成 '+uris.length+' 张长图，请在分享面板里保存'); })
           .catch(function(e){ if(nativeCanceled(e)) return; nativeFailMsg('保存长图', e, '保存'); });
       });
@@ -25658,7 +25663,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(nativeFileBridge()){
       nativeShareBlobs(longBlobs.slice(0, 10), function(err, uris){
         if(err || !uris.length){ nativeFailMsg('分享长图', err || new Error('文件写入失败'), '分享'); return; }
-        capPlugin('Share').share({ title:'i吃饭 · 分享清单', text:longText || '数据来自本人记录，不代表平台评价', files: uris, dialogTitle:'分享清单' })
+        capSafe(function(){ return capPlugin('Share').share({ title:'i吃饭 · 分享清单', text:longText || '数据来自本人记录，不代表平台评价', files: uris, dialogTitle:'分享清单' }); })
           .then(function(){ toast('已调起系统分享'); })
           .catch(function(e){ if(nativeCanceled(e)) return; nativeFailMsg('分享长图', e, '分享'); });
       });
@@ -28065,6 +28070,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var AUTOB_TIME_TOLERANCE = 10 * 60 * 1000;   /* 允许的时钟误差；超出即视为时间异常 */
   var AUTOB_CHECK_GAP = 60 * 1000;   /* 回前台 / 关键写入后的检查节流窗口 */
   var autobCheckAt = 0;
+  var autobBootArmed = false;   /* 是否已挂上「首次明确操作后检查一次」的一次性监听 */
+  var autobPanelChecked = false;   /* 本次会话内是否已因打开本机数据面板检查过 */
   var AUTOB_DB_NAME = 'fandazi.backups';
   var AUTOB_DIR = 'fandazi-backups';
   var AUTOB_FILE_RE = /^fandazi-autobak-[0-9]{8}-[0-9]{6}(?:-[0-9]{1,4})?\.json$/;
@@ -28091,7 +28098,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       dirKind: (o.dirKind === 'External' || o.dirKind === 'Data') ? o.dirKind : '',
       degraded: typeof o.degraded === 'string' ? o.degraded.slice(0, 180) : '',
       perm: typeof o.perm === 'string' ? o.perm.slice(0, 20) : '',
-      nativeOk: o.nativeOk === true
+      nativeOk: o.nativeOk === true,
+      bootAuto: o.bootAuto === true
     };
   }
   function autobMetaLoad(){
@@ -28106,6 +28114,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     catch(e){ logError('自动备份状态', e); }
     try{ autobBadgeRender(); }catch(e){ logError('自动备份角标', e); }
     return autobMetaCache;
+  }
+  /* 启动时自动备份开关：默认关；关闭时任何自动触发（启动检查/回前台/写入后补查）都不执行 */
+  function autobBootAuto(){
+    var m = autobMetaLoad();
+    return m.bootAuto === true;
+  }
+  function autobSetBootAuto(on){
+    var m = autobMetaLoad();
+    m.bootAuto = !!on;
+    autobMetaSave(m);
+    autobBootArmed = false;
+    if(on) autobArmBootAuto();
+    return m.bootAuto;
   }
   function autobKeep(){
     var n = 0;
@@ -28214,11 +28235,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function autobReadDir(fs, kind){
     if(!fs || typeof fs.readdir !== 'function') return Promise.resolve([]);
-    return Promise.resolve(fs.readdir({ directory:kind, path:AUTOB_DIR })).then(function(res){
+    return capSafe(function(){ return fs.readdir({ directory:kind, path:AUTOB_DIR }); }).then(function(res){
       var names = ((res && res.files) || []).map(function(f){ return typeof f === 'string' ? f : String((f && f.name) || ''); })
         .filter(function(n){ return AUTOB_FILE_RE.test(n); });
       return Promise.all(names.map(function(name){
-        return Promise.resolve(typeof fs.stat === 'function' ? fs.stat({ directory:kind, path:AUTOB_DIR + '/' + name }) : null)
+        return capSafe(function(){ return typeof fs.stat === 'function' ? fs.stat({ directory:kind, path:AUTOB_DIR + '/' + name }) : null; })
           .then(function(st){
             return { name:name, dirKind:kind, bytes:num(st && st.size), at:(num(st && st.mtime) > 0 ? num(st.mtime) : 0) || autobNameAt(name) || 0 };
           }, function(){
@@ -28247,21 +28268,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var fs = autobFs();
     if(!fs) return Promise.resolve(false);
     return Promise.all(['Data'].map(function(kind){
-      return Promise.resolve(fs.deleteFile({ directory:kind, path:AUTOB_DIR + '/' + name }))
+      return capSafe(function(){ return fs.deleteFile({ directory:kind, path:AUTOB_DIR + '/' + name }); })
         .then(function(){ return true; }, function(){ return false; });
     })).then(function(r){ return r.some(Boolean); });
   }
   function autobWriteFile(fs, kind, name, text){
-    return Promise.resolve().then(function(){
+    return capSafe(function(){
       return fs.mkdir({ directory:kind, path:AUTOB_DIR, recursive:true });
     }).catch(function(e){
       var msg = String((e && e.message) || e || '');
       if(/exist|already/i.test(msg)) return true;
       throw e;
     }).then(function(){
-      return fs.writeFile({ directory:kind, path:AUTOB_DIR + '/' + name, data:text, encoding:'utf8', recursive:true });
+      return capSafe(function(){ return fs.writeFile({ directory:kind, path:AUTOB_DIR + '/' + name, data:text, encoding:'utf8', recursive:true }); });
     }).then(function(){
-      return Promise.resolve(typeof fs.getUri === 'function' ? fs.getUri({ directory:kind, path:AUTOB_DIR + '/' + name }) : null)
+      return capSafe(function(){ return typeof fs.getUri === 'function' ? fs.getUri({ directory:kind, path:AUTOB_DIR + '/' + name }) : null; })
         .then(function(u){
           var uri = (u && u.uri) ? String(u.uri) : '';
           return { ok:true, name:name, dirKind:kind, uri:uri.replace(/^file:\/\//, ''), reason:'' };
@@ -28286,7 +28307,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var kinds = ['Data'];
     function step(i){
       if(i >= kinds.length) return Promise.resolve('');
-      return Promise.resolve(fs.readFile({ directory:kinds[i], path:AUTOB_DIR + '/' + name, encoding:'utf8' })).then(function(r){
+      return capSafe(function(){ return fs.readFile({ directory:kinds[i], path:AUTOB_DIR + '/' + name, encoding:'utf8' }); }).then(function(r){
         var data = r && r.data;
         if(typeof data !== 'string') data = autobUtf8FromBase64(data);
         return data || '';
@@ -28313,7 +28334,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var kinds = ['Data'];
     function step(i){
       if(i >= kinds.length) return Promise.resolve('');
-      return Promise.resolve(fs.getUri({ directory:kinds[i], path:AUTOB_DIR })).then(function(u){
+      return capSafe(function(){ return fs.getUri({ directory:kinds[i], path:AUTOB_DIR }); }).then(function(u){
         return String((u && u.uri) || '').replace(/^file:\/\//, '');
       }, function(){ return step(i + 1); });
     }
@@ -28483,7 +28504,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     try{ toast(msg); }catch(e){ logError('自动备份失败提示', e); }
     return msg;
   }
+  /* 启动阶段完全不碰文件系统：只有开关打开、且用户已有一次明确操作后，才允许检查一次 */
+  function autobArmBootAuto(){
+    if(!autobBootAuto() || autobBootArmed) return false;
+    autobBootArmed = true;
+    var fire = function(){
+      document.removeEventListener('pointerdown', fire, true);
+      document.removeEventListener('keydown', fire, true);
+      setTimeout(function(){ try{ autobBootCheck(); }catch(e){ logError('自动备份启动检查', e); } }, 1500);
+    };
+    document.addEventListener('pointerdown', fire, true);
+    document.addEventListener('keydown', fire, true);
+    return true;
+  }
   function autobBootCheck(){
+    if(!autobBootAuto()) return false;
     var kick = function(){
       try{
         autobFailNotice();
@@ -28494,9 +28529,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     /* 页面空闲时再跑，不占首屏 */
     if(typeof window.requestIdleCallback === 'function') window.requestIdleCallback(kick, { timeout:4000 });
     else setTimeout(kick, 2000);
+    return true;
   }
   /* 回前台 / 关键写入后补查：仍按 24h 判定，60s 内只查一次，实际生成放到页面空闲时 */
   function autobCheckSoon(){
+    if(!autobBootAuto()) return false;
     if(document.hidden) return false;
     var now = Date.now();
     if(now - autobCheckAt < AUTOB_CHECK_GAP) return false;
@@ -28538,7 +28575,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return '<option value="' + n + '"' + (n === keep ? ' selected' : '') + '>' + n + ' 份</option>';
     }).join('');
     box.innerHTML =
-      '<p class="dist-note" style="margin-top:0"><b>定时自动备份（应用私有目录）</b>：每天首次打开应用时检查，距上次自动备份超过 24 小时就在页面空闲时生成一份整包备份，写入应用私有目录 fandazi-backups。保留最近 <select id="autoBakKeep" class="input" style="display:inline-block;width:auto;padding:1px 6px;font-size:12px">' + keepOpts + '</select>，超出按时间淘汰最旧的。只保存记录与照片引用，不含照片本体；照片需完整备份才能一起带走。</p>' +
+      '<p class="dist-note" style="margin-top:0"><b>定时自动备份（应用私有目录）</b>：只在下面的开关打开时生效；打开后，距上次自动备份超过 24 小时且你有明确操作（首次点按界面、保存记录、进入本页）时，才会在页面空闲时生成一份整包备份，写入应用私有目录 fandazi-backups。保留最近 <select id="autoBakKeep" class="input" style="display:inline-block;width:auto;padding:1px 6px;font-size:12px">' + keepOpts + '</select>，超出按时间淘汰最旧的。只保存记录与照片引用，不含照片本体；照片需完整备份才能一起带走。</p>' +
+      '<label class="dist-note" style="display:flex;gap:8px;align-items:flex-start;margin:8px 0 0;cursor:pointer">' +
+        '<input type="checkbox" id="autoBakBoot"' + (m.bootAuto ? ' checked' : '') + ' style="margin-top:2px">' +
+        '<span>启动时自动备份（仅应用内）· 默认关闭<br><span class="muted">关闭时启动阶段不调用任何原生文件接口；打开后也只在你有明确操作之后才检查一次。</span></span>' +
+      '</label>' +
       '<p class="dist-note">' + esc(status) + ' · ' + esc(dirTxt) + '</p>' + errTxt +
       (native
         ? '<p class="dist-note">自动备份写在应用私有目录，不申请存储权限、不写 Android/data。这个目录在手机的文件管理器里看不到（系统限制，属于正常现象），要取出来请用下面的导出按钮。清理应用数据或卸载 App 时，这些备份会一起消失。</p>'
@@ -28554,7 +28595,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '</div>' +
       '<p class="dist-note" style="margin:10px 0 0">最近 ' + keep + ' 份（' + (native ? '本机 IndexedDB / 应用私有目录' : '本机 IndexedDB') + '）</p>' +
       '<div id="autoBakList"></div>';
-    Promise.all([autobAll(), autobNativeList()]).then(function(arr){
+    var boxVisible = !!(box && box.offsetParent) && activeView === 'more';   /* 面板没真正打开时不做任何桥接读取 */
+    if(boxVisible && autobBootAuto() && !autobPanelChecked){
+      autobPanelChecked = true;
+      setTimeout(function(){ try{ autobBootCheck(); }catch(e){ logError('自动备份面板检查', e); } }, 300);
+    }
+    Promise.all([autobAll(), boxVisible ? autobNativeList() : Promise.resolve([])]).then(function(arr){
       if(activeView !== 'more') return;
       var el = $('#autoBakList');
       if(!el) return;
@@ -28569,7 +28615,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       dbList.forEach(function(x){ if(!used[x.id]) rows.push({ name:x.nativeName || '', at:x.at, bytes:x.bytes, rec:x, native:false }); });
       rows.sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
       if(!rows.length){
-        el.innerHTML = '<p class="dist-note">还没有自动备份。打开应用满 24 小时后会自动生成第一份。</p>';
+        el.innerHTML = '<p class="dist-note">还没有自动备份。打开上面的「启动时自动备份」开关后，有明确操作时才会生成第一份。</p>';
         return;
       }
       el.innerHTML = rows.map(function(x){
@@ -29317,6 +29363,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(nres) autobNativeRestore(nres.getAttribute('data-autob-nres'));
   });
   $('#autoBakBox').addEventListener('change', function(e){
+    if(e.target && e.target.id === 'autoBakBoot'){
+      var on = autobSetBootAuto(e.target.checked);
+      toast(on ? '已打开启动时自动备份：只在你操作后检查一次，启动阶段不调原生文件接口' : '已关闭启动时自动备份：启动阶段不调原生文件接口');
+      autobRenderBox();
+      return;
+    }
     if(!e.target || e.target.id !== 'autoBakKeep') return;
     var n = autobSetKeep(e.target.value);
     autobClean().then(function(r){
@@ -31339,7 +31391,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   initTheme();
   renderAll();
   try{ homeUIInit(); }catch(e){ logError('在家吃初始化', e); toast('「在家吃」初始化失败，部分功能可能不可用'); }
-  try{ autobBootCheck(); }catch(e){ logError('自动备份启动检查', e); }
+  try{ autobArmBootAuto(); }catch(e){ logError('自动备份启动挂载', e); }
   webdavInit();
   showView('record');
   try{ blindBallInit(); blindShakeBind(); }catch(e){ logError('盲盒初始化', e); toast('盲盒初始化失败，摇一摇可能不可用'); }
