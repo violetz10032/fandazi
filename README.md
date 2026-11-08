@@ -84,7 +84,7 @@
 - 位置：**我的 → 本机数据 → WebDAV 云备份**（可折叠面板），填写服务器地址（指向网盘里的一个文件夹）、用户名、应用独立密码、备份文件名（默认 `fandazi_backup.json`）。
 - **网页版如实受限**：浏览器跨域（CORS）会拦截 WebDAV 的 `PROPFIND` / `PUT`，面板保留入口并明确提示「建议在 APK 内使用」，不绕行、不走代理。
 - **APK 内走原生 HTTP**：直接调用 CapacitorHttp（不启用它的全局 fetch 补丁，因此不影响高德 JS API 动态加载与 Gist 同步），不受浏览器跨域限制。
-- **复用现有完整备份**：上传就是把「完整备份」对象原样 `PUT`（`format` / `schemaVersion` 7 / SHA-256 校验值全部沿用），没有另造格式；上传成功会同步「上次备份」时间与体积。
+- **复用现有完整备份**：上传就是把「完整备份」对象原样 `PUT`（`format` / `schemaVersion` 8 / SHA-256 校验值全部沿用），没有另造格式；上传成功会同步「上次备份」时间与体积。
 - **拉取还原**：`GET` 回来后走现有 `parseBackupText` + SHA-256 校验，再进入现有的「合并 / 完整替换」恢复弹窗（含恢复前自动恢复点）。
 - **测试连接**：`PROPFIND` 只读探测目录，状态码翻成人话——401 密码或用户名错（坚果云需「应用独立密码」，不是登录密码）/ 403 权限或路径不对 / 404 目录或文件不存在 / 405 不是 WebDAV 地址 / 409 父目录缺失 / 507 空间不足 / 超时或 HTTP 0 多为跨域被拦。
 - **密码只存本机**：写在 `localStorage`（`fandazi.webdav`），界面明说「未加密，建议使用应用独立密码」，可一键「清除本机口令」。
@@ -103,6 +103,18 @@
 - **Gist / Contents** 只搬运「到店记录 + 照片」；它们不会读取也不会写入上表中的其他键。**烹饪数据（`fandazi.recipes` / `fandazi.pantry` / `fandazi.cooklog` / `fandazi.homefb`）明确不进入 Gist / Contents 增量同步**，只随完整备份整包搬运。
 - **WebDAV** 不是增量同步，而是把「完整备份」JSON 整包上传 / 拉取；整包天然包含上表全部数据（含在家吃数据），但**没有**为烹饪数据扩展任何独立同步字段。网页版受 CORS 限制时，仍可用「导出 / 导入完整备份」文件搬运。
 - **只能靠备份文件搬**：想去、收藏、地点、设置、投票、在家吃数据、店铺补充信息 / 旅行 / 菜品库。换设备或清浏览器数据前，请先导出完整备份；旧备份缺少收藏段时恢复**不会清空本机收藏**，缺在家吃段（含一周菜单 `week` / 烹饪进度 `cookprog`）同样保持本机现状。
+
+### 本机备份的三层边界（自动备份 / 恢复点 / 完整备份）
+
+| 机制 | 存在哪 | 含什么 | 不含什么 | 什么时候消失 |
+| --- | --- | --- | --- | --- |
+| 自动备份（每 24 小时一次，空闲时写） | 网页：IndexedDB `fandazi.backups`；APK：应用私有目录 `fandazi-backups`（另在本机 IndexedDB 留一份可读副本） | 记录与配置整包 + 照片**引用** | **照片本体**（照片只在 IndexedDB） | 清理站点数据 / Android「清除数据」/ 卸载 App |
+| 恢复点（导入、恢复、清空照片前自动建，保留最近 2 份） | IndexedDB `snapshots` | 当时的记录与配置 | **照片本体**（只存 `photoId` 引用；照片被清理后恢复点也找不回） | 下一次导入会覆盖最旧的一份 |
+| 完整备份（手动导出 `.fanzi.json` / 上传 WebDAV） | 你自己的下载目录 / 网盘 | 记录、配置，**可选是否内联照片 base64** | — | 只要文件还在就一直可用 |
+
+- **APK 内自动备份目录在文件管理器里看不到**：`fandazi-backups` 是应用私有目录（系统限制，正常现象），不申请存储权限、也不写 `Android/data`。要把备份取出来，请用「我的 → 本机数据 → 导出备份到手机目录」，在弹出的系统面板里另存或发给自己。
+- **照片要跟着走，必须用完整备份**：自动备份与恢复点都只存引用；换机或清数据前，请在完整备份里勾选「包含照片」。
+- **Android 系统云备份**（`allowBackup`）保持开启，用于换机时由系统代为搬运；它属于操作系统行为，不是本应用上传。不需要可在系统设置里关闭该应用的云备份。
 
 ## AA 分账与复古票根
 
@@ -211,7 +223,7 @@ cd android && ./gradlew assembleDebug
 
 ### 签名与分发限制
 
-- 当前是 **debug 签名**（Gradle 自动用 debug keystore 签名，`applicationId` = `com.fandazi.app`，`versionName` 1.0.4、`versionCode` 5）。
+- 当前是 **debug 签名**（Gradle 自动用 debug keystore 签名，`applicationId` = `com.fandazi.app`，`versionName` 1.1.0、`versionCode` 11）。
 - debug APK **只能自己装**：需要手动允许「未知来源」，也不能上传 Google Play / 国内应用商店，部分国产 ROM 会额外提示风险。
 - 真要正式发布，需要自己的 keystore + `release` 构建类型，并把 keystore 以 GitHub Secrets（base64）形式注入 CI，`./gradlew assembleRelease` 后再用 `apksigner` 校验；keystore 文件本身绝不能进仓库。
 
@@ -797,12 +809,12 @@ outbox（`.tmp/sync-outbox-test.js`）**17/17 通过**：断网进入 30 秒退�
 3. 生成后记下 `fandazi.backup.last`（时间、记录条数、文件大小），「我的 → 数据」会显示「上次备份：X 天前（N 条 / M.B）」；
 4. 距上次备份超过 7 天，或自上次备份后新增/修改 ≥10 条记录，「我的」页顶部会出现一条备份提醒（复用应用内提醒条），点「去备份」直达面板。
 
-文件结构（`schemaVersion` 是「备份格式版本」，本版为 7；`payload.version` 是数据结构版本，仍为 3）：
+文件结构（`schemaVersion` 是「备份格式版本」，本版为 8；`payload.version` 是数据结构版本，仍为 3）：
 
 ```json
 {
   "format": "fandazi-backup",
-  "schemaVersion": 7,
+  "schemaVersion": 8,
   "exportedAt": "2026-11-05T...",
   "checksum": { "algo": "SHA-256", "scope": "canonical(payload+photos)", "value": "…64 位十六进制…" },
   "stats": { "records": 30, "photos": 5, "photoBytes": 29167, … },

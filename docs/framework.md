@@ -18,7 +18,7 @@
 | 数据来源 | **只有用户手动录入**，不抓取任何平台数据 |
 | 数据存储 | `localStorage` 存结构化数据 + `IndexedDB` 存照片，全部留在本机 |
 | 技术栈 | 原生 HTML + CSS + JavaScript；零构建、零 CDN、零第三方脚本 |
-| PWA | Manifest + Service Worker（仅同源静态资源） |
+| PWA | Manifest + Service Worker（仅同源静态资源；原生壳内不注册） |
 | 位置能力 | **不申请定位权限**；距离、耗时、营业时间均为手填估算 |
 | 通知 | 默认只用应用内提醒条；浏览器通知仅在用户点击按钮后申请 |
 | 非目标 | 店铺发现/榜单/团购比价、账号、云同步、多人实时投票、服务端推送 |
@@ -96,7 +96,7 @@ PWA 层   manifest.webmanifest / sw.js / registerSW / updateBar
 | 导航请求 | 网络优先；成功后把 `index.html` 写入缓存；失败回退缓存 `index.html`；都没有则返回 503 文本 |
 | 同源静态 | 缓存优先 + 后台更新（stale-while-revalidate） |
 
-缓存名格式：`fandazi-cache-fandazi-pwa-v4-20261105`。版本号变更即触发旧缓存清理。
+缓存名格式：`fandazi-cache-fandazi-pwa-v11-20261109`。版本号变更即触发旧缓存清理。
 
 ### 2.3 更新提示
 
@@ -231,7 +231,7 @@ PWA 层   manifest.webmanifest / sw.js / registerSW / updateBar
 
 - `shopMetaNormEntry()` 做白名单：`aliases` / `relatedShops` 截断到 50 条，`dupIgnored` 截断到 100 条；非法值丢弃，不丢弃整段。
 - 旧 version 1 条目（只有 `updatedAt / links / fields / location`）原样可读；写入时按新版本落盘。
-- 备份中的 `payload.shopmeta` 随之为 version 2；完整备份格式仍为 `schemaVersion: 7`，旧备份导入走同一套可选字段归一，不报错。
+- 备份中的 `payload.shopmeta` 随之为 version 2；完整备份格式仍为 `schemaVersion: 8`，旧备份导入走同一套可选字段归一，不报错。
 
 推荐反馈 `fandazi.feedback` 升到 **version 2**，每条新增可选 `surface`：
 
@@ -642,8 +642,8 @@ i吃饭 · 分享清单
 7. 抽签距离筛选固定 3 km；日常推荐支持 0.5–10 km 半径。
 8. 状态栏/通知与 PWA 行为受浏览器与系统版本影响，未覆盖所有机型。
 9. 压测为本机 headless 结果，不代表所有低端机。
-10. 链接分享依赖当前页面地址：`file://` 或 `127.0.0.1` 下的链接只适合本机/同路径场景；跨设备优先用 `.fanzi.json` 文件。链接二维码受 v40-L 容量限制，超长时只能复制链接。
-11. 导入撤销快照保存在内存，刷新或关闭页面后失效；跨会话恢复请使用导出的 JSON 备份。
+10. 链接分享统一走 `shareBaseUrl()`：APK 内固定用线上 Pages 地址（`https://violetz10032.github.io/fandazi/`），网页用当前地址；`file://` 双击打开时没有可访问地址，会明确提示改用 `.fanzi.json` 文件而不是生成一条打不开的链接。链接二维码受 v40-L 容量限制，超长时只能复制链接。
+11. 导入撤销快照保存在内存，刷新或关闭页面后失效；跨会话恢复请使用导出的 JSON 备份。撤销按本次导入涉及的记录 id 精确回滚：只删本次新增、只把被覆盖的记录还原成导入前的单条快照，导入后你自己新建/编辑过的记录不会被一起吞掉；删除照片前先查引用索引，被新记录引用的照片不会被误删。
 12. 冲突选项的「覆盖」会替换对方记录中的可见字段，但不会删除本机原有照片。
 13. 互导教程为静态说明层，不直接替你勾选记录或执行分享/导入；轻提示只出现一次，清空 `localStorage['fandazi.tut.hint']` 或清除站点数据后会再次出现。
 14. 重复店铺识别只能处理聚合键不同的店；同名同城但实际是不同分店的记录，会先被 `keyOf` 合成同一家，档案页无法拆开。合并后目标店的地址 / 坐标取最近一次到访，可能随并入记录变化。
@@ -692,7 +692,7 @@ i吃饭 · 分享清单
 | --- | --- |
 | `index.html` | v6 应用本体 |
 | `manifest.webmanifest` | PWA 清单 |
-| `sw.js` | Service Worker（v5 缓存） |
+| `sw.js` | Service Worker（v11 缓存；`Capacitor.isNativePlatform()` 为真时直接跳过注册，避免 APK 长期缓存旧页面） |
 | `icons/icon-192.png` / `icons/icon-512.png` | 普通图标 |
 | `icons/icon-192-maskable.png` / `icons/icon-512-maskable.png` | maskable 图标 |
 | `_backups/index-v1.html` … `index-v7.html` | 历史版本备份（`.gitignore` 忽略，不入库） |
