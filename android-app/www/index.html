@@ -5464,11 +5464,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     try{ prevRaw = localStorage.getItem(TRIPS_KEY); }catch(e){ prevRaw = null; }
     if(!tripsPersist(next)){
       tripStore = prev;
+      var rbOk = true;
       try{
         if(prevRaw == null) localStorage.removeItem(TRIPS_KEY);
         else localStorage.setItem(TRIPS_KEY, prevRaw);
-      }catch(_e){}
-      throw new Error('空间不足：旅行计划写入失败，本机数据未改动');
+      }catch(_e){ rbOk = false; }
+      throw new Error('空间不足：旅行计划写入失败，' + (rbOk ? '本机数据未改动' : '回滚也失败，可能处于半写入状态'));
     }
     var stops = 0;
     next.items.forEach(function(t){ stops += t.stops.length; });
@@ -5476,10 +5477,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function rollbackTrips(prevRaw, prevStore){
     tripStore = prevStore;
-    try{
-      if(prevRaw == null) localStorage.removeItem(TRIPS_KEY);
-      else localStorage.setItem(TRIPS_KEY, prevRaw);
-    }catch(_e){}
+    if(prevRaw == null) localStorage.removeItem(TRIPS_KEY);
+    else localStorage.setItem(TRIPS_KEY, prevRaw);
   }
 
   /* ================= 菜品（独立增量键 fandazi.dishes） =================
@@ -5771,10 +5770,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function rollbackDishes(prevRaw, prevStore){
     dishStore = prevStore;
-    try{
-      if(prevRaw == null) localStorage.removeItem(DISHES_KEY);
-      else localStorage.setItem(DISHES_KEY, prevRaw);
-    }catch(_e){}
+    if(prevRaw == null) localStorage.removeItem(DISHES_KEY);
+    else localStorage.setItem(DISHES_KEY, prevRaw);
   }
 
   /* ================= 在家吃（独立键：fandazi.recipes / fandazi.homefb） =================
@@ -7789,10 +7786,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function homeCookRollback(pantryRaw, pantrySnap, cookRaw, cookSnap){
     pantryStore = pantrySnap;
     cookStore = cookSnap;
-    try{
-      if(pantryRaw == null) localStorage.removeItem(PANTRY_KEY); else localStorage.setItem(PANTRY_KEY, pantryRaw);
-      if(cookRaw == null) localStorage.removeItem(COOKLOG_KEY); else localStorage.setItem(COOKLOG_KEY, cookRaw);
-    }catch(_e){}
+    if(pantryRaw == null) localStorage.removeItem(PANTRY_KEY); else localStorage.setItem(PANTRY_KEY, pantryRaw);
+    if(cookRaw == null) localStorage.removeItem(COOKLOG_KEY); else localStorage.setItem(COOKLOG_KEY, cookRaw);
   }
 
   /* 制作次数 / 上次评分 / 最近一次，用于推荐降权；只读 fandazi.cooklog */
@@ -7912,9 +7907,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function homeWeekRollback(prevRaw, prevStore){
     weekStore = prevStore;
-    try{
-      if(prevRaw == null) localStorage.removeItem(WEEK_KEY); else localStorage.setItem(WEEK_KEY, prevRaw);
-    }catch(_e){}
+    if(prevRaw == null) localStorage.removeItem(WEEK_KEY); else localStorage.setItem(WEEK_KEY, prevRaw);
   }
 
   function homeCookProgItemNorm(x){
@@ -8000,9 +7993,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function homeCookProgRollback(prevRaw, prevStore){
     cookProgStore = prevStore;
-    try{
-      if(prevRaw == null) localStorage.removeItem(COOKPROG_KEY); else localStorage.setItem(COOKPROG_KEY, prevRaw);
-    }catch(_e){}
+    if(prevRaw == null) localStorage.removeItem(COOKPROG_KEY); else localStorage.setItem(COOKPROG_KEY, prevRaw);
   }
 
   /* ---- 菜单排布：主菜 / 配菜 / 汤品 / 主食 ---- */
@@ -8658,10 +8649,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function rollbackHome(recipesRaw, recipesStore, fbRaw, fbStore){
     homeRecipeStore = recipesStore;
     homeFbStore = fbStore;
-    try{
-      if(recipesRaw == null) localStorage.removeItem(RECIPES_KEY); else localStorage.setItem(RECIPES_KEY, recipesRaw);
-      if(fbRaw == null) localStorage.removeItem(HOMEFB_KEY); else localStorage.setItem(HOMEFB_KEY, fbRaw);
-    }catch(_e){}
+    if(recipesRaw == null) localStorage.removeItem(RECIPES_KEY); else localStorage.setItem(RECIPES_KEY, recipesRaw);
+    if(fbRaw == null) localStorage.removeItem(HOMEFB_KEY); else localStorage.setItem(HOMEFB_KEY, fbRaw);
   }
 
   /* ---------------- UI ---------------- */
@@ -27258,6 +27247,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function commitDbString(str){
     var old = null;
     try{ old = localStorage.getItem(KEY); }catch(e){ old = null; }
+    function restoreOld(){
+      try{ if(old != null) localStorage.setItem(KEY, old); }catch(x){ return false; }
+      return true;
+    }
     try{ localStorage.setItem(BACKUP_TMP_KEY, str); }
     catch(e){
       try{ localStorage.removeItem(BACKUP_TMP_KEY); }catch(_e){}
@@ -27267,16 +27260,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       if(old && old.length > 2) localStorage.setItem(BAK_KEY, old);
       localStorage.setItem(KEY, str);
     }catch(e){
-      try{ if(old != null) localStorage.setItem(KEY, old); }catch(_e){}
+      var ok1 = restoreOld();
       try{ localStorage.removeItem(BACKUP_TMP_KEY); }catch(_e2){}
-      throw new Error('空间不足：本机 localStorage 写入失败，已还原原数据');
+      throw new Error('空间不足：本机 localStorage 写入失败，' + (ok1 ? '已还原原数据' : '回滚也失败，原数据可能未完全还原'));
     }
     try{
       if(localStorage.getItem(KEY) !== str) throw new Error('readback');
       localStorage.removeItem(BACKUP_TMP_KEY);
     }catch(e){
-      try{ if(old != null) localStorage.setItem(KEY, old); }catch(_e){}
-      throw new Error('写入校验失败，已还原原数据');
+      var ok2 = restoreOld();
+      throw new Error('写入校验失败，' + (ok2 ? '已还原原数据' : '回滚也失败，原数据可能未完全还原'));
     }
   }
   /* 年度存档（独立键 fandazi.reports）：旧备份没有该段时保持本机现状，不覆盖、不报错 */
@@ -27296,6 +27289,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     if(!reportWrite(next)) return { applied:false, legacy:false, count:cur.items.length, added:0 };
     return { applied:true, legacy:false, count:next.items.length, added:Math.max(0, next.items.length - cur.items.length) };
+  }
+  /* 回滚逐步执行：任何一步失败都记录下来并上报，不再静默吞掉 */
+  function runRollback(steps, errors){
+    (steps || []).forEach(function(step){
+      try{ step[1](); }
+      catch(e){ errors.push(step[0] + '：' + ((e && e.message) ? e.message : '本机存储写入失败')); }
+    });
   }
   function applyBackupRestore(obj, mode){
     if(restoreBusy) return Promise.reject(new Error('正在恢复，请稍候'));
@@ -27370,35 +27370,27 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       function rollbackFeedback(){
         feedbackStore = fbPrevStore;
         feedbackToday = { date: todayStr(), items: {} };
-        try{
-          if(fbPrevRaw == null) localStorage.removeItem(FB_KEY);
-          else localStorage.setItem(FB_KEY, fbPrevRaw);
-        }catch(_e){}
+        if(fbPrevRaw == null) localStorage.removeItem(FB_KEY);
+        else localStorage.setItem(FB_KEY, fbPrevRaw);
       }
       function rollbackProfile(){
         profileManual = pmPrevStore;
         invalidateProfile();
-        try{
-          if(pmPrevRaw == null) localStorage.removeItem(PROFILE_KEY);
-          else localStorage.setItem(PROFILE_KEY, pmPrevRaw);
-        }catch(_e){}
+        if(pmPrevRaw == null) localStorage.removeItem(PROFILE_KEY);
+        else localStorage.setItem(PROFILE_KEY, pmPrevRaw);
       }
       var rpPrevRaw = null;
       try{ rpPrevRaw = localStorage.getItem(REPORT_KEY); }catch(e){ rpPrevRaw = null; }
       function rollbackReports(){
-        try{
-          if(rpPrevRaw == null) localStorage.removeItem(REPORT_KEY);
-          else localStorage.setItem(REPORT_KEY, rpPrevRaw);
-        }catch(_e){}
+        if(rpPrevRaw == null) localStorage.removeItem(REPORT_KEY);
+        else localStorage.setItem(REPORT_KEY, rpPrevRaw);
       }
       var smPrevRaw = null, smPrevStore = JSON.parse(JSON.stringify(shopMetaLoad()));
       try{ smPrevRaw = localStorage.getItem(SHOPMETA_KEY); }catch(e){ smPrevRaw = null; }
       function rollbackShopMeta(){
         shopMetaStore = smPrevStore;
-        try{
-          if(smPrevRaw == null) localStorage.removeItem(SHOPMETA_KEY);
-          else localStorage.setItem(SHOPMETA_KEY, smPrevRaw);
-        }catch(_e){}
+        if(smPrevRaw == null) localStorage.removeItem(SHOPMETA_KEY);
+        else localStorage.setItem(SHOPMETA_KEY, smPrevRaw);
       }
       var fbResult = { applied:false, count:0 };
       var pmResult = { applied:false, boost:0, block:0, budgetCap:null };
@@ -27430,10 +27422,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       try{ fvPrevRaw = localStorage.getItem(FAV_KEY); }catch(e){ fvPrevRaw = null; }
       function rollbackFavorites(){
         favStore = fvPrevStore;
-        try{
-          if(fvPrevRaw == null) localStorage.removeItem(FAV_KEY);
-          else localStorage.setItem(FAV_KEY, fvPrevRaw);
-        }catch(_e){}
+        if(fvPrevRaw == null) localStorage.removeItem(FAV_KEY);
+        else localStorage.setItem(FAV_KEY, fvPrevRaw);
       }
       var fvResult = { applied:false, legacy:true, count:favoritesLoad().items.length, added:0 };
       var committed;
@@ -27453,18 +27443,24 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         /* v2 模式下写 v2（读回校验），v1 模式下沿用 commitDbString */
         committed = commitDbNext(next);
       }catch(e){
-        rollbackFeedback();
-        rollbackProfile();
-        rollbackReports();
-        rollbackShopMeta();
-        rollbackTrips(tpPrevRaw, tpPrevStore);
-        rollbackDishes(dsPrevRaw, dsPrevStore);
-        rollbackHome(hcPrevRaw, hcPrevStore, hfPrevRaw, hfPrevStore);
-        homeCookRollback(ptPrevRaw, ptPrevStore, ckPrevRaw, ckPrevStore);
-        homeWeekRollback(wkPrevRaw, wkPrevStore);
-        homeCookProgRollback(cpPrevRaw, cpPrevStore);
-        rollbackFavorites();
-        throw e;
+        var rbErrors = [];
+        runRollback([
+          ['推荐反馈', rollbackFeedback],
+          ['口味设置', rollbackProfile],
+          ['年度存档', rollbackReports],
+          ['店铺档案', rollbackShopMeta],
+          ['旅行计划', function(){ rollbackTrips(tpPrevRaw, tpPrevStore); }],
+          ['菜品', function(){ rollbackDishes(dsPrevRaw, dsPrevStore); }],
+          ['在家吃', function(){ rollbackHome(hcPrevRaw, hcPrevStore, hfPrevRaw, hfPrevStore); }],
+          ['食材/制作', function(){ homeCookRollback(ptPrevRaw, ptPrevStore, ckPrevRaw, ckPrevStore); }],
+          ['一周菜单', function(){ homeWeekRollback(wkPrevRaw, wkPrevStore); }],
+          ['烹饪进度', function(){ homeCookProgRollback(cpPrevRaw, cpPrevStore); }],
+          ['收藏', rollbackFavorites]
+        ], rbErrors);
+        var fail = new Error(e && e.message ? e.message : '恢复写入失败');
+        fail.rollbackErrors = rbErrors;
+        fail.snapshotId = snapRef ? snapRef.id : null;
+        throw fail;
       }
       db = next;
       invalidateStores();
@@ -27513,35 +27509,27 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       function rollbackFeedback(){
         feedbackStore = fbPrevStore;
         feedbackToday = { date: todayStr(), items: {} };
-        try{
-          if(fbPrevRaw == null) localStorage.removeItem(FB_KEY);
-          else localStorage.setItem(FB_KEY, fbPrevRaw);
-        }catch(_e){}
+        if(fbPrevRaw == null) localStorage.removeItem(FB_KEY);
+        else localStorage.setItem(FB_KEY, fbPrevRaw);
       }
       function rollbackProfile(){
         profileManual = pmPrevStore;
         invalidateProfile();
-        try{
-          if(pmPrevRaw == null) localStorage.removeItem(PROFILE_KEY);
-          else localStorage.setItem(PROFILE_KEY, pmPrevRaw);
-        }catch(_e){}
+        if(pmPrevRaw == null) localStorage.removeItem(PROFILE_KEY);
+        else localStorage.setItem(PROFILE_KEY, pmPrevRaw);
       }
       var rpPrevRaw = null;
       try{ rpPrevRaw = localStorage.getItem(REPORT_KEY); }catch(e){ rpPrevRaw = null; }
       function rollbackReports(){
-        try{
-          if(rpPrevRaw == null) localStorage.removeItem(REPORT_KEY);
-          else localStorage.setItem(REPORT_KEY, rpPrevRaw);
-        }catch(_e){}
+        if(rpPrevRaw == null) localStorage.removeItem(REPORT_KEY);
+        else localStorage.setItem(REPORT_KEY, rpPrevRaw);
       }
       var smPrevRaw = null, smPrevStore = JSON.parse(JSON.stringify(shopMetaLoad()));
       try{ smPrevRaw = localStorage.getItem(SHOPMETA_KEY); }catch(e){ smPrevRaw = null; }
       function rollbackShopMeta(){
         shopMetaStore = smPrevStore;
-        try{
-          if(smPrevRaw == null) localStorage.removeItem(SHOPMETA_KEY);
-          else localStorage.setItem(SHOPMETA_KEY, smPrevRaw);
-        }catch(_e){}
+        if(smPrevRaw == null) localStorage.removeItem(SHOPMETA_KEY);
+        else localStorage.setItem(SHOPMETA_KEY, smPrevRaw);
       }
       var fbResult = { applied:false, count:0 };
       var pmResult = { applied:false, boost:0, block:0, budgetCap:null };
@@ -27568,14 +27556,20 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         hcResult = applyBackupHome(snap.data.recipes, snap.data.homefb, 'replace');
         committed = commitDbNext(norm);
       }catch(e){
-        rollbackFeedback();
-        rollbackProfile();
-        rollbackReports();
-        rollbackShopMeta();
-        rollbackTrips(tpPrevRaw, tpPrevStore);
-        rollbackDishes(dsPrevRaw, dsPrevStore);
-        rollbackHome(hcPrevRaw, hcPrevStore, hfPrevRaw, hfPrevStore);
-        throw e;
+        var rbErrors = [];
+        runRollback([
+          ['推荐反馈', rollbackFeedback],
+          ['口味设置', rollbackProfile],
+          ['年度存档', rollbackReports],
+          ['店铺档案', rollbackShopMeta],
+          ['旅行计划', function(){ rollbackTrips(tpPrevRaw, tpPrevStore); }],
+          ['菜品', function(){ rollbackDishes(dsPrevRaw, dsPrevStore); }],
+          ['在家吃', function(){ rollbackHome(hcPrevRaw, hcPrevStore, hfPrevRaw, hfPrevStore); }]
+        ], rbErrors);
+        var fail = new Error(e && e.message ? e.message : '恢复点写入失败');
+        fail.rollbackErrors = rbErrors;
+        fail.snapshotId = null;
+        throw fail;
       }
       db = norm;
       invalidateStores();
@@ -27605,6 +27599,26 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       '<p class="muted">' + esc(msg || '未知错误') + '</p>' +
       '<p class="dist-note">原数据没有被修改；可重新选择文件或先用「导出 JSON」确认本机数据。</p>' +
       '<div class="actions" style="margin-top:12px"><button class="btn btn-block" data-act="close">关闭</button></div>'
+    );
+  }
+  /* 恢复失败但回滚也未完成：必须让用户看到半恢复风险，并引导回滚到 before-restore 快照 */
+  function restoreFailModal(e, title){
+    var rbErrs = (e && e.rollbackErrors) ? e.rollbackErrors : [];
+    var msg = (e && e.message) ? e.message : '未知错误';
+    if(!rbErrs.length){
+      backupErrorModal((title || '恢复失败') + '：' + msg + '（已回滚，原数据未被修改）', title || '恢复失败');
+      return;
+    }
+    var snapId = (e && e.snapshotId) ? String(e.snapshotId) : '';
+    openBackupModal(
+      '<div class="sheet-head" style="margin-bottom:8px"><h3>' + esc(title || '恢复失败') + '，回滚未完成</h3>' +
+        '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
+      '<div class="import-warn">写入未完成，回滚有 ' + rbErrs.length + ' 项失败：' + esc(rbErrs.join('；')) + '。</div>' +
+      '<p class="muted">本机数据可能处于半恢复状态，请勿继续写入。' + (snapId ? '点下方按钮回滚到本次恢复前的快照。' : '请重试或先用「导出 JSON」确认本机数据。') + '</p>' +
+      '<div class="actions" style="margin-top:12px">' +
+        (snapId ? '<button class="btn btn-danger btn-block" data-act="undoSnap" data-snap="' + esc(snapId) + '">回滚到恢复前</button>' : '') +
+        '<button class="btn btn-block" data-act="close">关闭</button>' +
+      '</div>'
     );
   }
   function openBackupPanel(){
@@ -27652,6 +27666,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     });
   }
   function uiOpenRestorePreview(obj){
+    /* 先给即时反馈：校验与照片统计要读本机照片库，异步完成后再渲染完整预览 */
+    openBackupModal('<h3>恢复完整备份</h3><p class="muted">正在校验备份并统计照片引用…</p><p class="dist-note">恢复方式：合并 / 完整替换</p>');
     verifyBackup(obj).then(function(){
       pendingRestore = obj;
       return photoAllKeys();
@@ -27740,7 +27756,25 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       renderMore();
       toast('已恢复备份');
     }).catch(function(e){
-      backupErrorModal('恢复失败：' + (e && e.message ? e.message : '未知错误'), '恢复失败');
+      restoreFailModal(e, '恢复失败');
+    });
+  }
+  function uiRestoreSnapshotId(id){
+    snapshotAll().then(function(list){
+      var snap = list.filter(function(s){ return s.id === id; })[0];
+      if(!snap){ toast('恢复点不存在或已被覆盖'); return; }
+      if(!confirm('回滚到 ' + backupDateText(snap.at) + ' 的恢复前快照（' + snap.records + ' 条）？当前数据会被覆盖。')) return;
+      return restoreSnapshotById(id).then(function(res){
+        openBackupModal(
+          '<div class="sheet-head" style="margin-bottom:8px"><h3>已回滚</h3>' +
+            '<button type="button" class="icon-btn" data-act="close" aria-label="关闭">'+icon('close','ico-16')+'</button></div>' +
+          '<p class="muted">已回到 ' + esc(backupDateText(res.at)) + ' 的恢复前快照：' + res.records + ' 条记录，照片引用 ' + res.photos + ' 张。</p>' +
+          '<div class="actions" style="margin-top:12px"><button class="btn btn-block" data-act="close">完成</button></div>'
+        );
+        toast('已回滚到恢复前');
+      });
+    }).catch(function(e){
+      restoreFailModal(e, '回滚失败');
     });
   }
   function uiRestoreLatestSnapshot(){
@@ -27758,7 +27792,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         toast('已恢复到恢复前');
       });
     }).catch(function(e){
-      backupErrorModal('恢复点还原失败：' + (e && e.message ? e.message : '未知错误'));
+      restoreFailModal(e, '恢复点还原失败');
     });
   }
   function renderBackupState(){
@@ -28914,6 +28948,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     else if(act === 'make') uiGenerateBackup();
     else if(act === 'doRestore') uiApplyRestore();
     else if(act === 'undoRestore') uiRestoreLatestSnapshot();
+    else if(act === 'undoSnap'){
+      var sid = t.getAttribute('data-snap');
+      if(sid) uiRestoreSnapshotId(sid); else uiRestoreLatestSnapshot();
+    }
     else if(act === 'v2do-migrate') runV2Migrate();
     else if(act === 'v2-preview') openV2MigrateSheet();
     else if(act === 'v2-backup-first') runV2BackupFirst();
@@ -28955,7 +28993,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       );
       toast('已恢复到恢复点');
     }).catch(function(e){
-      backupErrorModal('恢复点还原失败：' + (e && e.message ? e.message : '未知错误'));
+      restoreFailModal(e, '恢复点还原失败');
     });
   });
   $('#autoBakBox').addEventListener('click', function(e){
