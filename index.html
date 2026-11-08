@@ -28000,7 +28000,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function autobNativeList(){
     var fs = autobFs();
     if(!fs) return Promise.resolve([]);
-    return Promise.all(['External', 'Data'].map(function(k){ return autobReadDir(fs, k); })).then(function(all){
+    return Promise.all(['Data'].map(function(k){ return autobReadDir(fs, k); })).then(function(all){
       var seen = {}, out = [];
       all.forEach(function(list){
         list.forEach(function(it){
@@ -28016,7 +28016,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function autobNativeDelete(name){
     var fs = autobFs();
     if(!fs) return Promise.resolve(false);
-    return Promise.all(['External', 'Data'].map(function(kind){
+    return Promise.all(['Data'].map(function(kind){
       return Promise.resolve(fs.deleteFile({ directory:kind, path:AUTOB_DIR + '/' + name }))
         .then(function(){ return true; }, function(){ return false; });
     })).then(function(r){ return r.some(Boolean); });
@@ -28040,46 +28040,20 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return { ok:false, name:name, dirKind:kind, uri:'', reason:String((e && e.message) || e || '原生写入失败').slice(0, 140) };
     });
   }
-  /* 外部目录写不进去且是权限问题时，运行时申请一次；被拒后由调用方降级 */
-  function autobAskPermission(fs, reason){
-    var msg = String(reason || '');
-    if(!fs || typeof fs.requestPermissions !== 'function') return Promise.resolve({ needed:false, granted:false, state:'unknown' });
-    if(!/permission|denied|EACCES|EPERM|权限|拒绝/i.test(msg)) return Promise.resolve({ needed:false, granted:false, state:'not_needed' });
-    try{ toast('自动备份需要存储权限，用于把备份写入手机文件目录'); }catch(e){}
-    var check = (typeof fs.checkPermissions === 'function') ? fs.checkPermissions() : Promise.resolve({ publicStorage:'prompt' });
-    return Promise.resolve(check).catch(function(){ return { publicStorage:'prompt' }; }).then(function(st){
-      if(st && st.publicStorage === 'granted') return { needed:true, granted:true, state:'granted' };
-      return Promise.resolve(fs.requestPermissions()).then(function(r){
-        var ok = !!(r && r.publicStorage === 'granted');
-        return { needed:true, granted:ok, state:ok ? 'granted' : 'denied' };
-      }, function(){ return { needed:true, granted:false, state:'denied' }; });
-    });
-  }
+  /* 自动备份只写应用私有目录 Data：不申请存储权限，也不写 Android/data 外部目录 */
   function autobNativeWrite(rec){
     var fs = autobFs();
     if(!fs) return Promise.resolve({ ok:false, reason:'unavailable', dirKind:'', name:'', perm:'not_needed', degraded:'' });
     var name = rec.nativeName || autobFileName(rec.at);
-    return autobWriteFile(fs, 'External', name, rec.text).then(function(first){
-      if(first.ok) return { ok:true, name:first.name, dirKind:'External', uri:first.uri, perm:'not_needed', degraded:'' };
-      return autobAskPermission(fs, first.reason).then(function(p){
-        var retry = p.granted ? autobWriteFile(fs, 'External', name, rec.text) : Promise.resolve(first);
-        return retry.then(function(second){
-          if(second.ok) return { ok:true, name:second.name, dirKind:'External', uri:second.uri, perm:p.state, degraded:'' };
-          return autobWriteFile(fs, 'Data', name, rec.text).then(function(third){
-            if(third.ok){
-              var why = (p.state === 'denied') ? '存储权限被拒' : ('外部目录写入失败：' + (second.reason || '未知原因'));
-              return { ok:true, name:third.name, dirKind:'Data', uri:third.uri, perm:p.state, degraded:why.slice(0, 140) };
-            }
-            return { ok:false, name:name, dirKind:'', reason:(third.reason || second.reason || '原生写入失败'), perm:p.state, degraded:'' };
-          });
-        });
-      });
+    return autobWriteFile(fs, 'Data', name, rec.text).then(function(r){
+      if(r.ok) return { ok:true, name:r.name, dirKind:'Data', uri:r.uri, perm:'not_needed', degraded:'' };
+      return { ok:false, name:name, dirKind:'', reason:(r.reason || '原生写入失败'), perm:'not_needed', degraded:'' };
     });
   }
   function autobNativeRead(name){
     var fs = autobFs();
     if(!fs) return Promise.resolve('');
-    var kinds = ['External', 'Data'];
+    var kinds = ['Data'];
     function step(i){
       if(i >= kinds.length) return Promise.resolve('');
       return Promise.resolve(fs.readFile({ directory:kinds[i], path:AUTOB_DIR + '/' + name, encoding:'utf8' })).then(function(r){
@@ -28106,7 +28080,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function autobNativeProbePath(){
     var fs = autobFs();
     if(!fs) return Promise.resolve('');
-    var kinds = ['External', 'Data'];
+    var kinds = ['Data'];
     function step(i){
       if(i >= kinds.length) return Promise.resolve('');
       return Promise.resolve(fs.getUri({ directory:kinds[i], path:AUTOB_DIR })).then(function(u){
@@ -28190,15 +28164,22 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         return autobNativeRotate().then(function(nativeRemoved){
           var m = autobMetaLoad();
           m.lastAt = rec.at;
-          m.lastOkAt = rec.at;
-          m.lastErr = '';
-          m.failCount = 0;
-          m.lastFailAt = 0;
+          m.lastOkAt = rec.at;   /* 本机 IndexedDB 备份成功即算一次成功；原生目录只是附带 */
           m.nativeOk = nr.ok === true;
           m.dirKind = nr.dirKind || '';
-          m.perm = nr.perm || 'not_needed';
-          m.degraded = nr.degraded || '';
-          m.lastNativeErr = (!autobFs() || nr.ok) ? '' : String(nr.reason || '未写入手机目录').slice(0, 180);
+          m.perm = 'not_needed';
+          m.degraded = '';
+          if(autobFs() && nr.ok !== true){
+            m.failCount = (num(m.failCount) || 0) + 1;
+            m.lastFailAt = Date.now();
+            m.lastNativeErr = String(nr.reason || '未知原因').slice(0, 180);
+            m.lastErr = '应用私有目录写入失败：' + m.lastNativeErr;
+          }else{
+            m.lastErr = '';
+            m.failCount = 0;
+            m.lastFailAt = 0;
+            m.lastNativeErr = '';
+          }
           if(nr.ok && nr.uri) m.dirPath = nr.uri;
           if(!autobFs()){ m.dirPath = ''; m.dirKind = ''; m.nativeOk = false; }
           autobMetaSave(m);
@@ -28225,9 +28206,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return autobRunOnce().catch(function(){
       return autobRunOnce();
     }).then(function(res){
-      /* 完成提示：手机端原生目录没写进去时必须明说「未写入手机目录」 */
+      /* 完成提示：私有目录没写进去时必须明说，不能伪装成已写入 */
       if(res && res.ok && autobFs() && res.native !== true){
-        try{ toast('自动备份已完成，但未写入手机目录（仅应用内）：' + (res.nativeReason || '未知原因')); }
+        try{ toast('自动备份已完成，但应用私有目录写入失败（仅应用内）：' + (res.nativeReason || '未知原因')); }
         catch(e){ logError('自动备份降级提示', e); }
       }
       return res;
@@ -28306,17 +28287,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var keep = autobKeep();
     var dirTxt;
     if(native){
-      var kindTxt = m.dirKind === 'Data' ? '应用私有目录（已降级）' : '应用专属外部目录';
-      dirTxt = '备份保存在：' + (m.dirPath ? m.dirPath : kindTxt + ' fandazi-backups（首次写入后显示完整路径）');
+      dirTxt = '备份保存在：应用私有目录 fandazi-backups' + (m.dirPath ? '（' + m.dirPath + '）' : '（首次写入后显示完整路径）');
     }else{
       dirTxt = '备份保存在：本机 IndexedDB（网页端生成后还会触发一次浏览器下载，需你自己的下载目录保存）';
     }
     var status = m.lastOkAt ? '上次成功：' + backupDateText(m.lastOkAt) : '还没有自动备份';
-    if(m.nativeOk) status += ' · 已写入手机目录';
-    else if(native && m.lastOkAt) status += ' · 仅应用内（未写入手机目录）';
+    if(m.nativeOk) status += ' · 已写入应用私有目录';
+    else if(native && m.lastOkAt) status += ' · 仅应用内（私有目录写入失败）';
     var errTxt = '';
-    if(m.degraded) errTxt += '<p class="notice" style="margin:6px 0 0">已降级到应用私有目录（原因：' + esc(m.degraded) + '）。备份仍可用，但清除 App 数据会一并删除。</p>';
-    if(m.lastNativeErr && !m.degraded) errTxt += '<p class="notice" style="margin:6px 0 0">手机目录写入失败：' + esc(m.lastNativeErr) + '（本机 IndexedDB 备份仍可用）</p>';
+    if(m.lastNativeErr) errTxt += '<p class="notice" style="margin:6px 0 0">应用私有目录写入失败：' + esc(m.lastNativeErr) + '（本机 IndexedDB 备份仍可用）</p>';
     if(m.lastErr) errTxt += '<p class="notice" style="margin:6px 0 0">上次失败：' + esc(m.lastErr) + '（已自动重试一次）' +
       (m.failCount >= 2 ? ' · 已连续失败 <b>' + m.failCount + '</b> 次' : '') +
       (m.lastFailAt ? '，最近一次 ' + esc(backupDateText(m.lastFailAt)) : '') + '</p>';
@@ -28329,20 +28308,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return '<option value="' + n + '"' + (n === keep ? ' selected' : '') + '>' + n + ' 份</option>';
     }).join('');
     box.innerHTML =
-      '<p class="dist-note" style="margin-top:0"><b>定时自动备份（手机文件目录）</b>：每天首次打开应用时检查，距上次自动备份超过 24 小时就在页面空闲时生成一份整包备份。保留最近 <select id="autoBakKeep" class="input" style="display:inline-block;width:auto;padding:1px 6px;font-size:12px">' + keepOpts + '</select>，超出按时间淘汰最旧的。只保存记录与照片引用，不含照片本体；照片需完整备份才能一起带走。</p>' +
+      '<p class="dist-note" style="margin-top:0"><b>定时自动备份（应用私有目录）</b>：每天首次打开应用时检查，距上次自动备份超过 24 小时就在页面空闲时生成一份整包备份，写入应用私有目录 fandazi-backups。保留最近 <select id="autoBakKeep" class="input" style="display:inline-block;width:auto;padding:1px 6px;font-size:12px">' + keepOpts + '</select>，超出按时间淘汰最旧的。只保存记录与照片引用，不含照片本体；照片需完整备份才能一起带走。</p>' +
       '<p class="dist-note">' + esc(status) + ' · ' + esc(dirTxt) + '</p>' + errTxt +
       (native
-        ? '<p class="dist-note">手机端写入应用专属外部目录 fandazi-backups（Android/data/…/files/fandazi-backups）；系统限制写入时先申请存储权限并说明用途，被拒则降级到应用私有目录并在上方写明结果。</p>'
+        ? '<p class="dist-note">自动备份写在应用私有目录，不申请存储权限、不写 Android/data。清理应用数据或卸载 App 时，这些备份会一起消失。</p>'
         : '<p class="dist-note">网页端需你自己的下载目录保存，本机自动备份仍在 IndexedDB。</p>') +
-      '<p class="dist-note">能防：误删记录、误合并、误恢复。不能防：在浏览器或 WebView 里清除站点数据（IndexedDB 会连同备份一起消失）' +
-        (native ? '；Android「清除数据」也会清掉应用私有目录。需要长期留存请用「完整备份」导出到文件。' : '。需要长期留存请用「完整备份」导出到文件。') +
-      '</p>' +
+      '<p class="dist-note">' + (native
+        ? '要跨设备或长期留存，请手动点下方「导出备份到手机目录」按钮，在弹出的系统分享面板里保存到手机目录或发给自己；导出只在点击时发生，不参与自动备份。'
+        : '要跨设备或长期留存，请手动点下方「导出完整备份」按钮下载到本机；导出只在点击时发生，不参与自动备份。') + '</p>' +
+      '<p class="dist-note">能防：误删记录、误合并、误恢复。不能防：清除站点数据或 Android「清除数据」（IndexedDB 与应用私有目录都会消失）。</p>' +
       '<div class="actions" style="margin-top:8px">' +
         '<button class="btn" data-autob="now">立即备份一次</button>' +
         '<button class="btn btn-soft" data-autob="clean">清理旧备份</button>' +
-        '<button class="btn btn-soft" data-autob="full">导出含照片的完整备份</button>' +
+        '<button class="btn btn-soft" data-autob="full">' + (native ? '导出备份到手机目录' : '导出完整备份') + '</button>' +
       '</div>' +
-      '<p class="dist-note" style="margin:10px 0 0">最近 ' + keep + ' 份（本机 IndexedDB / 手机目录）</p>' +
+      '<p class="dist-note" style="margin:10px 0 0">最近 ' + keep + ' 份（' + (native ? '本机 IndexedDB / 应用私有目录' : '本机 IndexedDB') + '）</p>' +
       '<div id="autoBakList"></div>';
     Promise.all([autobAll(), autobNativeList()]).then(function(arr){
       if(activeView !== 'more') return;
@@ -28365,9 +28345,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       el.innerHTML = rows.map(function(x){
         var meta = x.rec
           ? num(x.rec.records) + ' 条记录 · ' + num(x.rec.photos) + ' 张照片引用 · ' + num(x.rec.recipes) + ' 道菜谱'
-          : '手机目录文件 · ' + (x.dirKind === 'Data' ? '应用私有目录' : '应用专属外部目录');
-        var where = x.native ? (' · 手机文件 ' + x.name)
-          : (autobFs() ? ' · 仅应用内（未写入手机目录）' : ' · 仅本机');
+          : '应用私有目录文件';
+        var where = x.native ? (' · 应用私有目录 ' + x.name)
+          : (autobFs() ? ' · 仅应用内（私有目录写入失败）' : ' · 仅本机');
         var acts = x.rec
           ? '<button type="button" class="btn btn-sm" data-autob-exp="' + esc(x.rec.id) + '">导出</button>' +
             '<button type="button" class="btn btn-sm" data-autob-res="' + esc(x.rec.id) + '">还原</button>'
@@ -28402,7 +28382,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function autobNativeRestore(name){
     return autobNativeRead(name).then(function(text){
-      if(!text){ backupErrorModal('读取手机备份文件失败：' + name); return false; }
+      if(!text){ backupErrorModal('读取应用私有目录备份失败：' + name); return false; }
       var obj = parseBackupText(text);
       uiOpenRestorePreview(obj);   /* 与完整备份/本机自动备份同一条校验与恢复流程 */
       return true;
@@ -29080,8 +29060,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         autobRunOnce().then(function(res){
           if(!res || !res.ok){ toast('自动备份未能完成'); return; }
           var t2 = '自动备份已完成（' + fmtBytes(res.bytes) + '）';
-          if(res.native) t2 += '，已写入手机目录';
-          else if(autobFs()) t2 += '，未写入手机目录（仅应用内）：' + (res.nativeReason || '未知原因');
+          if(res.native) t2 += '，已写入应用私有目录';
+          else if(autobFs()) t2 += '，应用私有目录写入失败（仅应用内）：' + (res.nativeReason || '未知原因');
           else t2 += '，已触发浏览器下载';
           toast(t2);
         }).catch(function(err){
@@ -29089,7 +29069,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         });
       }else if(what === 'clean'){
         autobClean().then(function(r){
-          toast('已清理旧备份：本机 ' + r.db + ' 份、手机目录 ' + r.native + ' 份（当前保留 ' + r.keep + ' 份）');
+          toast('已清理旧备份：本机 ' + r.db + ' 份、应用私有目录 ' + r.native + ' 份（当前保留 ' + r.keep + ' 份）');
           autobRenderBox();
         }).catch(function(err){
           toast('清理旧备份失败：' + ((err && err.message) || '未知错误'));
