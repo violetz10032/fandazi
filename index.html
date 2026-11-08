@@ -1381,6 +1381,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .tabbar button.on::before{content:"";position:absolute;left:50%;top:5px;width:40px;height:29px;margin-left:-20px;
     border-radius:calc(var(--r-btn) + 2px);background:var(--soft)}
   .tabbar button.on{font-weight:700}
+  .tabbar .tab-badge{position:absolute;top:3px;left:calc(50% + 10px);min-width:16px;height:16px;padding:0 4px;
+    border-radius:999px;background:var(--danger);color:#fff;font-size:10px;font-style:normal;line-height:16px;
+    text-align:center;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.2);pointer-events:none}
+  .tabbar .tab-badge.hidden{display:none}
   .tabbar button.on svg,.tabbar button.on span{position:relative}
   .tabbar button:active svg{transform:scale(.94);transition:transform var(--dur-fast) var(--ease)}
 
@@ -2934,7 +2938,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       <svg viewBox="0 0 24 24" data-ico="camera"></svg><span>照片</span>
     </button>
     <button data-view="more" aria-label="我的">
-      <svg viewBox="0 0 24 24" data-ico="user"></svg><span>我的</span>
+      <svg viewBox="0 0 24 24" data-ico="user"></svg><span>我的</span><i class="tab-badge hidden" id="moreBadge"></i>
     </button>
   </div>
 </nav>
@@ -27846,6 +27850,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       lastAt: num(o.lastAt) > 0 ? Math.round(num(o.lastAt)) : 0,
       lastOkAt: num(o.lastOkAt) > 0 ? Math.round(num(o.lastOkAt)) : 0,
       lastErr: typeof o.lastErr === 'string' ? o.lastErr.slice(0, 180) : '',
+      failCount: Math.max(0, Math.round(num(o.failCount) || 0)),
+      lastFailAt: num(o.lastFailAt) > 0 ? Math.round(num(o.lastFailAt)) : 0,
       lastNativeErr: typeof o.lastNativeErr === 'string' ? o.lastNativeErr.slice(0, 180) : '',
       dirPath: typeof o.dirPath === 'string' ? o.dirPath.slice(0, 260) : '',
       dirKind: (o.dirKind === 'External' || o.dirKind === 'Data') ? o.dirKind : '',
@@ -27864,6 +27870,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     autobMetaCache = autobMetaClean(m);
     try{ localStorage.setItem(AUTOB_KEY, JSON.stringify(autobMetaCache)); }
     catch(e){ logError('自动备份状态', e); }
+    try{ autobBadgeRender(); }catch(e){ logError('自动备份角标', e); }
     return autobMetaCache;
   }
   function autobKeep(){
@@ -28171,6 +28178,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           m.lastAt = rec.at;
           m.lastOkAt = rec.at;
           m.lastErr = '';
+          m.failCount = 0;
+          m.lastFailAt = 0;
           m.nativeOk = nr.ok === true;
           m.dirKind = nr.dirKind || '';
           m.perm = nr.perm || 'not_needed';
@@ -28197,21 +28206,55 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       throw err;
     });
   }
-  /* 失败静默重试一次，再把原因写进状态 */
+  /* 失败静默重试一次，再把原因写进状态；连续失败累计并在界面上可见 */
   function autobScheduledRun(){
     return autobRunOnce().catch(function(){
       return autobRunOnce();
     }).catch(function(e){
       var m = autobMetaLoad();
       m.lastErr = String((e && e.message) || e || '未知错误').slice(0, 180);
+      m.failCount = Math.max(0, Math.round(num(m.failCount))) + 1;
+      m.lastFailAt = Date.now();
       autobMetaSave(m);
       autobRenderBox();
-      return { ok:false, err:m.lastErr };
+      autobFailNotice();
+      return { ok:false, err:m.lastErr, failCount:m.failCount };
     });
+  }
+  /* 入口角标：连续失败 ≥1 次时在「我的」标签上显示次数 */
+  function autobBadgeRender(){
+    var el = $('#moreBadge');
+    if(!el) return;
+    var m = autobMetaLoad();
+    var n = Math.max(0, Math.round(num(m.failCount)));
+    if(n > 0){
+      el.textContent = n > 9 ? '9+' : String(n);
+      el.classList.remove('hidden');
+      el.setAttribute('title', '自动备份连续失败 ' + n + ' 次');
+    }else{
+      el.textContent = '';
+      el.classList.add('hidden');
+      el.removeAttribute('title');
+    }
+  }
+  var autobNoticeAt = 0;
+  var AUTOB_NOTICE_GAP = 5 * 60 * 1000;
+  /* 连续失败 ≥2 次时给一次可见提示；5 分钟内不重复 */
+  function autobFailNotice(force){
+    var m = autobMetaLoad();
+    if(!(Math.round(num(m.failCount)) >= 2)) return '';
+    var now = Date.now();
+    if(!force && now - autobNoticeAt < AUTOB_NOTICE_GAP) return '';
+    autobNoticeAt = now;
+    var msg = '自动备份已连续失败 ' + m.failCount + ' 次' +
+      (m.lastErr ? '：' + m.lastErr : '') + '（「我的 → 本机数据」可查看原因）';
+    try{ toast(msg); }catch(e){ logError('自动备份失败提示', e); }
+    return msg;
   }
   function autobBootCheck(){
     var kick = function(){
       try{
+        autobFailNotice();
         if(autobDue()) autobScheduledRun();
         else autobRenderBox();
       }catch(e){ logError('自动备份', e); }
@@ -28237,6 +28280,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var box = $('#autoBakBox');
     if(!box) return;
     var m = autobMetaLoad();
+    autobBadgeRender();
     var native = !!autobFs();
     var keep = autobKeep();
     var dirTxt;
@@ -28251,7 +28295,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var errTxt = '';
     if(m.degraded) errTxt += '<p class="notice" style="margin:6px 0 0">已降级到应用私有目录（原因：' + esc(m.degraded) + '）。备份仍可用，但清除 App 数据会一并删除。</p>';
     if(m.lastNativeErr && !m.degraded) errTxt += '<p class="notice" style="margin:6px 0 0">手机目录写入失败：' + esc(m.lastNativeErr) + '（本机 IndexedDB 备份仍可用）</p>';
-    if(m.lastErr) errTxt += '<p class="notice" style="margin:6px 0 0">上次失败：' + esc(m.lastErr) + '（已自动重试一次）</p>';
+    if(m.lastErr) errTxt += '<p class="notice" style="margin:6px 0 0">上次失败：' + esc(m.lastErr) + '（已自动重试一次）' +
+      (m.failCount >= 2 ? ' · 已连续失败 <b>' + m.failCount + '</b> 次' : '') +
+      (m.lastFailAt ? '，最近一次 ' + esc(backupDateText(m.lastFailAt)) : '') + '</p>';
+    if(m.failCount >= 2) errTxt += '<p class="notice" style="margin:6px 0 0">自动备份连续失败 ' + m.failCount +
+      ' 次，新记录暂时没有进入新的自动备份；「我的」标签上的角标会一直显示到下一次成功为止。</p>';
     var keepOpts = [3, 5, 7, 10, 15].map(function(n){
       return '<option value="' + n + '"' + (n === keep ? ' selected' : '') + '>' + n + ' 份</option>';
     }).join('');
@@ -33137,6 +33185,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       meta: function(){ return autobMetaLoad(); },
       setLastAt: function(t){ var m = autobMetaLoad(); m.lastAt = num(t) > 0 ? num(t) : 0; autobMetaSave(m); return m; },
       setLastErr: function(s){ var m = autobMetaLoad(); m.lastErr = String(s || ''); autobMetaSave(m); return m; },
+      resetMeta: function(){ autobMetaCache = null; try{ localStorage.removeItem(AUTOB_KEY); }catch(e){} autobBadgeRender(); return true; },
+      badge: function(){
+        var el = $('#moreBadge');
+        return el ? { hidden: el.classList.contains('hidden'), text: el.textContent,
+          title: el.getAttribute('title') || '' } : null;
+      },
+      notify: function(force){ return autobFailNotice(force === true); },
       run: function(){ return autobRunOnce(); },
       scheduled: function(){ return autobScheduledRun(); },
       list: function(){ return autobAll(); },
