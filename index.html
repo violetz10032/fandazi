@@ -1651,6 +1651,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   .blind-ball{white-space:nowrap;letter-spacing:.2px;opacity:.94}
   .blind-ball span,.blind-ball b{white-space:nowrap}
   #panel-list{padding-bottom:48px}
+  /* 悬浮球静止零遮挡：与球高度带相交的列表项只收窄球所在那一侧的右侧/左侧内边距，
+     球下不留任何文字、按钮、空状态；球在左边时收窄左边，不移动球本身 */
+  #listBox .rec-card.ball-clear,#listBox .empty.ball-clear{padding-right:calc(var(--ball-w,44px) + 2px)}
+  #listBox .rec-card.ball-clear-l,#listBox .empty.ball-clear-l{padding-left:calc(var(--ball-w,44px) + 2px)}
+  /* 手机端球收成 44px 圆钮（图标 + 无障碍名称），让避让内缩量 ≤48px，行高零回流 */
+  @media (max-width:600px){
+    .blind-ball{width:44px;height:44px;min-width:44px;padding:0;border-radius:50%;justify-content:center;gap:0}
+    .blind-ball .bb-label{display:none}
+    .blind-ball .bb-ico{font-size:18px;line-height:1}
+  }
+  /* 行内缩会改变换行高度，关掉滚动锚定（含页面滚动容器）避免「避让→滚动事件→再避让」的抖动循环 */
+  html,#listBox{overflow-anchor:none}
   /* P4：未选中的筛选 chip 回归中性底色，黄色只留在选中态 / 按钮 / 重点信息 */
   html[data-skin="p4"] .chip-toggle{background:var(--card);border-color:var(--line);box-shadow:none}
   html[data-skin="p4"] .chip-toggle.on{background:var(--soft);border-color:var(--accent-line);color:var(--soft-ink)}
@@ -2885,7 +2897,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   </div>
 </div>
 
-<button type="button" class="blind-ball" id="blindBall" aria-label="盲盒帮我选">🎲 帮我选</button>
+<button type="button" class="blind-ball" id="blindBall" aria-label="盲盒帮我选"><span class="bb-ico">🎲</span><span class="bb-label">帮我选</span></button>
 
 <nav class="tabbar">
   <div class="tabbar-in">
@@ -3954,9 +3966,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var ball = $('#blindBall'), scTimer = null;
     if(ball){
       window.addEventListener('scroll', function(){
+        /* 避让引起的行高变化会让页面滚动位置被 clamp，触发一次「假滚动」；别让球因此闪一下 */
+        if(Date.now() - ballAvoidAt < 250 && Math.abs(window.scrollY - ballAvoidY) < 180) return;
         ball.classList.add('is-scrolling');
         clearTimeout(scTimer);
-        scTimer = setTimeout(function(){ ball.classList.remove('is-scrolling'); }, 800);
+        scTimer = setTimeout(function(){ ball.classList.remove('is-scrolling'); try{ queueBlindBallAvoid(); }catch(e){} }, 600);
       }, { passive:true });
     }
     var mo = null;
@@ -13881,11 +13895,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           '</div>'+
         '</div>';
       updateSelectBar();
+      try{ queueBlindBallAvoid(); }catch(e){}
       return;
     }
     if(!items.length){
       $('#listBox').innerHTML = '<div class="empty card flat"><h3>没有匹配的记录</h3><p>换个关键词或清空筛选条件试试。</p></div>';
       updateSelectBar();
+      try{ queueBlindBallAvoid(); }catch(e){}
       return;
     }
     var shown = Math.min(items.length, Math.max(LIST_PAGE, listState.shown || LIST_PAGE));
@@ -13898,6 +13914,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#listBox').innerHTML = html;
     hydratePhotos($('#listBox'));
     updateSelectBar();
+    try{ queueBlindBallAvoid(); }catch(e){}
   }
 
   /* ================= 日历 ================= */
@@ -14690,6 +14707,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         blindState.dragEndedAt = Date.now();
         blindBallPosSave({ side:(r.left + r.width/2) < window.innerWidth/2 ? 'left' : 'right', top:Math.round(r.top) });
         blindBallApply({ side:(r.left + r.width/2) < window.innerWidth/2 ? 'left' : 'right', top:r.top });
+        queueBlindBallAvoid();
       }
     }
     el.addEventListener('pointerup', endDrag);
@@ -14698,7 +14716,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       if(blindState.dragEndedAt && Date.now() - blindState.dragEndedAt < 320){ e.preventDefault(); return; }
       blindOpen();
     });
-    window.addEventListener('resize', function(){ if(!el.classList.contains('hidden')) blindBallApply(blindBallPosLoad()); });
+    window.addEventListener('resize', function(){ if(!el.classList.contains('hidden')){ blindBallApply(blindBallPosLoad()); queueBlindBallAvoid(); } });
     var bc = $('#blindClose');
     if(bc) bc.addEventListener('click', closeBlind);
     var bt = $('#blindShakeToggle');
@@ -14715,6 +14733,47 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var show = activeView === 'record' && !!list && !list.classList.contains('hidden');
     el.classList.toggle('hidden', !show);
     if(show) blindBallApply(blindBallPosLoad());
+    queueBlindBallAvoid();
+  }
+  /* 悬浮球零遮挡：静止时找出与球矩形（含 8px 余量）在高度带内相交的列表项，
+     只给这些行加内缩类（球在左收左、在右收右），球本身不移动、不改数据。
+     先一次性读完所有行矩形再统一改类，避免逐行强制回流。 */
+  var ballAvoidTimer = 0, ballAvoidRaf = 0, ballAvoidAt = 0, ballAvoidY = 0;
+  function blindBallAvoid(){
+    var el = $('#blindBall'), box = $('#listBox');
+    if(!el || !box) return;
+    var rows = box.querySelectorAll('.rec-card,.empty');
+    if(el.classList.contains('hidden')){
+      for(var a = 0; a < rows.length; a++) rows[a].classList.remove('ball-clear', 'ball-clear-l');
+      return;
+    }
+    var r = el.getBoundingClientRect();
+    if(!r.width || !r.height) return;
+    document.documentElement.style.setProperty('--ball-w', Math.round(r.width) + 'px');
+    var onLeft = (r.left + r.width / 2) < window.innerWidth / 2;
+    var cls = onLeft ? 'ball-clear-l' : 'ball-clear';
+    var other = onLeft ? 'ball-clear' : 'ball-clear-l';
+    var pad = 8, hits = [];
+    for(var i = 0; i < rows.length; i++){
+      var b = rows[i].getBoundingClientRect();
+      var near = b.bottom > r.top - pad && b.top < r.bottom + pad;
+      var side = onLeft ? (b.left < r.right + pad) : (b.right > r.left - pad);
+      if(near && side) hits.push(rows[i]);
+    }
+    for(var j = 0; j < rows.length; j++){
+      var row = rows[j], hit = hits.indexOf(row) >= 0;
+      if(hit){ row.classList.add(cls); row.classList.remove(other); }
+      else { row.classList.remove('ball-clear', 'ball-clear-l'); }
+    }
+    ballAvoidAt = Date.now(); ballAvoidY = window.scrollY;
+  }
+  function queueBlindBallAvoid(){
+    if(ballAvoidTimer) clearTimeout(ballAvoidTimer);
+    ballAvoidTimer = setTimeout(function(){
+      ballAvoidTimer = 0;
+      if(ballAvoidRaf) cancelAnimationFrame(ballAvoidRaf);
+      ballAvoidRaf = requestAnimationFrame(function(){ ballAvoidRaf = 0; try{ blindBallAvoid(); }catch(e){} });
+    }, 60);
   }
 
   function blindBand(){
