@@ -1678,6 +1678,84 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 </head>
 <body>
 
+<script>
+/* 诊断包：Web 侧异常留痕。只写应用私有目录（Capacitor Filesystem 的 Data 目录 = getFilesDir()），
+   不申请任何权限、不改任何数据结构；取不到原生目录时退回 localStorage，仅作兜底展示。 */
+(function(){
+  var CRASH_FILE = 'diag-crash.txt';
+  var JS_FILE = 'diag-js.txt';
+  var WEB_FILE = 'diag-web.txt';
+  function plug(){
+    try{ return (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Filesystem) || null; }catch(e){ return null; }
+  }
+  function stamp(){ return new Date().toISOString(); }
+  function put(name, text){
+    try{ localStorage.setItem('diag:' + name, text); }catch(e){}
+    var p = plug();
+    if(!p) return;
+    try{
+      Promise.resolve(p.writeFile({ directory:'Data', path:name, data:text, encoding:'utf8', recursive:true })).catch(function(){});
+    }catch(e){}
+  }
+  function b64utf8(s){
+    try{ return decodeURIComponent(escape(atob(String(s || '')))); }catch(e){ return ''; }
+  }
+  function get(name){
+    var p = plug();
+    if(!p) return Promise.resolve('');
+    try{
+      return Promise.resolve(p.readFile({ directory:'Data', path:name })).then(function(r){
+        return b64utf8(r && r.data);
+      }, function(){ return ''; });
+    }catch(e){ return Promise.resolve(''); }
+  }
+  function desc(e){
+    if(!e) return String(e);
+    if(e instanceof Error) return (e.name || 'Error') + ': ' + (e.message || '') + '\n' + (e.stack || '');
+    return String(e);
+  }
+  window.onerror = function(msg, src, line, col, err){
+    put(JS_FILE, stamp() + ' window.onerror ' + msg + ' @ ' + src + ':' + line + ':' + col + '\n' + (err && err.stack ? err.stack : ''));
+    return false;
+  };
+  window.addEventListener('unhandledrejection', function(ev){
+    put(JS_FILE, stamp() + ' unhandledrejection\n' + desc(ev && ev.reason));
+  });
+  function banner(text){
+    if(document.getElementById('diagBanner')) return;
+    var box = document.createElement('div');
+    box.id = 'diagBanner';
+    box.setAttribute('style', 'position:fixed;left:0;right:0;top:0;z-index:2147483000;max-height:46vh;overflow:auto;' +
+      'background:#2b1012;color:#ffdede;border-bottom:2px solid #ff6b6b;padding:10px 12px;' +
+      'font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;' +
+      '-webkit-user-select:text;user-select:text;');
+    var title = document.createElement('div');
+    title.setAttribute('style', 'font:600 12px/1.4 system-ui,sans-serif;color:#ffb3b3;margin-bottom:6px;');
+    title.textContent = '诊断包 · 上次启动的异常记录（只在本机私有目录）';
+    var body = document.createElement('div');
+    body.textContent = text;
+    var close = document.createElement('button');
+    close.textContent = '关闭';
+    close.setAttribute('style', 'margin-top:8px;padding:4px 10px;border:0;border-radius:6px;background:#ff6b6b;color:#2b1012;font:600 12px system-ui;');
+    close.onclick = function(){ box.parentNode && box.parentNode.removeChild(box); };
+    box.appendChild(title);
+    box.appendChild(body);
+    box.appendChild(close);
+    (document.body || document.documentElement).appendChild(box);
+  }
+  function boot(){
+    put(WEB_FILE, stamp() + ' web-ready ua=' + navigator.userAgent);
+    Promise.all([get(CRASH_FILE), get(JS_FILE)]).then(function(r){
+      var crash = r[0] || '', js = r[1] || '';
+      if(!crash && !js) return;
+      banner((crash ? '【原生未捕获异常】\n' + crash : '') + (js ? '\n【Web 未捕获异常】\n' + js : ''));
+    });
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+
 <header class="topbar">
   <div class="topbar-in">
     <div class="logo" aria-hidden="true">
