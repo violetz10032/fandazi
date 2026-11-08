@@ -8194,6 +8194,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(panel === 'log') renderHomeLog();
     if(panel === 'week') renderHomeWeek();
     if(panel === 'stats') renderHomeStats();
+    try{ syncBackGuard(); }catch(e){}
   }
 
   /* ---------- 第二阶段 UI：食材 / 匹配 / 制作记录 ---------- */
@@ -29375,11 +29376,27 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
   /* ================= 返回层级：弹层 → 子视图 → 最外层 =================
      只用内存状态与 history，不新增存储键。弹层逐层关闭后才允许退出。 */
+  /* 同步 / 投票两个弹层的关闭逻辑原本写在各自模块的局部作用域里，这里补上可被返回键调用的等价函数 */
+  function closeSyncModal(){ var m = $('#syncMask'); if(m) m.classList.add('hidden'); }
+  function closePollVoteModal(){ var m = $('#pollVoteMask'); if(m) m.classList.add('hidden'); }
+  function closePollLinkModal(){ var m = $('#pollLinkMask'); if(m) m.classList.add('hidden'); }
   var MASK_CLOSERS = {
     blindMask: closeBlind,
     diaryMask: closeDiaryDetail,
     mapStoreMask: closeMapStoreSheet,
     statDetailMask: closeStatDetail,
+    homeDetailMask: homeCloseDetail,
+    cookMask: homeCookModeClose,
+    homeLogMask: homeLogClose,
+    mergeMask: closeMergeSheet,
+    dupScanMask: closeDupScanSheet,
+    shopMetaMask: closeShopMetaSheet,
+    tripMask: closeTripSheet,
+    pickMapMask: closePickMap,
+    voiceMask: voiceCloseConsent,
+    syncMask: closeSyncModal,
+    pollVoteMask: closePollVoteModal,
+    pollLinkMask: closePollLinkModal,
     sheetMask: closeForm,
     jumpMask: closeJump,
     mapMask: closeMapModal,
@@ -29425,6 +29442,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return !!(list && list.classList.contains('hidden'));
     }
     if(activeView === 'recommend') return !!(recoPanel && recoPanel !== 'daily');
+    /* 在家吃：从「今天做啥」再往里（菜谱库 / 收藏 / 食材 / 记录 / 一周菜单 / 统计）算一层子视图 */
+    if(activeView === 'home') return (homeState.panel || 'reco') !== 'reco';
     return false;
   }
   function backOneLevel(){
@@ -29437,6 +29456,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     if(inSubView()){
       if(activeView === 'record') showPanel('record','list');
+      else if(activeView === 'home'){ homeState.panel = 'reco'; renderHome(); }
       else showPanel('recommend','daily');
       return true;
     }
@@ -31536,6 +31556,28 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     search: function(v){
       $('#q').value = String(v || '');
       var t0 = nowMs(); renderList(true); return nowMs() - t0;
+    },
+    /* 返回层级：只读 + 单步返回，用于验证「原生返回键 / 网页历史返回 / 面板优先」同一口径 */
+    back: {
+      one: function(){ return backOneLevel(); },
+      armed: function(){ return !!backArmed; },
+      top: function(){ var m = topVisibleMask(); return m ? m.id : ''; },
+      view: function(){ return activeView; },
+      state: function(){
+        return {
+          view: activeView,
+          homePanel: homeState.panel || 'reco',
+          recoPanel: recoPanel || 'daily',
+          recordPanel: ($('#panel-list') && !$('#panel-list').classList.contains('hidden')) ? 'list' : 'other',
+          mask: (function(){ var m = topVisibleMask(); return m ? m.id : ''; })(),
+          armed: !!backArmed
+        };
+      },
+      masksOpen: function(){ return Object.keys(MASK_CLOSERS).filter(function(id){ var el = document.getElementById(id); return el && !el.classList.contains('hidden'); }); },
+      closers: function(){ return Object.keys(MASK_CLOSERS); },
+      openMask: function(id){ var el = document.getElementById(id); if(!el) return false; el.classList.remove('hidden'); return true; },
+      setView: function(v){ showView(v); return activeView; },
+      setPanel: function(g, p){ showPanel(g, p); return true; }
     },
     draw: (function(){
       var api = function(){ var t0 = nowMs(); runDrawNow(); return nowMs() - t0; };
