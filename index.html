@@ -2331,6 +2331,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <input type="file" id="fileRestore" accept=".json,application/json" class="hidden">
         <p class="muted" style="margin-top:10px" id="backupState"></p>
         <div id="snapshotBox" style="margin-top:6px"></div>
+        <div id="autoBakBox" style="margin-top:14px"></div>
         <details class="smart-paste" id="webdavBox" style="margin-top:12px">
           <summary>WebDAV 云备份：传到自己网盘（坚果云等）</summary>
           <div class="field" style="margin-top:10px"><label for="wdUrl">服务器地址（指向一个文件夹）</label>
@@ -17967,6 +17968,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#verInfo').textContent = '当前数据结构 version '+db.version+'；旧版（v1）数据会自动升级并保留历史记录。';
     $('#storageSize').textContent = fmtBytes(storageBytes());
     renderBackupState();
+    try{ autobRenderBox(); }catch(e){ logError('自动备份区渲染', e); }
     renderV2Card();
     renderDiag();
     var sampleN = sampleRecords().length;
@@ -26898,6 +26900,319 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         }).join('');
     });
   }
+  /* ================= 本地定时自动备份（fandazi.autobak） =================
+     只看业务数据、不改存储结构：备份内容沿用「完整备份」的 payload 口径，
+     照片默认只存引用（photos 为空数组），手动导出时才另生成含照片的整包。
+     存放：网页 / 无原生文件能力 → 独立 IndexedDB「fandazi.backups」；
+          APK → Capacitor Filesystem 的 App 私有目录 fandazi-backups/，同时镜像一份到 IndexedDB。 */
+  var AUTOB_KEY = 'fandazi.autobak';
+  var AUTOB_VERSION = 1;
+  var AUTOB_KEEP = 5;
+  var AUTOB_GAP = 24 * 3600 * 1000;
+  var AUTOB_DB_NAME = 'fandazi.backups';
+  var AUTOB_DIR = 'fandazi-backups';
+  var autobMetaCache = null;
+  var autobDbPromise = null;
+  var autobBusy = false;
+  var autobSeq = 0;
+  var autobForceFail = false;   /* 测试注入：只在 test hook 里打开 */
+
+  function autobMetaClean(raw){
+    var o = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+    return {
+      version: AUTOB_VERSION,
+      lastAt: num(o.lastAt) > 0 ? Math.round(num(o.lastAt)) : 0,
+      lastOkAt: num(o.lastOkAt) > 0 ? Math.round(num(o.lastOkAt)) : 0,
+      lastErr: typeof o.lastErr === 'string' ? o.lastErr.slice(0, 180) : '',
+      dirPath: typeof o.dirPath === 'string' ? o.dirPath.slice(0, 260) : '',
+      nativeOk: o.nativeOk === true
+    };
+  }
+  function autobMetaLoad(){
+    if(autobMetaCache) return autobMetaCache;
+    try{ autobMetaCache = autobMetaClean(JSON.parse(localStorage.getItem(AUTOB_KEY) || 'null')); }
+    catch(e){ autobMetaCache = autobMetaClean(null); }
+    return autobMetaCache;
+  }
+  function autobMetaSave(m){
+    autobMetaCache = autobMetaClean(m);
+    try{ localStorage.setItem(AUTOB_KEY, JSON.stringify(autobMetaCache)); }
+    catch(e){ logError('自动备份状态', e); }
+    return autobMetaCache;
+  }
+  function autobOpenDb(){
+    if(autobDbPromise) return autobDbPromise;
+    autobDbPromise = new Promise(function(resolve, reject){
+      if(!window.indexedDB){ reject(new Error('IndexedDB 不可用')); return; }
+      var req = indexedDB.open(AUTOB_DB_NAME, 1);
+      req.onupgradeneeded = function(){
+        var d = req.result;
+        if(!d.objectStoreNames.contains('backups')) d.createObjectStore('backups', { keyPath:'id' });
+      };
+      req.onsuccess = function(){ resolve(req.result); };
+      req.onerror = function(){ reject(req.error || new Error('IndexedDB 打开失败')); };
+      req.onblocked = function(){ reject(new Error('IndexedDB 被其他标签页占用')); };
+    });
+    return autobDbPromise;
+  }
+  function autobPut(rec){
+    return autobOpenDb().then(function(d){
+      return new Promise(function(resolve, reject){
+        var tx = d.transaction('backups', 'readwrite');
+        tx.objectStore('backups').put(rec);
+        tx.oncomplete = function(){ resolve(rec.id); };
+        tx.onerror = function(){ reject(tx.error || new Error('自动备份写入失败')); };
+        tx.onabort = function(){ reject(tx.error || new Error('自动备份写入被中止')); };
+      });
+    });
+  }
+  function autobDel(id){
+    return autobOpenDb().then(function(d){
+      return new Promise(function(resolve){
+        var tx = d.transaction('backups', 'readwrite');
+        tx.objectStore('backups').delete(id);
+        tx.oncomplete = function(){ resolve(true); };
+        tx.onerror = function(){ resolve(false); };
+      });
+    }).catch(function(){ return false; });
+  }
+  function autobAll(){
+    return autobOpenDb().then(function(d){
+      return new Promise(function(resolve){
+        var tx = d.transaction('backups', 'readonly');
+        var req = tx.objectStore('backups').getAll();
+        req.onsuccess = function(){
+          var arr = (req.result || []).map(function(r){
+            return { id:r.id, at:num(r.at), bytes:num(r.bytes), records:num(r.records), photos:num(r.photos), recipes:num(r.recipes), native:r.native === true };
+          });
+          arr.sort(function(a, b){ return b.at - a.at; });
+          resolve(arr);
+        };
+        req.onerror = function(){ resolve([]); };
+      });
+    }).catch(function(){ return []; });
+  }
+  function autobGet(id){
+    return autobOpenDb().then(function(d){
+      return new Promise(function(resolve){
+        var tx = d.transaction('backups', 'readonly');
+        var req = tx.objectStore('backups').get(String(id));
+        req.onsuccess = function(){ resolve(req.result || null); };
+        req.onerror = function(){ resolve(null); };
+      });
+    }).catch(function(){ return null; });
+  }
+  function autobRotate(){
+    return autobAll().then(function(list){
+      if(list.length <= AUTOB_KEEP) return 0;
+      var extra = list.slice(AUTOB_KEEP);
+      return Promise.all(extra.map(function(x){ return autobDel(x.id); })).then(function(){ return extra.length; });
+    });
+  }
+
+  /* ---- APK 原生目录（Capacitor Filesystem 已在 android-app 依赖里） ---- */
+  function autobFs(){
+    try{ return (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Filesystem) || null; }catch(e){ return null; }
+  }
+  function autobNativeWrite(id, text){
+    var fs = autobFs();
+    if(!fs) return Promise.resolve({ ok:false, reason:'unavailable' });
+    return Promise.resolve().then(function(){
+      return fs.mkdir({ directory:'DATA', path:AUTOB_DIR, recursive:true }).catch(function(){ return true; });
+    }).then(function(){
+      return fs.writeFile({ directory:'DATA', path:AUTOB_DIR + '/' + id + '.json', data:text, encoding:'utf8', recursive:true });
+    }).then(function(){
+      return fs.getUri({ directory:'DATA', path:AUTOB_DIR + '/' + id + '.json' }).catch(function(){ return null; });
+    }).then(function(u){
+      var uri = (u && u.uri) ? String(u.uri) : '';
+      return { ok:true, uri:uri.replace(/^file:\/\//, ''), reason:'' };
+    }).catch(function(e){
+      return { ok:false, reason:String((e && e.message) || e || '原生写入失败').slice(0, 120) };
+    });
+  }
+  function autobNativeRotate(keepIds){
+    var fs = autobFs();
+    if(!fs || !fs.readdir) return Promise.resolve(0);
+    return fs.readdir({ directory:'DATA', path:AUTOB_DIR }).then(function(res){
+      var names = ((res && res.files) || []).map(function(f){ return String((f && f.name) || f); }).filter(function(n){ return /^ab-[0-9-]+\.json$/.test(n); });
+      var keep = {};
+      keepIds.forEach(function(id){ keep[id + '.json'] = 1; });
+      var drop = names.filter(function(n){ return !keep[n]; });
+      return Promise.all(drop.map(function(n){
+        return fs.deleteFile({ directory:'DATA', path:AUTOB_DIR + '/' + n }).catch(function(){ return false; });
+      })).then(function(){ return drop.length; });
+    }).catch(function(){ return 0; });
+  }
+  function autobNativeProbePath(){
+    var fs = autobFs();
+    if(!fs) return Promise.resolve('');
+    return fs.getUri({ directory:'DATA', path:AUTOB_DIR }).then(function(u){ return String((u && u.uri) || '').replace(/^file:\/\//, ''); }).catch(function(){ return ''; });
+  }
+
+  /* ---- 生成 / 执行 ---- */
+  function autobBuild(){
+    var payload = backupPayloadOf();
+    var photoRefs = 0;
+    (payload.records || []).forEach(function(r){ if(r && r.photoId) photoRefs++; });
+    return backupChecksum(payload, []).then(function(sum){
+      var obj = {
+        format: BACKUP_FORMAT,
+        app: 'i吃饭',
+        schemaVersion: BACKUP_SCHEMA_VERSION,
+        exportedAt: new Date().toISOString(),
+        auto: true,
+        checksum: { algo:'SHA-256', scope:'canonical(payload+photos)', value:sum },
+        stats: {
+          records: payload.records.length, stores: getStores().length,
+          wishlist: payload.wishlist.length, blacklist: payload.blacklist.length,
+          favorites: payload.favorites.items.length, votes: payload.votes.length,
+          places: payload.places.length, dishes: payload.dishes.items.length,
+          recipes: payload.recipes.items.length, pantry: payload.pantry.items.length,
+          cooklog: payload.cooklog.items.length,
+          feedback: payload.feedback.items.length, trips: payload.trips.items.length,
+          tripStops: payload.trips.items.reduce(function(n, t){ return n + t.stops.length; }, 0),
+          photos: 0, photoBytes: 0, photoRefs: photoRefs
+        },
+        payload: payload,
+        photos: []
+      };
+      return { obj: obj, text: JSON.stringify(obj) };
+    });
+  }
+  function autobDue(){
+    var m = autobMetaLoad();
+    if(!m.lastAt) return true;
+    return (Date.now() - m.lastAt) >= AUTOB_GAP;
+  }
+  function autobRunOnce(){
+    if(autobBusy) return Promise.resolve({ skipped:'busy' });
+    autobBusy = true;
+    var t0 = nowMs();
+    var rec = null;
+    return Promise.resolve().then(function(){
+      if(autobForceFail) throw new Error('测试注入：自动备份写入失败');
+      return autobBuild();
+    }).then(function(b){
+      var at = Date.now();
+      rec = { id:'ab-' + at + '-' + (++autobSeq), at:at, bytes:b.text.length, records:b.obj.stats.records,
+        photos:b.obj.stats.photoRefs, recipes:b.obj.stats.recipes, text:b.text, native:false };
+      return autobPut(rec);
+    }).then(function(){
+      return autobNativeWrite(rec.id, rec.text);
+    }).then(function(nr){
+      rec.native = nr.ok === true;
+      return autobPut(rec).then(function(){ return autobRotate(); }).then(function(removed){
+        return autobAll().then(function(keep){
+          return autobNativeRotate(keep.map(function(x){ return x.id; })).then(function(nativeRemoved){
+            var m = autobMetaLoad();
+            m.lastAt = rec.at;
+            m.lastOkAt = rec.at;
+            m.lastErr = '';
+            m.nativeOk = nr.ok === true;
+            if(nr.ok && nr.uri) m.dirPath = nr.uri;
+            autobMetaSave(m);
+            return { ok:true, at:rec.at, id:rec.id, bytes:rec.bytes, native:!!nr.ok,
+              nativeReason:nr.reason || '', rotated:removed + nativeRemoved, ms:Math.round(nowMs() - t0) };
+          });
+        });
+      });
+    }).catch(function(e){
+      autobBusy = false;
+      throw e;
+    }).then(function(res){
+      autobBusy = false;
+      autobRenderBox();
+      return res;
+    }, function(err){
+      autobBusy = false;
+      throw err;
+    });
+  }
+  /* 失败静默重试一次，再把原因写进状态 */
+  function autobScheduledRun(){
+    return autobRunOnce().catch(function(){
+      return autobRunOnce();
+    }).catch(function(e){
+      var m = autobMetaLoad();
+      m.lastErr = String((e && e.message) || e || '未知错误').slice(0, 180);
+      autobMetaSave(m);
+      autobRenderBox();
+      return { ok:false, err:m.lastErr };
+    });
+  }
+  function autobBootCheck(){
+    var kick = function(){
+      try{
+        if(autobDue()) autobScheduledRun();
+        else autobRenderBox();
+      }catch(e){ logError('自动备份', e); }
+    };
+    /* 页面空闲时再跑，不占首屏 */
+    if(typeof window.requestIdleCallback === 'function') window.requestIdleCallback(kick, { timeout:4000 });
+    else setTimeout(kick, 2000);
+  }
+  function autobRenderBox(){
+    var box = $('#autoBakBox');
+    if(!box) return;
+    var m = autobMetaLoad();
+    var native = !!autobFs();
+    var nativeTxt = native
+      ? (m.dirPath ? '备份保存在：' + m.dirPath : '备份保存在：App 私有目录 fandazi-backups（首次写入后显示完整路径）')
+      : '备份保存在：浏览器 IndexedDB（清除站点数据会一并消失）';
+    var status = m.lastOkAt ? '上次成功：' + backupDateText(m.lastOkAt) : '还没有自动备份';
+    if(m.nativeOk) status += ' · 已写入手机目录';
+    var errTxt = m.lastErr ? '<p class="notice" style="margin:6px 0 0">上次失败：' + esc(m.lastErr) + '（已自动重试一次）</p>' : '';
+    box.innerHTML =
+      '<p class="dist-note" style="margin-top:0"><b>本地定时自动备份</b>：每天首次打开应用时检查，距上次自动备份超过 24 小时就在页面空闲时生成一份整包备份；只保留最近 5 份，第 6 次会删掉最旧的一份。照片默认只存引用，不复制图片本身。</p>' +
+      '<p class="dist-note">' + esc(status) + ' · ' + esc(nativeTxt) + '</p>' + errTxt +
+      '<p class="dist-note">能防：误删记录、误合并、误恢复。不能防：在浏览器或 WebView 里清除站点数据（IndexedDB 会连同备份一起消失）' +
+        (native ? '；Android「清除数据」也会清掉 App 私有目录。需要长期留存请用「完整备份」导出到文件。' : '。需要长期留存请用「完整备份」导出到文件。') +
+      '</p>' +
+      '<div class="actions" style="margin-top:8px">' +
+        '<button class="btn" data-autob="now">立即备份</button>' +
+        '<button class="btn btn-soft" data-autob="full">导出含照片的完整备份</button>' +
+      '</div>' +
+      '<div id="autoBakList" style="margin-top:8px"></div>';
+    autobAll().then(function(list){
+      if(activeView !== 'more') return;
+      var el = $('#autoBakList');
+      if(!el) return;
+      if(!list.length){
+        el.innerHTML = '<p class="dist-note">还没有自动备份。打开应用满 24 小时后会自动生成第一份。</p>';
+        return;
+      }
+      el.innerHTML = list.map(function(x){
+        return '<div class="import-row"><div class="grow"><b>' + esc(backupDateText(x.at)) + '</b> · ' + fmtBytes(x.bytes) +
+          '<br><span class="muted">' + num(x.records) + ' 条记录 · ' + num(x.photos) + ' 张照片引用 · ' + num(x.recipes) + ' 道菜谱' +
+          (x.native ? ' · 已写入手机目录' : '') + '</span></div>' +
+          '<button type="button" class="btn btn-sm" data-autob-exp="' + esc(x.id) + '">导出</button>' +
+          '<button type="button" class="btn btn-sm" data-autob-res="' + esc(x.id) + '">还原</button></div>';
+      }).join('');
+    });
+  }
+  function autobExport(id){
+    return autobGet(id).then(function(rec){
+      if(!rec){ toast('这份自动备份已不存在'); return false; }
+      var name = 'i吃饭-自动备份-' + new Date(num(rec.at)).toISOString().slice(0, 10) + '.fandazi-backup.json';
+      download(name, rec.text, 'application/json');
+      toast('已导出自动备份（不含照片；记录里的照片引用仍保留）');
+      return true;
+    }).catch(function(e){
+      backupErrorModal('自动备份导出失败：' + ((e && e.message) || '未知错误'));
+      return false;
+    });
+  }
+  function autobRestore(id){
+    return autobGet(id).then(function(rec){
+      if(!rec){ toast('这份自动备份已不存在'); return false; }
+      var obj = parseBackupText(rec.text);
+      uiOpenRestorePreview(obj);   /* 复用完整备份的校验、合并/替换与恢复点流程 */
+      return true;
+    }).catch(function(e){
+      backupErrorModal('自动备份无法还原：' + ((e && e.message) || '未知错误'));
+      return false;
+    });
+  }
   function backupNeedsReminder(){
     if(!db.records.length) return null;
     var last = backupLast();
@@ -27553,6 +27868,29 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       backupErrorModal('恢复点还原失败：' + (e && e.message ? e.message : '未知错误'));
     });
   });
+  $('#autoBakBox').addEventListener('click', function(e){
+    var t = e.target;
+    var act = t.closest ? t.closest('[data-autob]') : null;
+    if(act){
+      if(act.getAttribute('data-autob') === 'now'){
+        if(autobBusy){ toast('正在生成自动备份，请稍候'); return; }
+        autobRunOnce().then(function(res){
+          toast(res && res.ok ? '自动备份已完成（' + fmtBytes(res.bytes) + '）' : '自动备份未能完成');
+        }).catch(function(err){
+          toast('自动备份失败：' + ((err && err.message) || '未知错误'));
+        });
+      }else{
+        uiGenerateBackup();   /* 含照片的手动整包，沿用现有导出流程 */
+      }
+      return;
+    }
+    var exp = t.closest ? t.closest('[data-autob-exp]') : null;
+    if(exp){ autobExport(exp.getAttribute('data-autob-exp')); return; }
+    var res = t.closest ? t.closest('[data-autob-res]') : null;
+    if(res) autobRestore(res.getAttribute('data-autob-res'));
+  });
+  /* 进入「我的」时渲染自动备份区 */
+  try{ autobRenderBox(); }catch(e){ logError('自动备份区渲染', e); }
 
   function guessMeal(){
     var h = testClock ? testClock.h : new Date().getHours();
@@ -29535,6 +29873,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   initTheme();
   renderAll();
   try{ homeUIInit(); }catch(e){ logError('在家吃初始化', e); toast('「在家吃」初始化失败，部分功能可能不可用'); }
+  try{ autobBootCheck(); }catch(e){ logError('自动备份启动检查', e); }
   webdavInit();
   showView('record');
   try{ blindBallInit(); blindShakeBind(); }catch(e){ logError('盲盒初始化', e); toast('盲盒初始化失败，摇一摇可能不可用'); }
@@ -31578,6 +31917,38 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       openMask: function(id){ var el = document.getElementById(id); if(!el) return false; el.classList.remove('hidden'); return true; },
       setView: function(v){ showView(v); return activeView; },
       setPanel: function(g, p){ showPanel(g, p); return true; }
+    },
+    /* 自动备份：只读检查 + 手动触发，便于测试 24h 判定与 5 份轮转 */
+    autob: {
+      due: function(){ return autobDue(); },
+      meta: function(){ return autobMetaLoad(); },
+      setLastAt: function(t){ var m = autobMetaLoad(); m.lastAt = num(t) > 0 ? num(t) : 0; autobMetaSave(m); return m; },
+      setLastErr: function(s){ var m = autobMetaLoad(); m.lastErr = String(s || ''); autobMetaSave(m); return m; },
+      run: function(){ return autobRunOnce(); },
+      scheduled: function(){ return autobScheduledRun(); },
+      list: function(){ return autobAll(); },
+      get: function(id){ return autobGet(id); },
+      build: function(){ return autobBuild(); },
+      native: function(){ return !!autobFs(); },
+      dirPath: function(){ return autobMetaLoad().dirPath; },
+      probePath: function(){ return autobNativeProbePath(); },
+      exportOne: function(id){ return autobExport(id); },
+      restore: function(id){ return autobRestore(id); },
+      render: function(){ autobRenderBox(); return true; },
+      clearAll: function(){
+        return autobAll().then(function(list){
+          return Promise.all(list.map(function(x){ return autobDel(x.id); })).then(function(){ return list.length; });
+        });
+      },
+      gapMs: function(){ return AUTOB_GAP; },
+      keep: function(){ return AUTOB_KEEP; },
+      fail: function(on){ autobForceFail = !!on; return autobForceFail; },
+      closeDb: function(){
+        var p = autobDbPromise;
+        autobDbPromise = null;
+        if(p) p.then(function(d){ try{ d.close(); }catch(e){} }).catch(function(){});
+        return true;
+      }
     },
     draw: (function(){
       var api = function(){ var t0 = nowMs(); runDrawNow(); return nowMs() - t0; };
