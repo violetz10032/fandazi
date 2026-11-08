@@ -10108,14 +10108,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     if(skipBakOnce) skipBakOnce = false;
     else { try{ var old = localStorage.getItem(KEY); if(old && old.length > 2) localStorage.setItem(BAK_KEY, old); }catch(_e){} }
+    var wroteOk = false;
     try{
       localStorage.setItem(KEY, str);
       lastSavedStr = str;
+      wroteOk = true;
     }catch(e){
       logError('数据保存', e);
       toast('保存失败：本机存储空间不足（照片可能过大）');
     }
     if(!silent) renderAll();
+    if(wroteOk) autobCheckSoon();
   }
 
   /* ================= 数据结构 v2：读写、迁移引擎、回退、重建 ================= */
@@ -10150,16 +10153,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     var old = null;
     try{ old = localStorage.getItem(V2_KEY); }catch(e){ old = null; }
+    var wroteOk = false;
     try{
       localStorage.setItem(V2_KEY, str);
       v2Store = next;
       lastV2Str = str;
+      wroteOk = true;
     }catch(e){
       try{ if(old == null) localStorage.removeItem(V2_KEY); else localStorage.setItem(V2_KEY, old); }catch(_e){}
       logError('v2 保存', e);
       toast('保存失败：本机存储空间不足（照片可能过大）');
     }
     if(!silent) renderAll();
+    if(wroteOk) autobCheckSoon();
   }
 
   /* 恢复/导入等「整包替换」写入：v2 模式下写 v2 并读回校验，v1 模式沿用 commitDbString */
@@ -10167,6 +10173,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!v2Active){
       var s1 = JSON.stringify(next);
       commitDbString(s1);
+      autobCheckSoon();
       return { mode:'v1', str:s1 };
     }
     var built = buildV2FromRecords(next.records, {
@@ -10187,6 +10194,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       throw new Error('写入校验失败：' + chk.error + '，已还原原数据');
     }
     v2Store = back; lastV2Str = str; v2Broken = false;
+    autobCheckSoon();
     return { mode:'v2', str:str };
   }
 
@@ -27786,6 +27794,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var AUTOB_KEEP_DEFAULT = 7;
   var AUTOB_KEEP_KEY = 'fandazi.autobak.keep';
   var AUTOB_GAP = 24 * 3600 * 1000;
+  var AUTOB_CHECK_GAP = 60 * 1000;   /* 回前台 / 关键写入后的检查节流窗口 */
+  var autobCheckAt = 0;
   var AUTOB_DB_NAME = 'fandazi.backups';
   var AUTOB_DIR = 'fandazi-backups';
   var AUTOB_FILE_RE = /^fandazi-autobak-[0-9]{8}-[0-9]{6}(?:-[0-9]{1,4})?\.json$/;
@@ -28175,6 +28185,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     /* 页面空闲时再跑，不占首屏 */
     if(typeof window.requestIdleCallback === 'function') window.requestIdleCallback(kick, { timeout:4000 });
     else setTimeout(kick, 2000);
+  }
+  /* 回前台 / 关键写入后补查：仍按 24h 判定，60s 内只查一次，实际生成放到页面空闲时 */
+  function autobCheckSoon(){
+    if(document.hidden) return false;
+    var now = Date.now();
+    if(now - autobCheckAt < AUTOB_CHECK_GAP) return false;
+    autobCheckAt = now;
+    var kick = function(){
+      try{ if(autobDue()) autobScheduledRun(); }catch(e){ logError('自动备份检查', e); }
+    };
+    if(typeof window.requestIdleCallback === 'function') window.requestIdleCallback(kick, { timeout:4000 });
+    else setTimeout(kick, 2000);
+    return true;
   }
   function autobRenderBox(){
     var box = $('#autoBakBox');
@@ -30985,6 +31008,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   document.addEventListener('visibilitychange', function(){
     if(document.hidden) return;
     try{ renderReminder(); maybeNotify(); }catch(e){ logError('饭点提醒', e); }
+    try{ autobCheckSoon(); }catch(e){ logError('自动备份检查', e); }
   });
   window.__fandaziDiag = function(){
     return {
@@ -33092,6 +33116,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         });
       },
       gapMs: function(){ return AUTOB_GAP; },
+      checkGapMs: function(){ return AUTOB_CHECK_GAP; },
+      checkSoon: function(){ return autobCheckSoon(); },
+      resetCheck: function(){ autobCheckAt = 0; return true; },
       keep: function(){ return autobKeep(); },
       setKeep: function(n){ return autobSetKeep(n); },
       clean: function(){ return autobClean(); },
