@@ -100,7 +100,7 @@
 | 在家吃 `fandazi.recipes` / `fandazi.homefb` / `fandazi.pantry` / `fandazi.cooklog` / `fandazi.homeweek` / `fandazi.cookprog` | ❌ 不同步 | ✅ 整包 | **不单独开云端同步**；本阶段没有为烹饪数据新增 Gist / Contents / WebDAV 字段或接口 |
 | 店铺补充信息 / 旅行 / 菜品库 | ❌ 不同步 | ✅ 整包 | 同上 |
 
-- **Gist / Contents** 只搬运「到店记录 + 照片」；它们不会读取也不会写入上表中的其他键。
+- **Gist / Contents** 只搬运「到店记录 + 照片」；它们不会读取也不会写入上表中的其他键。**烹饪数据（`fandazi.recipes` / `fandazi.pantry` / `fandazi.cooklog` / `fandazi.homefb`）明确不进入 Gist / Contents 增量同步**，只随完整备份整包搬运。
 - **WebDAV** 不是增量同步，而是把「完整备份」JSON 整包上传 / 拉取；整包天然包含上表全部数据（含在家吃数据），但**没有**为烹饪数据扩展任何独立同步字段。网页版受 CORS 限制时，仍可用「导出 / 导入完整备份」文件搬运。
 - **只能靠备份文件搬**：想去、收藏、地点、设置、投票、在家吃数据、店铺补充信息 / 旅行 / 菜品库。换设备或清浏览器数据前，请先导出完整备份；旧备份缺少收藏段时恢复**不会清空本机收藏**，缺在家吃段（含一周菜单 `week` / 烹饪进度 `cookprog`）同样保持本机现状。
 

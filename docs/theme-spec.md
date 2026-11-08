@@ -45,7 +45,7 @@
 | --- | --- | --- |
 | 主题切换影响业务数据 | 皮肤只写 `localStorage` 的 `fandazi.theme/skin/skinTexture/motion` | 切换路径不触碰 `fandazi.v2`、`fandazi.feedback`、`fandazi.dishes`、IndexedDB、同步键 |
 | 触碰地图三条路径 | 网页高德直载 / APK `map-embed.html` / Canvas 回退 | 主题只改 CSS 变量，不改地图加载与绘制逻辑；`applyTheme/applySkin` 只调用既有 `mapDraw()` 重绘 |
-| 体积红线 2.2 MB | 单文件内联 | 新增 CSS/JS 控制在几十 KB；每次提交报字节数 |
+| 体积红线 3 MB（原 2.2 MB 已放宽） | 单文件内联 | 新增 CSS/JS 控制在几十 KB；每次提交报字节数。性能闸门保留：每阶段报首屏可交互时间与 1000 条记录滚动帧耗时，明显退化先停下报数 |
 | 兼容性 | `color-mix()` 需 Chrome 111+ | 仅用于一处高亮环；不支持时退化为 `transparent` 环，功能不受影响 |
 | 主题名与旧数据 | 旧 `fandazi.skin` 只可能是 `none/p3/p4/p5` | 读取函数用白名单 `SKIN_ORDER`，旧值照常可用，新增 `cream` 不影响旧值 |
 
