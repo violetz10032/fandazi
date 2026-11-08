@@ -23302,7 +23302,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       (poiState.distNote ? '；' + poiState.distNote : '') +
       '。可直接手改，改后按 WGS84 处理。';
   }
-  /* 按「出发地点」的坐标实算到店铺坐标的直线距离，自动带出到「与我距离 km」 */
+  /* 按「出发地点」的坐标实算到店铺坐标的直线距离，自动带出到「与我距离 km」。
+     起点（常用地点的「坐标」弹窗写明是高德坐标）按 GCJ-02 处理；店铺坐标按来源判基准，
+     先统一到 GCJ-02 再算，避免两套基准直接 haversine（GM-03）。来源未知不猜。 */
   function formAutoDist(){
     poiState.distNote = '';
     var p = mapOriginPlace($('#f-place') ? $('#f-place').value : '');
@@ -23311,12 +23313,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!p || !mapHasCoords(p)) return '';
     var now = String($('#f-dist').value || '').trim();
     if(now !== '' && !distAuto) return '';     /* 用户手填的距离不覆盖 */
-    var d = haversineKm(p.lat, p.lng, lat, lng);
+    var sys = mapSourceSys(poiCoordSource);
+    if(!sys){
+      poiState.distNote = '坐标基准未知，未按起点实算' + (now !== '' ? '，保留手填 ' + now + ' km' : '，可直接手填距离');
+      return poiState.distNote;
+    }
+    var ll = mapDisplayLL(lat, lng, sys);      /* GCJ02 原样；WGS84 转为 GCJ-02，与起点同基准 */
+    var d = haversineKm(p.lat, p.lng, ll.lat, ll.lng);
     if(!isFinite(d)) return '';
     var km = Math.round(d * 10) / 10;
     $('#f-dist').value = km;
     distAuto = true;
-    poiState.distNote = '已按起点「' + p.name + '」实算 ' + distText(km) + '（直线距离，可手改）';
+    poiState.distNote = '已按起点「' + p.name + '」实算 ' + distText(km) + '（' +
+      (sys === 'GCJ02' ? 'GCJ-02' : 'WGS84→GCJ-02') + ' 同基准直线距离，可手改）';
     return poiState.distNote;
   }
   function poiApply(idx){
