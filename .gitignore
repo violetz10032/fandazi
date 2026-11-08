@@ -21,6 +21,11 @@ android-app/android/app/src/main/assets/public/
 
 # 本地留存的 APK 产物（正式产物从 Actions Artifacts 下载）
 dist/
+*.apk
+*.aab
+
+# 本地导出的完整备份包（含个人数据，绝不入库）
+*.fandazi-backup.json
 
 # 固定签名密钥（如需 Android 原生高德 SDK，才把它 base64 后放进 GitHub Secrets；绝不入库）
 android-app/signing/
