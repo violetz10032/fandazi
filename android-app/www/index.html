@@ -27832,6 +27832,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var AUTOB_KEEP_DEFAULT = 7;
   var AUTOB_KEEP_KEY = 'fandazi.autobak.keep';
   var AUTOB_GAP = 24 * 3600 * 1000;
+  var AUTOB_TIME_TOLERANCE = 10 * 60 * 1000;   /* 允许的时钟误差；超出即视为时间异常 */
   var AUTOB_CHECK_GAP = 60 * 1000;   /* 回前台 / 关键写入后的检查节流窗口 */
   var autobCheckAt = 0;
   var AUTOB_DB_NAME = 'fandazi.backups';
@@ -27852,6 +27853,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       lastErr: typeof o.lastErr === 'string' ? o.lastErr.slice(0, 180) : '',
       failCount: Math.max(0, Math.round(num(o.failCount) || 0)),
       lastFailAt: num(o.lastFailAt) > 0 ? Math.round(num(o.lastFailAt)) : 0,
+      timeAnomaly: typeof o.timeAnomaly === 'string' ? o.timeAnomaly.slice(0, 180) : '',
+      timeAnomalyAt: num(o.timeAnomalyAt) > 0 ? Math.round(num(o.timeAnomalyAt)) : 0,
+      timeAnomalyLastAt: num(o.timeAnomalyLastAt) > 0 ? Math.round(num(o.timeAnomalyLastAt)) : 0,
       lastNativeErr: typeof o.lastNativeErr === 'string' ? o.lastNativeErr.slice(0, 180) : '',
       dirPath: typeof o.dirPath === 'string' ? o.dirPath.slice(0, 260) : '',
       dirKind: (o.dirKind === 'External' || o.dirKind === 'Data') ? o.dirKind : '',
@@ -28151,7 +28155,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function autobDue(){
     var m = autobMetaLoad();
     if(!m.lastAt) return true;
-    return (Date.now() - m.lastAt) >= AUTOB_GAP;
+    var d = Date.now() - m.lastAt;
+    /* 系统时间回拨会让 lastAt 落在未来：超出容差即视为到期，并记录时间异常 */
+    if(d < -AUTOB_TIME_TOLERANCE){
+      m.timeAnomalyLastAt = m.lastAt;
+      m.timeAnomaly = '上次自动备份记录时间在未来 ' + Math.max(1, Math.round(-d / 60000)) + ' 分钟';
+      m.timeAnomalyAt = Date.now();
+      m.lastAt = 0;   /* 按到期处理；成功后写回真实时间 */
+      autobMetaSave(m);
+      return true;
+    }
+    return d >= AUTOB_GAP;
   }
   function autobRunOnce(){
     if(autobBusy) return Promise.resolve({ skipped:'busy' });
@@ -28300,6 +28314,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       (m.lastFailAt ? '，最近一次 ' + esc(backupDateText(m.lastFailAt)) : '') + '</p>';
     if(m.failCount >= 2) errTxt += '<p class="notice" style="margin:6px 0 0">自动备份连续失败 ' + m.failCount +
       ' 次，新记录暂时没有进入新的自动备份；「我的」标签上的角标会一直显示到下一次成功为止。</p>';
+    if(m.timeAnomaly) errTxt += '<p class="notice" style="margin:6px 0 0">时间异常：' + esc(m.timeAnomaly) +
+      (m.timeAnomalyAt ? '（检测于 ' + esc(backupDateText(m.timeAnomalyAt)) + '）' : '') +
+      '。已按到期处理，不会因时钟回拨长期不备份；下次成功备份后按真实时间重新计时。</p>';
     var keepOpts = [3, 5, 7, 10, 15].map(function(n){
       return '<option value="' + n + '"' + (n === keep ? ' selected' : '') + '>' + n + ' 份</option>';
     }).join('');
