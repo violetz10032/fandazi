@@ -28224,6 +28224,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function autobScheduledRun(){
     return autobRunOnce().catch(function(){
       return autobRunOnce();
+    }).then(function(res){
+      /* 完成提示：手机端原生目录没写进去时必须明说「未写入手机目录」 */
+      if(res && res.ok && autobFs() && res.native !== true){
+        try{ toast('自动备份已完成，但未写入手机目录（仅应用内）：' + (res.nativeReason || '未知原因')); }
+        catch(e){ logError('自动备份降级提示', e); }
+      }
+      return res;
     }).catch(function(e){
       var m = autobMetaLoad();
       m.lastErr = String((e && e.message) || e || '未知错误').slice(0, 180);
@@ -28306,6 +28313,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     var status = m.lastOkAt ? '上次成功：' + backupDateText(m.lastOkAt) : '还没有自动备份';
     if(m.nativeOk) status += ' · 已写入手机目录';
+    else if(native && m.lastOkAt) status += ' · 仅应用内（未写入手机目录）';
     var errTxt = '';
     if(m.degraded) errTxt += '<p class="notice" style="margin:6px 0 0">已降级到应用私有目录（原因：' + esc(m.degraded) + '）。备份仍可用，但清除 App 数据会一并删除。</p>';
     if(m.lastNativeErr && !m.degraded) errTxt += '<p class="notice" style="margin:6px 0 0">手机目录写入失败：' + esc(m.lastNativeErr) + '（本机 IndexedDB 备份仍可用）</p>';
@@ -28358,7 +28366,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         var meta = x.rec
           ? num(x.rec.records) + ' 条记录 · ' + num(x.rec.photos) + ' 张照片引用 · ' + num(x.rec.recipes) + ' 道菜谱'
           : '手机目录文件 · ' + (x.dirKind === 'Data' ? '应用私有目录' : '应用专属外部目录');
-        var where = x.native ? (' · 手机文件 ' + x.name) : ' · 仅本机';
+        var where = x.native ? (' · 手机文件 ' + x.name)
+          : (autobFs() ? ' · 仅应用内（未写入手机目录）' : ' · 仅本机');
         var acts = x.rec
           ? '<button type="button" class="btn btn-sm" data-autob-exp="' + esc(x.rec.id) + '">导出</button>' +
             '<button type="button" class="btn btn-sm" data-autob-res="' + esc(x.rec.id) + '">还原</button>'
@@ -29072,7 +29081,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           if(!res || !res.ok){ toast('自动备份未能完成'); return; }
           var t2 = '自动备份已完成（' + fmtBytes(res.bytes) + '）';
           if(res.native) t2 += '，已写入手机目录';
-          else if(autobFs()) t2 += '，手机目录写入失败：' + (res.nativeReason || '未知原因');
+          else if(autobFs()) t2 += '，未写入手机目录（仅应用内）：' + (res.nativeReason || '未知原因');
           else t2 += '，已触发浏览器下载';
           toast(t2);
         }).catch(function(err){
