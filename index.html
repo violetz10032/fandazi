@@ -28059,21 +28059,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var fs = autobFs();
     if(!fs) return Promise.resolve({ ok:false, reason:'unavailable', dirKind:'', name:'', perm:'not_needed', degraded:'' });
     var name = rec.nativeName || autobFileName(rec.at);
-    return autobWriteFile(fs, 'External', name, rec.text).then(function(first){
-      if(first.ok) return { ok:true, name:first.name, dirKind:'External', uri:first.uri, perm:'not_needed', degraded:'' };
-      return autobAskPermission(fs, first.reason).then(function(p){
-        var retry = p.granted ? autobWriteFile(fs, 'External', name, rec.text) : Promise.resolve(first);
-        return retry.then(function(second){
-          if(second.ok) return { ok:true, name:second.name, dirKind:'External', uri:second.uri, perm:p.state, degraded:'' };
-          return autobWriteFile(fs, 'Data', name, rec.text).then(function(third){
-            if(third.ok){
-              var why = (p.state === 'denied') ? '存储权限被拒' : ('外部目录写入失败：' + (second.reason || '未知原因'));
-              return { ok:true, name:third.name, dirKind:'Data', uri:third.uri, perm:p.state, degraded:why.slice(0, 140) };
-            }
-            return { ok:false, name:name, dirKind:'', reason:(third.reason || second.reason || '原生写入失败'), perm:p.state, degraded:'' };
-          });
-        });
-      });
+    /* 回滚 4d59102：只写应用私有目录 Data，不再写 External，也不再申请存储权限 */
+    return autobWriteFile(fs, 'Data', name, rec.text).then(function(r){
+      if(r.ok) return { ok:true, name:r.name, dirKind:'Data', uri:r.uri, perm:'not_needed', degraded:'' };
+      return { ok:false, name:name, dirKind:'', reason:(r.reason || '原生写入失败'), perm:'not_needed', degraded:'' };
     });
   }
   function autobNativeRead(name){
@@ -28286,16 +28275,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   /* 回前台 / 关键写入后补查：仍按 24h 判定，60s 内只查一次，实际生成放到页面空闲时 */
   function autobCheckSoon(){
-    if(document.hidden) return false;
-    var now = Date.now();
-    if(now - autobCheckAt < AUTOB_CHECK_GAP) return false;
-    autobCheckAt = now;
-    var kick = function(){
-      try{ if(autobDue()) autobScheduledRun(); }catch(e){ logError('自动备份检查', e); }
-    };
-    if(typeof window.requestIdleCallback === 'function') window.requestIdleCallback(kick, { timeout:4000 });
-    else setTimeout(kick, 2000);
-    return true;
+    /* 回滚 4d59102：自动补查停用，只保留手动「立即备份」 */
+    return false;
   }
   function autobRenderBox(){
     var box = $('#autoBakBox');
@@ -31102,7 +31083,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   initTheme();
   renderAll();
   try{ homeUIInit(); }catch(e){ logError('在家吃初始化', e); toast('「在家吃」初始化失败，部分功能可能不可用'); }
-  try{ autobBootCheck(); }catch(e){ logError('自动备份启动检查', e); }
+  /* 回滚 4d59102：启动期自动备份检查停用，避免 Android 16 启动期触发原生文件目录写入 */
   webdavInit();
   showView('record');
   try{ blindBallInit(); blindShakeBind(); }catch(e){ logError('盲盒初始化', e); toast('盲盒初始化失败，摇一摇可能不可用'); }
