@@ -23737,9 +23737,59 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }catch(e){ return null; }
   }
   /* 桥接调用统一兜底：插件方法同步抛错时也转成 rejected Promise，绝不冒泡到 Capacitor 线程 */
-  function capSafe(fn){
-    try{ return Promise.resolve(fn()); }
-    catch(e){ return Promise.reject(e); }
+  function capSafe(fn, tag){
+    var p;
+    try{ p = Promise.resolve(fn()); }
+    catch(e){ if(tag) diagBakNote(tag, e); return Promise.reject(e); }
+    if(!tag) return p;
+    return p.then(function(v){ return v; }, function(e){ diagBakNote(tag, e); throw e; });
+  }
+  /* ---- 备份诊断（1.2.1-diag）：只记录桥接结果；读/写原生文件都只在用户点击后发生 ---- */
+  var diagBakLines = [];
+  function diagBakNote(tag, err){
+    try{
+      if(!diagBakLines) diagBakLines = [];
+      var e = err || {};
+      var line = new Date().toISOString().slice(11, 23) + ' ' + tag + ' → ' + ((e.name || 'Error') + ': ' + (e.message || String(e)));
+      diagBakLines.push(line);
+      if(diagBakLines.length > 80) diagBakLines = diagBakLines.slice(-80);
+      try{ localStorage.setItem('fandazi.diagbak', JSON.stringify({ at:Date.now(), lines:diagBakLines })); }catch(_){}
+    }catch(_){}
+    diagBakRender();
+  }
+  function diagBakLoadLines(){
+    try{
+      var o = JSON.parse(localStorage.getItem('fandazi.diagbak') || '{}');
+      return (o && o.lines) || [];
+    }catch(_){ return []; }
+  }
+  function diagBakText(){ return diagBakLoadLines().slice(-20).join('\n'); }
+  function diagBakShow(text){
+    var el = document.getElementById('diagBakPre');
+    if(el) el.textContent = String(text == null ? '' : text);
+  }
+  function diagBakRender(){ diagBakShow(diagBakText() || '（暂无桥接失败记录）'); }
+  function diagBakFs(){
+    try{ return (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Filesystem) || null; }catch(e){ return null; }
+  }
+  function diagBakReadNative(name){
+    var fs = diagBakFs();
+    if(!fs){ diagBakShow('网页端没有原生目录；下面是本页记录：\n' + (diagBakText() || '（空）')); return; }
+    diagBakShow('读取 ' + name + ' …');
+    capSafe(function(){ return fs.readFile({ directory:'Data', path:name, encoding:'utf8' }); }, 'diag:readFile')
+      .then(function(r){
+        var txt = (r && typeof r.data === 'string') ? r.data : autobUtf8FromBase64(r && r.data);
+        diagBakShow((txt || ('（' + name + ' 为空或不存在）')).split('\n').slice(0, 40).join('\n'));
+      }, function(e){
+        diagBakShow('读取失败：' + ((e && e.name) || 'Error') + ': ' + ((e && e.message) || '') + '\n\n本页记录：\n' + (diagBakText() || '（空）'));
+      });
+  }
+  function diagBakWriteNative(){
+    var fs = diagBakFs();
+    if(!fs){ toast('网页端没有原生目录，诊断记录只在本页显示'); return; }
+    var text = 'diag-backup ' + new Date().toISOString() + '\n' + (diagBakText() || '(empty)') + '\n';
+    capSafe(function(){ return fs.writeFile({ directory:'Data', path:'diag-backup.txt', data:text, encoding:'utf8' }); }, 'diag:writeFile')
+      .then(function(){ toast('已写入 diag-backup.txt（应用私有目录）'); }, function(e){ toast('写 diag-backup.txt 失败：' + ((e && e.message) || '')); });
   }
   function nativeFileBridge(){
     return capNative() && !!capPlugin('Filesystem') && !!capPlugin('Share');
@@ -28074,6 +28124,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var autobPanelChecked = false;   /* 本次会话内是否已因打开本机数据面板检查过 */
   var AUTOB_DB_NAME = 'fandazi.backups';
   var AUTOB_DIR = 'fandazi-backups';
+  /* 1.2.1：写/读顺序 = 子目录优先，失败退到 Data 根目录；空串表示根目录 */
+  var AUTOB_PATHS = [AUTOB_DIR, ''];
   var AUTOB_FILE_RE = /^fandazi-autobak-[0-9]{8}-[0-9]{6}(?:-[0-9]{1,4})?\.json$/;
   var autobMetaCache = null;
   var autobDbPromise = null;
@@ -28235,18 +28287,23 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function autobReadDir(fs, kind){
     if(!fs || typeof fs.readdir !== 'function') return Promise.resolve([]);
-    return capSafe(function(){ return fs.readdir({ directory:kind, path:AUTOB_DIR }); }).then(function(res){
-      var names = ((res && res.files) || []).map(function(f){ return typeof f === 'string' ? f : String((f && f.name) || ''); })
-        .filter(function(n){ return AUTOB_FILE_RE.test(n); });
-      return Promise.all(names.map(function(name){
-        return capSafe(function(){ return typeof fs.stat === 'function' ? fs.stat({ directory:kind, path:AUTOB_DIR + '/' + name }) : null; })
-          .then(function(st){
-            return { name:name, dirKind:kind, bytes:num(st && st.size), at:(num(st && st.mtime) > 0 ? num(st.mtime) : 0) || autobNameAt(name) || 0 };
-          }, function(){
-            return { name:name, dirKind:kind, bytes:0, at:autobNameAt(name) || 0 };
-          });
-      }));
-    }).catch(function(){ return []; });
+    function step(i){
+      if(i >= AUTOB_PATHS.length) return Promise.resolve([]);
+      var dir = AUTOB_PATHS[i];
+      return capSafe(function(){ return fs.readdir({ directory:kind, path:dir }); }, 'autob:readdir').then(function(res){
+        var names = ((res && res.files) || []).map(function(f){ return typeof f === 'string' ? f : String((f && f.name) || ''); })
+          .filter(function(n){ return AUTOB_FILE_RE.test(n); });
+        return Promise.all(names.map(function(name){
+          return capSafe(function(){ return typeof fs.stat === 'function' ? fs.stat({ directory:kind, path:(dir ? dir + '/' : '') + name }) : null; }, 'autob:stat')
+            .then(function(st){
+              return { name:name, dirKind:kind, bytes:num(st && st.size), at:(num(st && st.mtime) > 0 ? num(st && st.mtime) : 0) || autobNameAt(name) || 0 };
+            }, function(){
+              return { name:name, dirKind:kind, bytes:0, at:autobNameAt(name) || 0 };
+            });
+        }));
+      }, function(){ return step(i + 1); });
+    }
+    return step(0).catch(function(){ return []; });
   }
   function autobNativeList(){
     var fs = autobFs();
@@ -28267,29 +28324,32 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function autobNativeDelete(name){
     var fs = autobFs();
     if(!fs) return Promise.resolve(false);
-    return Promise.all(['Data'].map(function(kind){
-      return capSafe(function(){ return fs.deleteFile({ directory:kind, path:AUTOB_DIR + '/' + name }); })
+    return Promise.all(AUTOB_PATHS.map(function(dir){
+      var p = (dir ? dir + '/' : '') + name;
+      return capSafe(function(){ return fs.deleteFile({ directory:'Data', path:p }); }, 'autob:deleteFile')
         .then(function(){ return true; }, function(){ return false; });
     })).then(function(r){ return r.some(Boolean); });
   }
+  /* 1.2.1：不再 mkdir / 不再 getUri，只用 writeFile（recursive 自动建父目录）+ 根目录兜底 */
   function autobWriteFile(fs, kind, name, text){
-    return capSafe(function(){
-      return fs.mkdir({ directory:kind, path:AUTOB_DIR, recursive:true });
-    }).catch(function(e){
-      var msg = String((e && e.message) || e || '');
-      if(/exist|already/i.test(msg)) return true;
-      throw e;
-    }).then(function(){
-      return capSafe(function(){ return fs.writeFile({ directory:kind, path:AUTOB_DIR + '/' + name, data:text, encoding:'utf8', recursive:true }); });
-    }).then(function(){
-      return capSafe(function(){ return typeof fs.getUri === 'function' ? fs.getUri({ directory:kind, path:AUTOB_DIR + '/' + name }) : null; })
-        .then(function(u){
-          var uri = (u && u.uri) ? String(u.uri) : '';
-          return { ok:true, name:name, dirKind:kind, uri:uri.replace(/^file:\/\//, ''), reason:'' };
-        }, function(){ return { ok:true, name:name, dirKind:kind, uri:'', reason:'' }; });
-    }).catch(function(e){
-      return { ok:false, name:name, dirKind:kind, uri:'', reason:String((e && e.message) || e || '原生写入失败').slice(0, 140) };
-    });
+    function step(i){
+      if(i >= AUTOB_PATHS.length){
+        var err = new Error('写入失败：子目录与根目录都不可写');
+        diagBakNote('autob:write-final', err);
+        return Promise.resolve({ ok:false, name:name, dirKind:kind, uri:'', reason:String(err.message).slice(0, 140) });
+      }
+      var dir = AUTOB_PATHS[i];
+      var p = (dir ? dir + '/' : '') + name;
+      return capSafe(function(){
+        return fs.writeFile({ directory:kind, path:p, data:text, encoding:'utf8', recursive:true });
+      }, 'autob:writeFile').then(function(){
+        return { ok:true, name:name, dirKind:kind, uri:p, reason:'' };
+      }, function(e){
+        diagBakNote('autob:write-retry(' + (dir || 'root') + ')', e);
+        return step(i + 1);
+      });
+    }
+    return step(0);
   }
   /* 自动备份只写应用私有目录 Data：不申请存储权限，也不写 Android/data 外部目录 */
   function autobNativeWrite(rec){
@@ -28304,10 +28364,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function autobNativeRead(name){
     var fs = autobFs();
     if(!fs) return Promise.resolve('');
-    var kinds = ['Data'];
     function step(i){
-      if(i >= kinds.length) return Promise.resolve('');
-      return capSafe(function(){ return fs.readFile({ directory:kinds[i], path:AUTOB_DIR + '/' + name, encoding:'utf8' }); }).then(function(r){
+      if(i >= AUTOB_PATHS.length) return Promise.resolve('');
+      var dir = AUTOB_PATHS[i];
+      var p = (dir ? dir + '/' : '') + name;
+      return capSafe(function(){ return fs.readFile({ directory:'Data', path:p, encoding:'utf8' }); }, 'autob:readFile').then(function(r){
         var data = r && r.data;
         if(typeof data !== 'string') data = autobUtf8FromBase64(data);
         return data || '';
@@ -28329,16 +28390,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     });
   }
   function autobNativeProbePath(){
-    var fs = autobFs();
-    if(!fs) return Promise.resolve('');
-    var kinds = ['Data'];
-    function step(i){
-      if(i >= kinds.length) return Promise.resolve('');
-      return capSafe(function(){ return fs.getUri({ directory:kinds[i], path:AUTOB_DIR }); }).then(function(u){
-        return String((u && u.uri) || '').replace(/^file:\/\//, '');
-      }, function(){ return step(i + 1); });
-    }
-    return step(0).catch(function(){ return ''; });
+    /* 1.2.1：不再调用 getUri（部分机型上这条桥接调用会抛原生异常），路径固定用文案说明 */
+    return Promise.resolve('');
   }
   function autobWebSave(rec){
     try{
@@ -28442,6 +28495,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       });
     }).catch(function(e){
       autobBusy = false;
+      diagBakNote('autob:runOnce', e);
       throw e;
     }).then(function(res){
       autobBusy = false;
@@ -28593,6 +28647,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<button class="btn btn-soft" data-autob="clean">清理旧备份</button>' +
         '<button class="btn btn-soft" data-autob="full">' + (native ? '导出备份到手机目录' : '导出完整备份') + '</button>' +
       '</div>' +
+      '<details class="dist-note" style="margin-top:10px"><summary>备份诊断（1.2.1-diag · 只在点击后读写）</summary>' +
+        '<div class="actions" style="margin-top:6px">' +
+          '<button type="button" class="btn btn-sm" data-diag="crash">读取上次崩溃堆栈</button>' +
+          '<button type="button" class="btn btn-sm" data-diag="boot">读取启动记录</button>' +
+          '<button type="button" class="btn btn-sm" data-diag="save">写出 diag-backup.txt</button>' +
+          '<button type="button" class="btn btn-sm" data-diag="clear">清空</button>' +
+        '</div>' +
+        '<pre id="diagBakPre" style="white-space:pre-wrap;word-break:break-all;max-height:220px;overflow:auto;font-size:11px;line-height:1.5;background:rgba(0,0,0,.04);padding:8px;border-radius:8px;margin:6px 0 0">' + esc(diagBakText() || '（暂无桥接失败记录）') + '</pre>' +
+      '</details>' +
       '<p class="dist-note" style="margin:10px 0 0">最近 ' + keep + ' 份（' + (native ? '本机 IndexedDB / 应用私有目录' : '本机 IndexedDB') + '）</p>' +
       '<div id="autoBakList"></div>';
     var boxVisible = !!(box && box.offsetParent) && activeView === 'more';   /* 面板没真正打开时不做任何桥接读取 */
@@ -29328,6 +29391,20 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   });
   $('#autoBakBox').addEventListener('click', function(e){
     var t = e.target;
+    var dg = t.closest ? t.closest('[data-diag]') : null;
+    if(dg){
+      var d = dg.getAttribute('data-diag');
+      if(d === 'crash') diagBakReadNative('diag-crash.txt');
+      else if(d === 'boot') diagBakReadNative('diag-boot.txt');
+      else if(d === 'save') diagBakWriteNative();
+      else if(d === 'clear'){
+        try{ localStorage.removeItem('fandazi.diagbak'); }catch(_){}
+        diagBakLines = [];
+        diagBakRender();
+        toast('已清空本页诊断记录');
+      }
+      return;
+    }
     var act = t.closest ? t.closest('[data-autob]') : null;
     if(act){
       var what = act.getAttribute('data-autob');
