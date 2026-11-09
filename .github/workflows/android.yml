@@ -4,6 +4,17 @@ name: Android APK
 on:
   workflow_dispatch:
   push:
+    branches: [main, 'fix/**']
+    paths:
+      - 'android-app/**'
+      - 'index.html'
+      - 'manifest.webmanifest'
+      - 'sw.js'
+      - 'icons/**'
+      - '.github/workflows/android.yml'
+
+  # PR 到 main 时也构建：合并前就能看到构建结果与 38 项故障检查（37 主用例 + 1 平台专项）
+  pull_request:
     branches: [main]
     paths:
       - 'android-app/**'
@@ -15,6 +26,11 @@ on:
 
 permissions:
   contents: read
+
+# 同一 ref 连续提交时取消旧运行，避免重复占用额度
+concurrency:
+  group: android-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   build-debug-apk:
@@ -40,6 +56,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      # 纯 JVM 校验 FileStore 的原子替换 / 校验 / 旧文件保护 / 并发 / 授权边界，任一失败即中断构建
+      - name: FileStore 故障场景测试
+        run: |
+          mkdir -p /tmp/fs-test
+          javac -encoding UTF-8 -d /tmp/fs-test \
+            android/app/src/main/java/com/fandazi/app/FileStoreCore.java \
+            android/app/src/main/java/com/fandazi/app/FileStoreSession.java \
+            android/app/src/test/java/com/fandazi/app/FileStoreCoreTest.java
+          java -Dfile.encoding=UTF-8 -cp /tmp/fs-test com.fandazi.app.FileStoreCoreTest /tmp/fs-store
 
       - name: 安装 Node 20
         uses: actions/setup-node@v4

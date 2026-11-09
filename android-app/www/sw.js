@@ -1,7 +1,7 @@
 /* i吃饭 Service Worker
  * 只缓存同源静态资源；不代理、不缓存任何第三方站点；不上报任何数据。
  */
-const VERSION = 'fandazi-pwa-v8-20261106';
+const VERSION = 'fandazi-pwa-v15-20261109';
 const CACHE = 'fandazi-cache-' + VERSION;
 const PRECACHE = [
   './index.html',

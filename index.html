@@ -10121,7 +10121,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         skipBakOnce = true;
         try{ localStorage.setItem(RAW_KEY, str); }catch(_e){}
         try{ str = localStorage.getItem(BAK_KEY); }catch(_e2){ str = null; }
-        try{ raw = str ? JSON.parse(str) : null; }catch(_e3){ raw = null; }
+        try{ raw = str ? JSON.parse(str) : null; }catch(_e3){ logError('备份副本解析', _e3); raw = null; }
         recoveredBackup = !!(raw && raw.records);
         if(!recoveredBackup && str){ try{ localStorage.setItem(RAW_KEY, str); }catch(_e4){} }
       }
@@ -21389,9 +21389,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function mergeRestoreRaws(snap){
     var map = { db:(v2Active ? V2_KEY : KEY), meta:SHOPMETA_KEY, trips:TRIPS_KEY, fav:FAV_KEY, fb:FB_KEY };
+    var rbFail = 0;
     Object.keys(map).forEach(function(k){
       var v = snap ? snap[k] : null;
-      try{ if(v == null) localStorage.removeItem(map[k]); else localStorage.setItem(map[k], v); }catch(e){}
+      try{
+        if(v == null) localStorage.removeItem(map[k]); else localStorage.setItem(map[k], v);
+      }catch(e){
+        rbFail++;
+        logError('合并回滚写入 ' + k, e);
+      }
     });
     shopMetaStore = null;
     tripStore = null;
@@ -21400,6 +21406,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     feedbackToday = { date:todayStr(), items:{} };
     db = loadDb();
     invalidateStores();
+    return rbFail;
+  }
+  /* 回滚未完全成功时，给用户一句可核对的提示（详细错误在「更多 → 诊断」） */
+  function mergeRollbackNote(n){
+    return n > 0 ? '（有 ' + n + ' 项未写回，错误已记入诊断）' : '';
   }
   function mergeFacts(s){
     var sid = shopIdOfStore(s);
@@ -21500,7 +21511,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return { ok:false, error:'合并之后又改过'+diffs.map(function(k){ return MERGE_RAW_LABEL[k] || k; }).join('、')+'，已保留现状，没有覆盖任何数据。' };
     }
     try{
-      mergeRestoreRaws(u.before || {});
+      var rbUndo = mergeRestoreRaws(u.before || {});
+      if(rbUndo > 0){ throw new Error('回滚未完全成功：' + rbUndo + ' 项未写回，已记入诊断'); }
       localStorage.removeItem(MERGE_UNDO_KEY);
     }catch(e){
       return { ok:false, error:'撤销写入失败（'+String((e && e.message) || e)+'），已保留原数据，可先导出备份再重试。' };
@@ -21674,23 +21686,23 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       });
       save(true);
       if(mergeRawSnap().db === snapBefore.db){
-        mergeRestoreRaws(snapBefore);
+        var rbSite = mergeRestoreRaws(snapBefore);
         renderAll();
-        return { ok:false, error:'写入到店记录失败，未改动任何数据（请先备份并检查存储空间）' };
+        return { ok:false, error:'写入到店记录失败，未改动任何数据（请先备份并检查存储空间）' + mergeRollbackNote(rbSite) };
       }
     }
     if(!shopMetaMergeInto(fromId, toId, from)){
-      mergeRestoreRaws(snapBefore);
+      var rbSite = mergeRestoreRaws(snapBefore);
       renderAll();
-      return { ok:false, error:'店铺补充信息写入失败，已回滚本次合并' };
+      return { ok:false, error:'店铺补充信息写入失败，已回滚本次合并' + mergeRollbackNote(rbSite) };
     }
     /* 阶段④：收藏 / 想去 / 推荐反馈 / 黑名单 / 旅行 stop 跟着店铺走，目标已有则去重。
        照片挂在记录上，记录改名即保留；标签随记录聚合，无需单独迁移。 */
     counts.favorites = favoritesMigrateKey(fromKey, toKey, { name:to.name, city:to.city || '' }).moved;
     if(favoritesLoad().items.some(function(x){ return x.key === fromKey; })){
-      mergeRestoreRaws(snapBefore);
+      var rbSite = mergeRestoreRaws(snapBefore);
       renderAll();
-      return { ok:false, error:'收藏迁移失败，已回滚本次合并（没有留下悬空引用）' };
+      return { ok:false, error:'收藏迁移失败，已回滚本次合并（没有留下悬空引用）' + mergeRollbackNote(rbSite) };
     }
     var wm = wishlistMigrateKey(fromKey, toKey, to);
     counts.wish = wm.moved;
@@ -21710,16 +21722,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       });
     }catch(e){ logError('合并校验旅行引用', e); }
     if(tripLeft || (tm.moved && !tm.persistOk)){
-      mergeRestoreRaws(snapBefore);
+      var rbSite = mergeRestoreRaws(snapBefore);
       renderAll();
-      return { ok:false, error:'旅行 stop 迁移失败，已回滚本次合并（没有留下悬空引用）' };
+      return { ok:false, error:'旅行 stop 迁移失败，已回滚本次合并（没有留下悬空引用）' + mergeRollbackNote(rbSite) };
     }
     var snapAfter = mergeRawSnap();
     var changed = Object.keys(MERGE_RAW_LABEL).some(function(k){ return snapAfter[k] !== snapBefore[k]; });
     if(!changed){
-      mergeRestoreRaws(snapBefore);
+      var rbSite = mergeRestoreRaws(snapBefore);
       renderAll();
-      return { ok:false, error:'没有任何可迁移的数据，未改动任何数据' };
+      return { ok:false, error:'没有任何可迁移的数据，未改动任何数据' + mergeRollbackNote(rbSite) };
     }
     var undoOk = true;
     try{
@@ -26925,12 +26937,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var BACKUP_SCHEMA_VERSION = 8;
   var BACKUP_LAST_KEY = 'fandazi.backup.last';
   var BACKUP_TMP_KEY = KEY + '.restore.tmp';
-  var BACKUP_FILE_MAX = 200 * 1024 * 1024;
+  /* 导入上限（2026-11-09 实测依据，见《备份恢复容量实测报告》）：
+     记录型备份在 Chrome（localStorage 约 5M 字符配额）下 3500 条 / 2.06MB 可恢复，
+     4000 条 / 2.31MB 必然失败；含照片的备份因照片落 IndexedDB，2.87MB 仍可恢复。
+     自产备份的合理上限约为「照片 4MB 策略 + 记录 ~1.5MB」≈ 5.5MB，故取 16MB 作硬上限：
+     既能容纳含照片的合法备份，又把解析峰值压在约 120MB、主线程冻结 0.5s 以内。 */
+  var BACKUP_FILE_MAX = 16 * 1024 * 1024;
+  /* 超过该体积先让用户确认：读取会占内存，且记录多时可能超出本机存储配额 */
+  var BACKUP_WARN_FILE = 4 * 1024 * 1024;
   var BACKUP_WARN_BYTES = 50 * 1024 * 1024;
   var SNAPSHOT_LIMIT = 2;
 
   var backupBusy = false;
   var restoreBusy = false;
+  /* 导入全流程互斥：从选择文件到恢复结束；与 restoreBusy（仅写入阶段）分工不同 */
+  var restoreImportBusy = false;
   var backupLastCache = null;
   var backupReminderMuted = false;
   var testFailPhotoWrite = false;
@@ -27484,7 +27505,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         req.onerror = function(){ reject(req.error || new Error('恢复点写入失败')); };
       });
     }).then(function(s){
-      return snapshotTrim().then(function(){ return s; });
+      /* 恢复点已落盘：之后裁剪旧恢复点失败，不能让已建好的恢复点被当作不存在。
+         裁剪只是清理历史，失败只记诊断，恢复点本身照常返回。 */
+      return snapshotTrim().then(function(){ return s; }, function(e){
+        logError('恢复点裁剪', e);
+        return s;
+      });
     }).catch(function(e){
       logError('恢复点写入', e);
       return null;
@@ -27598,6 +27624,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var written = [];
     var snapRef = null;
     return makeSnapshot('before-restore').then(function(snap){
+      /* 恢复点没建成就不允许覆盖本机数据：它是整条恢复链上唯一的回滚锚点。
+         走到这里时照片与数据库都还没写（写入在后续 then 里），中止即等于零改动。 */
+      if(!snap){
+        var noSnapErr = new Error(idbSupported()
+          ? '无法创建恢复点，已取消恢复，本机数据未改动。请检查存储空间后重试。'
+          : '本机不支持恢复点（IndexedDB 不可用），已取消恢复，本机数据未改动。');
+        noSnapErr.noWrite = true;               /* 未写入任何数据：界面不显示「已回滚」 */
+        noSnapErr.diagLogged = idbSupported();  /* 写入失败已由 makeSnapshot 记入诊断，避免重复记录 */
+        throw noSnapErr;
+      }
       snapRef = snap;
       return backupIdList();
     }).then(function(existing){
@@ -27780,7 +27816,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       };
     }).catch(function(e){
       restoreBusy = false;
-      if(!testFailPhotoWrite) logError('恢复备份', e);
+      /* 已由 makeSnapshot 记过诊断的失败不再记一次，避免同一故障两条日志 */
+      if(!testFailPhotoWrite && !(e && e.diagLogged)) logError('恢复备份', e);
       throw e;
     });
   }
@@ -27880,7 +27917,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#backupMask').classList.remove('hidden');
     $('#backupModal').innerHTML = html;
   }
-  function closeBackupModal(){ $('#backupMask').classList.add('hidden'); }
+  function closeBackupModal(){
+    /* 用户关闭弹窗 = 放弃本次导入：释放互斥标记与待恢复对象，不让大对象继续驻留 */
+    if(!restoreBusy){ restoreImportBusy = false; pendingRestore = null; pendingRestorePhotoGap = 0; }
+    $('#backupMask').classList.add('hidden');
+  }
   function backupErrorModal(msg, title){
     openBackupModal(
       '<div class="sheet-head" style="margin-bottom:8px"><h3>' + esc(title || '无法恢复') + '</h3>' +
@@ -27895,7 +27936,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var rbErrs = (e && e.rollbackErrors) ? e.rollbackErrors : [];
     var msg = (e && e.message) ? e.message : '未知错误';
     if(!rbErrs.length){
-      backupErrorModal((title || '恢复失败') + '：' + msg + '（已回滚，原数据未被修改）', title || '恢复失败');
+      /* noWrite：一个分区都没写（如恢复点创建失败），说「已回滚」会误导 */
+      backupErrorModal((title || '恢复失败') + '：' + msg + ((e && e.noWrite) ? '' : '（已回滚，原数据未被修改）'), title || '恢复失败');
       return;
     }
     var snapId = (e && e.snapshotId) ? String(e.snapshotId) : '';
@@ -28010,6 +28052,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '</div>';
       openBackupModal(html);
     }).catch(function(e){
+      restoreImportBusy = false;
       pendingRestore = null;
       pendingRestorePhotoGap = 0;
       backupErrorModal(e && e.message ? e.message : '校验失败');
@@ -28023,6 +28066,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(pendingRestorePhotoGap > 0 && !confirm('本次恢复有 ' + pendingRestorePhotoGap + ' 张照片本机不存在，相关记录恢复后没有照片。\n照片需完整备份（含照片本体）才能带回，确定继续恢复？')) return;
     openBackupModal('<h3>正在恢复…</h3><p class="muted">正在写入照片并切换数据；期间请勿关闭页面。</p>');
     applyBackupRestore(pendingRestore, mode).then(function(res){
+      restoreImportBusy = false;
       pendingRestore = null;
       pendingRestorePhotoGap = 0;
       openBackupModal(
@@ -28045,6 +28089,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       renderMore();
       toast('已恢复备份');
     }).catch(function(e){
+      restoreImportBusy = false;
       restoreFailModal(e, '恢复失败');
     });
   }
@@ -28130,7 +28175,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var autobMetaCache = null;
   var autobDbPromise = null;
   var autobBusy = false;
-  var autobSeq = 0;
+  var autobSeq = 0;
+  var autobNativeListErr = '';   /* 原生目录明确读取失败的原因；空串 = 无错。禁止把失败伪装成空列表 */
   var autobForceFail = false;   /* 测试注入：只在 test hook 里打开 */
 
   function autobMetaClean(raw){
@@ -28337,7 +28383,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       });
     }
     if(!store) return viaFs();
-    return capSafe(function(){ return store.list(); }, 'filestore:list').then(function(r){
+    return capSafe(function(){ return store.list(); }, 'filestore:list').then(function(r){
+      if(r && r.ok === false){
+        /* 原生明确报错（listFiles 返回 null、目录不可读）：不得静默当作空列表；
+           先试 Filesystem 降级，降级也拿不到东西就把原因留给界面显示。 */
+        var why = String(r.error || '未知错误');
+        return viaFs().then(function(fb){
+          if(fb && fb.length){ autobNativeListErr = ''; return fb; }
+          autobNativeListErr = why;
+          return [];
+        });
+      }
+      autobNativeListErr = '';
       var files = (r && r.files) || [];
       return files.map(function(f){
         return { name:String((f && f.name) || ''), dirKind:'FileStore', bytes:num(f && f.bytes), at:num(f && f.mtime) || autobNameAt(f && f.name) || 0 };
@@ -28737,7 +28794,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       dbList.forEach(function(x){ if(!used[x.id]) rows.push({ name:x.nativeName || '', at:x.at, bytes:x.bytes, rec:x, native:false }); });
       rows.sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
       if(!rows.length){
-        el.innerHTML = '<p class="dist-note">还没有自动备份。打开上面的「启动时自动备份」开关后，有明确操作时才会生成第一份。</p>';
+        el.innerHTML = autobNativeListErr
+          ? '<p class="notice">应用私有目录读取失败：' + esc(autobNativeListErr) + '。这不代表没有备份，可稍后重试或检查存储空间。</p>'
+          : '<p class="dist-note">还没有自动备份。打开上面的「启动时自动备份」开关后，有明确操作时才会生成第一份。</p>';
         return;
       }
       el.innerHTML = rows.map(function(x){
@@ -29412,19 +29471,33 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function readBackupFile(file){
     if(!file) return;
+    /* 互斥：读取、解析、校验、恢复串成一条链，任何一环未结束时不再接受新文件 */
+    if(restoreImportBusy){ toast('正在处理上一份备份，请稍候'); return; }
     if(file.size > BACKUP_FILE_MAX){
-      backupErrorModal('文件超过 200MB 上限（' + Math.round(file.size / 1024 / 1024) + 'MB），未读取', '文件过大');
+      backupErrorModal('这份备份有 ' + fmtBytes(file.size) + '，超过 ' + fmtBytes(BACKUP_FILE_MAX) + ' 的导入上限，未读取。本机数据未改动。', '文件过大');
       return;
     }
+    /* 较大文件先确认：读取与校验会占内存、界面会短暂卡顿；记录多时可能超出本机存储配额 */
+    if(file.size > BACKUP_WARN_FILE && !confirm('这份备份有 ' + fmtBytes(file.size) + '，读取与校验时会占用较多内存，界面可能卡顿数秒。\n\n如果里面记录条数很多，还可能超出本机存储上限而恢复失败（失败不会改动现有数据）。继续？')) return;
+    restoreImportBusy = true;
     var fr = new FileReader();
     fr.onload = function(){
       var text = String(fr.result || '');
       var obj;
       try{ obj = parseBackupText(text); }
-      catch(e){ backupErrorModal(e && e.message ? e.message : '无法解析备份文件'); return; }
-      uiOpenRestorePreview(obj);
+      catch(e){
+        restoreImportBusy = false;
+        backupErrorModal(e && e.message ? e.message : '无法解析备份文件');
+        return;
+      }
+      try{ uiOpenRestorePreview(obj); }
+      catch(e){
+        restoreImportBusy = false;
+        logError('恢复预览', e);
+        backupErrorModal('无法打开恢复预览，本机数据未改动');
+      }
     };
-    fr.onerror = function(){ backupErrorModal('文件读取失败，请重试'); };
+    fr.onerror = function(){ restoreImportBusy = false; backupErrorModal('文件读取失败，请重试'); };
     fr.readAsText(file);
   }
   $('#backupMask').addEventListener('click', function(e){
