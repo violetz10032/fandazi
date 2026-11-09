@@ -678,6 +678,7 @@ i吃饭 · 分享清单
 | 店铺档案增强（第一阶段） | `shop-archive-test.js`：POI / 地址 / 坐标判重、跨城不误判、不自动合并、实际与参考人均分离、无数据「暂无数据」、时间轴、关联 / 忽略不改记录、合并保留历史与照片、四入口反馈 `surface`、想去只进 `wishlist`、v1 shopmeta 备份兼容、console/exception 0 | **28/28 通过** |
 | FileStore 全链路 | `.tmp/filestore-chain-check.js`：`save → list → read → delete` 全走 `FileStore` | **A 通过**：写入 320,699 B → 列表 1 条（同名同字节同 mtime）→ 读回 320,699 字符、`JSON.parse` 无错 → 删除后列表 0 |
 | 原生备份恢复 | `.tmp/restore-check.js`：好文件进恢复预览；`不存在.json` 失败不动数据 | **B 通过**：好文件打开 `#backupMask`；坏文件 `ok=false`、提示「原数据没有被修改」、records 0 → 0 |
+| 恢复前恢复点 | `.tmp/snapshot-check.js`：恢复成功后恢复点 +1；坏 JSON 失败不建点、数据不变 | **通过**：恢复点 0 → 1（`snapshotId` 有值）；坏 JSON 报「不是有效的 JSON」、records 2 → 2、恢复点仍 1 |
 | 启动自动备份开关 | `.tmp/filestore-chain-check.js`：默认关 vs 打开 | **C/D 通过**：关时桥接调用 0 次、写入 0；打开后首次 `pointerdown` 触发 `save` + `list` 各 1 次 |
 | 移动截图 | 375×812 推荐页/抽签页/导入预览/教程顶底部；375×520 矮视口 | 布局正常，无溢出 |
 
