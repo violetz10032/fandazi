@@ -1,6 +1,6 @@
 {
   "name": "fandazi",
-  "version": "1.2.3",
+  "version": "1.2.2",
   "private": true,
   "description": "i吃饭 Android 壳（Capacitor WebView）",
   "scripts": {
