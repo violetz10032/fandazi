@@ -28130,7 +28130,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var autobMetaCache = null;
   var autobDbPromise = null;
   var autobBusy = false;
-  var autobSeq = 0;
+  var autobSeq = 0;
+  var autobNativeListErr = '';   /* 原生目录明确读取失败的原因；空串 = 无错。禁止把失败伪装成空列表 */
   var autobForceFail = false;   /* 测试注入：只在 test hook 里打开 */
 
   function autobMetaClean(raw){
@@ -28337,7 +28338,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       });
     }
     if(!store) return viaFs();
-    return capSafe(function(){ return store.list(); }, 'filestore:list').then(function(r){
+    return capSafe(function(){ return store.list(); }, 'filestore:list').then(function(r){
+      if(r && r.ok === false){
+        /* 原生明确报错（listFiles 返回 null、目录不可读）：不得静默当作空列表；
+           先试 Filesystem 降级，降级也拿不到东西就把原因留给界面显示。 */
+        var why = String(r.error || '未知错误');
+        return viaFs().then(function(fb){
+          if(fb && fb.length){ autobNativeListErr = ''; return fb; }
+          autobNativeListErr = why;
+          return [];
+        });
+      }
+      autobNativeListErr = '';
       var files = (r && r.files) || [];
       return files.map(function(f){
         return { name:String((f && f.name) || ''), dirKind:'FileStore', bytes:num(f && f.bytes), at:num(f && f.mtime) || autobNameAt(f && f.name) || 0 };
@@ -28737,7 +28749,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       dbList.forEach(function(x){ if(!used[x.id]) rows.push({ name:x.nativeName || '', at:x.at, bytes:x.bytes, rec:x, native:false }); });
       rows.sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
       if(!rows.length){
-        el.innerHTML = '<p class="dist-note">还没有自动备份。打开上面的「启动时自动备份」开关后，有明确操作时才会生成第一份。</p>';
+        el.innerHTML = autobNativeListErr
+          ? '<p class="notice">应用私有目录读取失败：' + esc(autobNativeListErr) + '。这不代表没有备份，可稍后重试或检查存储空间。</p>'
+          : '<p class="dist-note">还没有自动备份。打开上面的「启动时自动备份」开关后，有明确操作时才会生成第一份。</p>';
         return;
       }
       el.innerHTML = rows.map(function(x){
