@@ -596,6 +596,15 @@ i吃饭 · 分享清单
 - `haptic(pattern)` 在可用时调用 `navigator.vibrate`；不可用静默忽略。
 - 无横向溢出（375×812 实测）。
 
+### 7.1 启动阶段与原生桥接（1.2.0 起）
+
+- **启动路径零文件系统操作**：`init()` / `renderAll()` / 首屏渲染期间不调用 `Filesystem` / `Share`；自动备份的启动检查（`autobBootCheck`）已从启动序列移除，改为 `autobArmBootAuto()` 只挂一次性监听。
+- **自动备份默认关闭**：`autobMetaLoad().bootAuto` 默认 `false`（「我的 → 本机数据 → 启动时自动备份（仅应用内）」）；关闭时 `autobBootCheck()` 与 `autobCheckSoon()` 直接返回，不触发任何桥接。
+- **只在明确操作后检查一次**：开关打开后，首次 `pointerdown` / `keydown`、保存记录、或进入本机数据页时，才在 `requestIdleCallback` 里检查一次「距上次超过 24 小时」。
+- **面板未真正打开不读私有目录**：`autobRenderBox()` 只在 `#autoBakBox` 可见且 `activeView === 'more'` 时才 `readdir` / `stat`。
+- **桥接调用逐个兜底**：`Filesystem.mkdir / writeFile / getUri / readdir / stat / readFile / deleteFile` 与 `Share.share` 全部经 `capSafe()` 包裹，同步抛错转 `rejected Promise`，异常不再冒泡到 Capacitor 线程。
+- **照片本体不进自动备份**：自动备份只写记录与照片引用，照片仍在 IndexedDB。
+
 ---
 
 ## 8. 性能实测（2026-11-05）
