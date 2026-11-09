@@ -10121,7 +10121,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         skipBakOnce = true;
         try{ localStorage.setItem(RAW_KEY, str); }catch(_e){}
         try{ str = localStorage.getItem(BAK_KEY); }catch(_e2){ str = null; }
-        try{ raw = str ? JSON.parse(str) : null; }catch(_e3){ raw = null; }
+        try{ raw = str ? JSON.parse(str) : null; }catch(_e3){ logError('备份副本解析', _e3); raw = null; }
         recoveredBackup = !!(raw && raw.records);
         if(!recoveredBackup && str){ try{ localStorage.setItem(RAW_KEY, str); }catch(_e4){} }
       }
@@ -21389,9 +21389,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function mergeRestoreRaws(snap){
     var map = { db:(v2Active ? V2_KEY : KEY), meta:SHOPMETA_KEY, trips:TRIPS_KEY, fav:FAV_KEY, fb:FB_KEY };
+    var rbFail = 0;
     Object.keys(map).forEach(function(k){
       var v = snap ? snap[k] : null;
-      try{ if(v == null) localStorage.removeItem(map[k]); else localStorage.setItem(map[k], v); }catch(e){}
+      try{
+        if(v == null) localStorage.removeItem(map[k]); else localStorage.setItem(map[k], v);
+      }catch(e){
+        rbFail++;
+        logError('合并回滚写入 ' + k, e);
+      }
     });
     shopMetaStore = null;
     tripStore = null;
@@ -21400,6 +21406,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     feedbackToday = { date:todayStr(), items:{} };
     db = loadDb();
     invalidateStores();
+    return rbFail;
+  }
+  /* 回滚未完全成功时，给用户一句可核对的提示（详细错误在「更多 → 诊断」） */
+  function mergeRollbackNote(n){
+    return n > 0 ? '（有 ' + n + ' 项未写回，错误已记入诊断）' : '';
   }
   function mergeFacts(s){
     var sid = shopIdOfStore(s);
@@ -21500,7 +21511,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return { ok:false, error:'合并之后又改过'+diffs.map(function(k){ return MERGE_RAW_LABEL[k] || k; }).join('、')+'，已保留现状，没有覆盖任何数据。' };
     }
     try{
-      mergeRestoreRaws(u.before || {});
+      var rbUndo = mergeRestoreRaws(u.before || {});
+      if(rbUndo > 0){ throw new Error('回滚未完全成功：' + rbUndo + ' 项未写回，已记入诊断'); }
       localStorage.removeItem(MERGE_UNDO_KEY);
     }catch(e){
       return { ok:false, error:'撤销写入失败（'+String((e && e.message) || e)+'），已保留原数据，可先导出备份再重试。' };
@@ -21674,23 +21686,23 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       });
       save(true);
       if(mergeRawSnap().db === snapBefore.db){
-        mergeRestoreRaws(snapBefore);
+        var rbSite = mergeRestoreRaws(snapBefore);
         renderAll();
-        return { ok:false, error:'写入到店记录失败，未改动任何数据（请先备份并检查存储空间）' };
+        return { ok:false, error:'写入到店记录失败，未改动任何数据（请先备份并检查存储空间）' + mergeRollbackNote(rbSite) };
       }
     }
     if(!shopMetaMergeInto(fromId, toId, from)){
-      mergeRestoreRaws(snapBefore);
+      var rbSite = mergeRestoreRaws(snapBefore);
       renderAll();
-      return { ok:false, error:'店铺补充信息写入失败，已回滚本次合并' };
+      return { ok:false, error:'店铺补充信息写入失败，已回滚本次合并' + mergeRollbackNote(rbSite) };
     }
     /* 阶段④：收藏 / 想去 / 推荐反馈 / 黑名单 / 旅行 stop 跟着店铺走，目标已有则去重。
        照片挂在记录上，记录改名即保留；标签随记录聚合，无需单独迁移。 */
     counts.favorites = favoritesMigrateKey(fromKey, toKey, { name:to.name, city:to.city || '' }).moved;
     if(favoritesLoad().items.some(function(x){ return x.key === fromKey; })){
-      mergeRestoreRaws(snapBefore);
+      var rbSite = mergeRestoreRaws(snapBefore);
       renderAll();
-      return { ok:false, error:'收藏迁移失败，已回滚本次合并（没有留下悬空引用）' };
+      return { ok:false, error:'收藏迁移失败，已回滚本次合并（没有留下悬空引用）' + mergeRollbackNote(rbSite) };
     }
     var wm = wishlistMigrateKey(fromKey, toKey, to);
     counts.wish = wm.moved;
@@ -21710,16 +21722,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       });
     }catch(e){ logError('合并校验旅行引用', e); }
     if(tripLeft || (tm.moved && !tm.persistOk)){
-      mergeRestoreRaws(snapBefore);
+      var rbSite = mergeRestoreRaws(snapBefore);
       renderAll();
-      return { ok:false, error:'旅行 stop 迁移失败，已回滚本次合并（没有留下悬空引用）' };
+      return { ok:false, error:'旅行 stop 迁移失败，已回滚本次合并（没有留下悬空引用）' + mergeRollbackNote(rbSite) };
     }
     var snapAfter = mergeRawSnap();
     var changed = Object.keys(MERGE_RAW_LABEL).some(function(k){ return snapAfter[k] !== snapBefore[k]; });
     if(!changed){
-      mergeRestoreRaws(snapBefore);
+      var rbSite = mergeRestoreRaws(snapBefore);
       renderAll();
-      return { ok:false, error:'没有任何可迁移的数据，未改动任何数据' };
+      return { ok:false, error:'没有任何可迁移的数据，未改动任何数据' + mergeRollbackNote(rbSite) };
     }
     var undoOk = true;
     try{
