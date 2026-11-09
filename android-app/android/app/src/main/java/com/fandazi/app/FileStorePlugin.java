@@ -50,13 +50,15 @@ public class FileStorePlugin extends Plugin {
                 call.resolve(ret);
                 return;
             }
-            Object[] r = core().save(name, data);
+            FileStoreCore c = core();
+            Object[] r = c.save(name, data);
             File f = (File) r[0];
             ret.put("ok", true);
             ret.put("path", f.getAbsolutePath());
             ret.put("bytes", r[1]);
             ret.put("verified", true);
             ret.put("mode", r[2]);
+            ret.put("replaceKind", c.lastReplaceKind());   /* 现场诊断：renameTo / nioAtomicMove */
         } catch (Throwable e) {
             ret.put("ok", false);
             ret.put("error", errText(e));

@@ -13,7 +13,7 @@ on:
       - 'icons/**'
       - '.github/workflows/android.yml'
 
-  # PR 到 main 时也构建：合并前就能看到构建结果与 22 项故障测试
+  # PR 到 main 时也构建：合并前就能看到构建结果与 33 项故障场景测试
   pull_request:
     branches: [main]
     paths:

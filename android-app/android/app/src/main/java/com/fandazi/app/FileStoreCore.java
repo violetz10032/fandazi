@@ -5,27 +5,31 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * FileStore 的纯文件逻辑（只用 java.io，不依赖 Android / Capacitor），便于在普通 JVM 上跑故障场景。
  *
  * 安全写入流程（顺序不可调换）：
- *   1) 校验文件名 / 尺寸 / 内容
- *   2) 在同一目录写唯一临时文件 &lt;name&gt;.&lt;uuid&gt;.part
+ *   1) 校验文件名 / 尺寸 / JSON 结构
+ *   2) 在同一目录写唯一临时文件 &lt;name&gt;.&lt;nanotime&gt;_&lt;tid&gt;.part，并登记为「活动写入」
  *   3) flush + FileDescriptor.sync 落盘
- *   4) 读回校验：长度、SHA-256、严格 UTF-8 解码、JSON 结构（仅 .json）
+ *   4) 读回校验：长度、SHA-256、严格 UTF-8、内容逐字符比对
  *   5) 原子替换：优先 renameTo（POSIX rename(2)，全 API 级别可用），失败再用反射调
  *      java.nio.file.Files.move(ATOMIC_MOVE)，不直接引用 nio（minSdk 22，API 26 以下没有该类）
- *   6) 任一步失败：不动正式文件，清理临时文件，抛出明确错误
+ *   6) 任一步失败：不动正式文件，注销并清理临时文件，抛出明确错误
  *
- * 并发：同一目标文件的写入按路径串行化，避免互相覆盖。
+ * 并发：同一目标文件的写入按路径串行化；不同目标文件可并行，清理时会跳过仍在写入的临时文件。
+ * 故障注入：只通过构造参数 FaultHook 提供，生产路径（FileStoreCore(File)）不存在任何开关。
  */
 public final class FileStoreCore {
 
@@ -37,31 +41,45 @@ public final class FileStoreCore {
     public static final int MAX_NAME = 180;
     /** 临时文件后缀。 */
     public static final String PART = ".part";
-    /** 残留临时文件的保留时长（超过即视为可清理）。 */
+    /** 残留临时文件的保留时长（无活动登记时，超过即视为可清理）。 */
     public static final long PART_TTL_MS = 60L * 60 * 1000;
 
-    /**
-     * 故障注入点：仅供 FileStoreCoreTest 使用，生产路径恒为 null。
-     * 取值 sync-fail / after-write / corrupt-tmp / before-replace。
-     * 用来真实模拟"落盘后失败""落盘内容被破坏""替换阶段失败"，而不是用正常路径结果冒充故障结果。
-     */
-    static volatile String FAULT = null;
-
-    /** 最近一次成功替换所用的机制（renameTo / nioAtomicMove / renameTo-fallback），供测试与现场诊断。 */
-    static volatile String LAST_REPLACE_KIND = "";
-
-    private static void faultPoint(String point) throws IOException {
-        if (FAULT != null && FAULT.equals(point)) {
-            throw new IOException("InjectedFault: " + point);
-        }
-    }
-
+    /** 正在写入的临时文件（绝对路径 → 开始时间）。进程内共享，用于保护并发任务的临时文件。 */
+    private static final ConcurrentHashMap<String, Long> ACTIVE = new ConcurrentHashMap<String, Long>();
     private static final ConcurrentHashMap<String, Object> LOCKS = new ConcurrentHashMap<String, Object>();
 
+    /**
+     * 故障注入接口：仅供测试通过构造函数传入，生产代码（插件）从不构造它。
+     * 返回当前生效的注入点名称，null 表示不注入。
+     */
+    public interface FaultHook {
+        String point();
+    }
+
+    /** 清理结果：区分「清理了多少」与「清理失败」，失败时保留可诊断信息。 */
+    public static final class Cleanup {
+        public final int removed;
+        public final int failed;
+        public final String error;
+        Cleanup(int removed, int failed, String error) {
+            this.removed = removed;
+            this.failed = failed;
+            this.error = error;
+        }
+        public boolean ok() { return failed == 0 && error == null; }
+    }
+
     private final File dir;
+    private final FaultHook fault;
+    private volatile String lastReplaceKind = "";
 
     public FileStoreCore(File dir) {
+        this(dir, null);
+    }
+
+    public FileStoreCore(File dir, FaultHook fault) {
         this.dir = dir;
+        this.fault = fault;
     }
 
     public File dir() {
@@ -70,6 +88,21 @@ public final class FileStoreCore {
 
     public File file(String name) {
         return new File(dir, name);
+    }
+
+    /** 最近一次成功替换所用机制（renameTo / nioAtomicMove / renameTo-fallback）。 */
+    public String lastReplaceKind() {
+        return lastReplaceKind;
+    }
+
+    private void faultPoint(String point) throws IOException {
+        if (fault != null && point.equals(fault.point())) {
+            throw new IOException("InjectedFault: " + point);
+        }
+    }
+
+    private boolean faultForced(String point) {
+        return fault != null && point.equals(fault.point());
     }
 
     /* ---------------- 名称与目录 ---------------- */
@@ -98,28 +131,18 @@ public final class FileStoreCore {
         }
     }
 
-    /**
-     * 列出备份文件。
-     * 目录不存在 / 存在但为空 → 空数组；listFiles() 返回 null → 抛错（不伪装成空列表）。
-     * 临时文件一律不返回。
-     */
+    /** 目录不存在 / 空目录 → 空数组；listFiles() 返回 null → 抛错；临时文件不返回。 */
     public File[] list() throws IOException {
         if (!dir.exists()) return new File[0];
         if (!dir.isDirectory()) throw new IOException("NotADirectory: " + dir.getAbsolutePath());
         File[] all = dir.listFiles();
         if (all == null) throw new IOException("ListFailed: listFiles returned null, " + dir.getAbsolutePath());
-        int keep = 0;
+        List<File> out = new ArrayList<File>(all.length);
         for (int i = 0; i < all.length; i++) {
             File f = all[i];
-            if (f != null && f.isFile() && !isPart(f.getName())) keep++;
+            if (f != null && f.isFile() && !isPart(f.getName())) out.add(f);
         }
-        File[] out = new File[keep];
-        int k = 0;
-        for (int i = 0; i < all.length; i++) {
-            File f = all[i];
-            if (f != null && f.isFile() && !isPart(f.getName())) out[k++] = f;
-        }
-        return out;
+        return out.toArray(new File[0]);
     }
 
     public static boolean isPart(String name) {
@@ -133,30 +156,13 @@ public final class FileStoreCore {
         File f = file(name);
         if (!f.exists()) throw new IOException("FileNotFound: " + name);
         if (!f.isFile()) throw new IOException("NotAFile: " + name);
-        long len = f.length();
-        if (len > MAX_READ_BYTES) {
-            throw new IOException("TooLarge: " + name + " " + len + " > " + MAX_READ_BYTES);
+        if (f.length() > MAX_READ_BYTES) {
+            throw new IOException("TooLarge: " + name + " " + f.length() + " > " + MAX_READ_BYTES);
         }
-        ByteArrayOutputStream buf = new ByteArrayOutputStream((int) Math.min(len + 16, 1 << 20));
-        FileInputStream in = new FileInputStream(f);
-        try {
-            byte[] tmp = new byte[8192];
-            int n;
-            long total = 0;
-            while ((n = in.read(tmp)) > 0) {
-                total += n;
-                if (total > MAX_READ_BYTES) {   /* 读取期间文件变大也要拦住 */
-                    throw new IOException("TooLarge: " + name + " read over " + MAX_READ_BYTES);
-                }
-                buf.write(tmp, 0, n);
-            }
-        } finally {
-            closeQuietly(in);
-        }
-        return decodeUtf8(buf.toByteArray(), name);
+        return decodeUtf8(readAll(f, name), name);
     }
 
-    /** 严格 UTF-8 解码：遇到非法字节序列直接报错，不静默替换成 U+FFFD。 */
+    /** 严格 UTF-8 解码：非法字节序列直接报错，不静默替换成 U+FFFD。 */
     static String decodeUtf8(byte[] bytes, String label) throws IOException {
         CharsetDecoder dec = StandardCharsets.UTF_8.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPORT)
@@ -166,6 +172,34 @@ public final class FileStoreCore {
         } catch (CharacterCodingException e) {
             throw new IOException("BadEncoding: " + label + " is not valid UTF-8");
         }
+    }
+
+    /**
+     * 读取全部字节。除了读取前的长度检查，还在读取过程中累计校验：
+     * 文件在读取期间变大也会被拦住，不会无限分配内存。
+     */
+    private byte[] readAll(File f, String name) throws IOException {
+        long declared = f.length();
+        if (declared > MAX_READ_BYTES) {
+            throw new IOException("TooLarge: " + name + " " + declared + " > " + MAX_READ_BYTES);
+        }
+        ByteArrayOutputStream buf = new ByteArrayOutputStream((int) Math.min(declared + 16, 1 << 20));
+        FileInputStream in = new FileInputStream(f);
+        try {
+            byte[] tmp = new byte[8192];
+            int n;
+            long total = 0;
+            while ((n = in.read(tmp)) > 0) {
+                total += n;
+                if (total > MAX_READ_BYTES) {
+                    throw new IOException("TooLarge: " + name + " read over " + MAX_READ_BYTES);
+                }
+                buf.write(tmp, 0, n);
+            }
+        } finally {
+            closeQuietly(in);
+        }
+        return buf.toByteArray();
     }
 
     /* ---------------- 写 ---------------- */
@@ -185,29 +219,22 @@ public final class FileStoreCore {
 
         ensureDir();
         File dst = file(name);
-        Object lock = lockFor(dst);
-        synchronized (lock) {
+        synchronized (lockFor(dst)) {
             return writeLocked(dst, name, bytes, data);
         }
     }
 
     private Object[] writeLocked(File dst, String name, byte[] bytes, String data) throws IOException {
-        File tmp = new File(dir, name + "." + Long.toHexString(System.nanoTime()) + "_"
-                + Integer.toHexString((int) (Thread.currentThread().getId() & 0xffff)) + PART);
+        File tmp = new File(dir, name + "." + Long.toHexString(System.nanoTime())
+                + "_" + Integer.toHexString((int) (Thread.currentThread().getId() & 0xffff)) + PART);
         boolean moved = false;
+        ACTIVE.put(tmp.getAbsolutePath(), Long.valueOf(System.currentTimeMillis()));
         try {
             writeAndSync(tmp, bytes, name);
-            faultPoint("after-write");   /* 模拟写完但流程中断 */
+            faultPoint("after-write");
 
-            if ("corrupt-tmp".equals(FAULT)) {   /* 模拟落盘内容被破坏（长度/哈希必然不符） */
-                FileOutputStream bad = new FileOutputStream(tmp, true);
-                try {
-                    bad.write('!');
-                    bad.flush();
-                } finally {
-                    closeQuietly(bad);
-                }
-            }
+            /* 等长篡改：长度校验会通过，只有 SHA-256 能发现（用于验证哈希分支真的被执行） */
+            if (faultForced("corrupt-same-length")) corruptSameLength(tmp);
 
             long written = tmp.length();
             if (written != bytes.length) {
@@ -218,25 +245,39 @@ public final class FileStoreCore {
             if (!tmpSha.equals(wantSha)) {
                 throw new IOException("VerifyFailed: sha256 mismatch for " + name);
             }
-            /* 读回解码：确认落盘内容能按 UTF-8 完整还原（防止写入阶段字节损坏） */
-            String back = decodeUtf8(readAll(tmp, bytes.length, name), name);
+            String back = decodeUtf8(readAll(tmp, name), name);
             if (!back.equals(data)) {
                 throw new IOException("VerifyFailed: content mismatch after write for " + name);
             }
 
-            /* 内容已一致：不重写，避免无意义替换 */
             if (dst.isFile() && dst.length() == written && sha256(dst).equals(tmpSha)) {
                 return new Object[] { dst, Long.valueOf(written), "unchanged" };
             }
-            faultPoint("before-replace");   /* 模拟替换阶段失败：必须保留旧文件 */
+            faultPoint("before-replace");
             if (!replace(tmp, dst)) {
                 throw new IOException("ReplaceFailed: old backup kept, " + name);
             }
             moved = true;
             return new Object[] { dst, Long.valueOf(written), "replaced" };
         } finally {
+            ACTIVE.remove(tmp.getAbsolutePath());
             if (!moved) deleteQuietly(tmp);
             cleanupStaleParts(dst);
+        }
+    }
+
+    /** 保持长度不变，改写尾部一个字节：只会被 SHA-256 / 内容比对发现。 */
+    private static void corruptSameLength(File tmp) throws IOException {
+        RandomAccessFile raf = new RandomAccessFile(tmp, "rw");
+        try {
+            long len = raf.length();
+            if (len <= 0) throw new IOException("CorruptInject: empty temp file");
+            raf.seek(len - 1);
+            int b = raf.read();
+            raf.seek(len - 1);
+            raf.write(b == 'x' ? 'y' : 'x');
+        } finally {
+            try { raf.close(); } catch (Throwable ignored) { }
         }
     }
 
@@ -245,7 +286,7 @@ public final class FileStoreCore {
         try {
             out.write(bytes);
             out.flush();
-            faultPoint("sync-fail");   /* 模拟 fsync 失败：此时正式文件尚未被触碰 */
+            faultPoint("sync-fail");
             try {
                 out.getFD().sync();
             } catch (IOException e) {
@@ -256,55 +297,32 @@ public final class FileStoreCore {
         }
     }
 
-    private byte[] readAll(File f, int expect, String name) throws IOException {
-        if (f.length() > MAX_READ_BYTES) throw new IOException("TooLarge: " + name);
-        ByteArrayOutputStream buf = new ByteArrayOutputStream(Math.min(expect + 16, 1 << 20));
-        FileInputStream in = new FileInputStream(f);
-        try {
-            byte[] tmp = new byte[8192];
-            int n;
-            long total = 0;
-            while ((n = in.read(tmp)) > 0) {
-                total += n;
-                if (total > MAX_READ_BYTES) {   /* 不只看读前长度：文件在读期间变大也要拦住 */
-                    throw new IOException("TooLarge: " + name + " read over " + MAX_READ_BYTES);
-                }
-                buf.write(tmp, 0, n);
-            }
-        } finally {
-            closeQuietly(in);
-        }
-        return buf.toByteArray();
-    }
-
     /* ---------------- 原子替换 ---------------- */
 
     /**
      * 原子替换：先 renameTo（POSIX rename(2)，同目录覆盖目标，全 API 级别可用）；
-     * 失败时再用反射调用 java.nio.file.Files.move(ATOMIC_MOVE)，避免在 API 26 以下触发类加载失败。
-     * 两种方式都不先删除旧文件：失败即保留旧备份。
+     * 失败时用反射调 java.nio.file.Files.move(ATOMIC_MOVE)，避免在 API 26 以下触发类加载失败。
+     * 任何一条路都不先删除旧文件：失败即保留旧备份。
      */
-    private static boolean replace(File tmp, File dst) {
-        LAST_REPLACE_KIND = "";
-        /* force-nio：仅为测试而跳过 renameTo，用来验证降级路径真的可用 */
-        if (!"force-nio".equals(FAULT)) {
+    private boolean replace(File tmp, File dst) {
+        lastReplaceKind = "";
+        if (!faultForced("force-nio")) {
             try {
                 if (tmp.renameTo(dst)) {
-                    LAST_REPLACE_KIND = "renameTo";
+                    lastReplaceKind = "renameTo";
                     return true;
                 }
             } catch (Throwable ignored) {
             }
         }
         if (nioAtomicMove(tmp, dst)) {
-            LAST_REPLACE_KIND = "nioAtomicMove";
+            lastReplaceKind = "nioAtomicMove";
             return true;
         }
-        /* 最后手段：仅当目标不存在时才允许落盘，绝不删除已有备份 */
         if (!dst.exists()) {
             try {
                 if (tmp.renameTo(dst)) {
-                    LAST_REPLACE_KIND = "renameTo-fallback";
+                    lastReplaceKind = "renameTo-fallback";
                     return true;
                 }
             } catch (Throwable ignored) {
@@ -346,23 +364,56 @@ public final class FileStoreCore {
 
     /* ---------------- 清理与删除 ---------------- */
 
-    /** 清理本目录内过期的临时文件；只处理 <name>.part 形态，不动任何正式文件。 */
-    public int cleanupStaleParts(File keepDst) {
-        int removed = 0;
+    /**
+     * 清理本目录内的过期临时文件。
+     * 保护规则：正在写入（已登记 ACTIVE）的临时文件一律跳过，不看年龄；当前目标文件也跳过。
+     * 异常不吞成 0：失败计数与错误信息通过返回值带出，便于诊断。
+     */
+    public Cleanup cleanupStaleParts(File keepDst) {
+        int removed = 0, failed = 0;
+        String error = null;
+        File[] all;
         try {
-            File[] all = dir.listFiles();
-            if (all == null) return 0;
-            long now = System.currentTimeMillis();
-            for (int i = 0; i < all.length; i++) {
-                File f = all[i];
-                if (f == null || !f.isFile() || !isPart(f.getName())) continue;
-                if (keepDst != null && f.equals(keepDst)) continue;
-                if (now - f.lastModified() < PART_TTL_MS) continue;
-                if (f.delete()) removed++;
-            }
-        } catch (Throwable ignored) {
+            all = dir.listFiles();
+        } catch (Throwable e) {
+            return new Cleanup(0, 0, "ListFailed: " + e.getClass().getSimpleName());
         }
-        return removed;
+        if (all == null) {
+            return new Cleanup(0, 0, dir.exists() ? "ListFailed: listFiles returned null" : null);
+        }
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < all.length; i++) {
+            File f = all[i];
+            if (f == null || !f.isFile() || !isPart(f.getName())) continue;
+            if (keepDst != null && f.equals(keepDst)) continue;
+            if (ACTIVE.containsKey(f.getAbsolutePath())) continue;   /* 活动写入：不按年龄清理 */
+            long age;
+            try {
+                age = now - f.lastModified();
+            } catch (Throwable e) {
+                failed++;
+                if (error == null) error = "StatFailed: " + f.getName();
+                continue;
+            }
+            if (age < PART_TTL_MS) continue;
+            try {
+                if (f.delete()) {
+                    removed++;
+                } else {
+                    failed++;
+                    if (error == null) error = "DeleteFailed: " + f.getName();
+                }
+            } catch (Throwable e) {
+                failed++;
+                if (error == null) error = "DeleteFailed: " + f.getName() + " " + e.getClass().getSimpleName();
+            }
+        }
+        return new Cleanup(removed, failed, error);
+    }
+
+    /** 当前登记中的活动写入数量（诊断/测试用）。 */
+    static int activeWriteCount() {
+        return ACTIVE.size();
     }
 
     /** 删除：不存在返回 false；存在但删不掉抛错；不允许目录与非法名。 */
@@ -377,10 +428,7 @@ public final class FileStoreCore {
 
     /* ---------------- 校验工具 ---------------- */
 
-    /**
-     * JSON 结构粗检（不替代完整解析）：首尾必须是对象括号，引号成对，无非转义控制字符。
-     * 完整语义校验仍由前端 parseBackupText 负责；这里挡住的是"写坏的半截文件"。
-     */
+    /** JSON 结构粗检（不替代完整解析）：首尾必须是对象括号，引号成对，无非转义控制字符。 */
     static void checkJsonShape(String text, String name) throws IOException {
         int n = text.length();
         int i = 0;
