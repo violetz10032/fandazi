@@ -33,8 +33,26 @@ public class FileStorePlugin extends Plugin {
         return msg.indexOf(':') >= 0 ? msg : cls + ": " + msg;
     }
 
+    /* 插件实例内共享同一个 FileStoreCore：save 产生的诊断才能被后续 diag 读到。
+       懒加载 + 双重检查，状态在实例上，不使用静态可变字段。 */
+    private volatile FileStoreSession session;
+
+    private FileStoreSession session() {
+        FileStoreSession s = session;
+        if (s == null) {
+            synchronized (this) {
+                s = session;
+                if (s == null) {
+                    s = new FileStoreSession(new File(getContext().getFilesDir(), DIR));
+                    session = s;
+                }
+            }
+        }
+        return s;
+    }
+
     private FileStoreCore core() {
-        return new FileStoreCore(new File(getContext().getFilesDir(), DIR));
+        return session().core();
     }
 
     @PluginMethod

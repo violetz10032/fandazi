@@ -434,6 +434,12 @@ public final class FileStoreCore {
                 continue;
             }
             if (age < PART_TTL_MS) continue;
+            /* 测试专用注入：模拟删除失败（跨平台可复现），生产路径 hook 恒为 null */
+            if (faultForced("cleanup-delete-fail")) {
+                failed++;
+                if (error == null) { error = "DeleteFailed: " + f.getName(); failedName = f.getName(); }
+                continue;
+            }
             try {
                 if (f.delete()) {
                     removed++;

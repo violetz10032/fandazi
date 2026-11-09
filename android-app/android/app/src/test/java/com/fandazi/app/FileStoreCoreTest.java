@@ -471,6 +471,68 @@ public class FileStoreCoreTest {
             info("34b 自动清理失败写入诊断", "Linux 下删除不受写位限制，无法在单次 save 内构造清理失败；CI 走 34a 的目录只读路径");
         }
 
+
+        /* 35 插件会话：同一实例的 core 复用，save 的诊断能被后续 diag 读到 */
+        File sessDir = new File(root, "sess-dir");
+        FileStoreSession sess = new FileStoreSession(sessDir, HOOK);
+        boolean lazyBefore = !sess.initialized();
+        FileStoreCore sc1 = sess.core();
+        FileStoreCore sc2 = sess.core();
+        sc1.ensureDir();
+        File sessStale = new File(sessDir, "sess.json.s1_1.part");
+        writeBytes(sessStale, "x");
+        sessStale.setLastModified(System.currentTimeMillis() - FileStoreCore.PART_TTL_MS - 60000);
+        POINT.set("cleanup-delete-fail");
+        try { sc1.save("sess.json", "{\"v\":1}"); } finally { POINT.remove(); }
+        FileStoreCore.CleanupDiagnostics d1 = sess.core().cleanupDiagnostics();
+        boolean readAfterSave = d1.failed() > 0 && d1.failedName() != null
+                && d1.failedName().equals(sessStale.getName()) && d1.error() != null;
+        check("35 插件会话复用同一 core，save 的诊断可被后续 diag 读取",
+                lazyBefore && sc1 == sc2 && sess.core() == sc1 && readAfterSave,
+                "lazy=" + lazyBefore + " same=" + (sc1 == sc2) + " diag=" + d1.removed() + "/" + d1.failed()
+                        + " name=" + d1.failedName());
+
+        /* 36 第二次 save 后诊断被刷新（失败 -> 成功），且旧备份仍可读 */
+        boolean oldReadable = sc1.read("sess.json").equals("{\"v\":1}");
+        sc1.save("sess2.json", "{\"v\":2}");
+        FileStoreCore.CleanupDiagnostics d2 = sess.core().cleanupDiagnostics();
+        boolean refreshed = d2.failed() == 0 && d2.error() == null && d2.at() >= d1.at();
+        check("36 多次 save 后诊断正确更新，旧备份仍可读",
+                refreshed && oldReadable && sc1.read("sess2.json").equals("{\"v\":2}"),
+                "refreshed=" + refreshed + " at=" + d2.at() + " failed=" + d2.failed() + " oldReadable=" + oldReadable);
+
+        /* 37 并发：会话在并发下始终返回同一 core，诊断读不抛异常、字段合法 */
+        final FileStoreSession s37 = new FileStoreSession(new File(root, "sess-race"), HOOK);
+        s37.core().ensureDir();
+        final java.util.Set<Integer> ids = java.util.Collections.synchronizedSet(new java.util.HashSet<Integer>());
+        final List<String> err37 = java.util.Collections.synchronizedList(new ArrayList<String>());
+        final CountDownLatch go37 = new CountDownLatch(1);
+        final CountDownLatch done37 = new CountDownLatch(6);
+        for (int i = 0; i < 6; i++) {
+            final int n = i;
+            new Thread(new Runnable() {
+                public void run() {
+                    try {
+                        go37.await();
+                        ids.add(System.identityHashCode(s37.core()));
+                        s37.core().save("race37-" + n + ".json", "{\"n\":" + n + "}");
+                        FileStoreCore.CleanupDiagnostics d = s37.core().cleanupDiagnostics();
+                        if (d.at() < 0 || d.failed() < 0) err37.add("bad diag");
+                    } catch (Throwable e) {
+                        err37.add(String.valueOf(e.getMessage()));
+                    } finally {
+                        done37.countDown();
+                    }
+                }
+            }).start();
+        }
+        go37.countDown();
+        done37.await();
+        FileStoreCore.CleanupDiagnostics d37 = s37.core().cleanupDiagnostics();
+        check("37 并发调用下会话单例稳定、诊断不错乱",
+                ids.size() == 1 && err37.isEmpty() && d37.failed() == 0 && s37.core().read("race37-0.json").equals("{\"n\":0}"),
+                "cores=" + ids.size() + " errs=" + err37 + " diagFailed=" + d37.failed());
+
         System.out.println("TOTAL pass=" + pass + " fail=" + fail + " skip=" + skip);
         if (fail > 0) System.exit(1);
     }
