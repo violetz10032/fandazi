@@ -27496,7 +27496,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         req.onerror = function(){ reject(req.error || new Error('恢复点写入失败')); };
       });
     }).then(function(s){
-      return snapshotTrim().then(function(){ return s; });
+      /* 恢复点已落盘：之后裁剪旧恢复点失败，不能让已建好的恢复点被当作不存在。
+         裁剪只是清理历史，失败只记诊断，恢复点本身照常返回。 */
+      return snapshotTrim().then(function(){ return s; }, function(e){
+        logError('恢复点裁剪', e);
+        return s;
+      });
     }).catch(function(e){
       logError('恢复点写入', e);
       return null;
@@ -27610,6 +27615,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var written = [];
     var snapRef = null;
     return makeSnapshot('before-restore').then(function(snap){
+      /* 恢复点没建成就不允许覆盖本机数据：它是整条恢复链上唯一的回滚锚点。
+         走到这里时照片与数据库都还没写（写入在后续 then 里），中止即等于零改动。 */
+      if(!snap){
+        var noSnapErr = new Error(idbSupported()
+          ? '无法创建恢复点，已取消恢复，本机数据未改动。请检查存储空间后重试。'
+          : '本机不支持恢复点（IndexedDB 不可用），已取消恢复，本机数据未改动。');
+        noSnapErr.noWrite = true;               /* 未写入任何数据：界面不显示「已回滚」 */
+        noSnapErr.diagLogged = idbSupported();  /* 写入失败已由 makeSnapshot 记入诊断，避免重复记录 */
+        throw noSnapErr;
+      }
       snapRef = snap;
       return backupIdList();
     }).then(function(existing){
@@ -27792,7 +27807,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       };
     }).catch(function(e){
       restoreBusy = false;
-      if(!testFailPhotoWrite) logError('恢复备份', e);
+      /* 已由 makeSnapshot 记过诊断的失败不再记一次，避免同一故障两条日志 */
+      if(!testFailPhotoWrite && !(e && e.diagLogged)) logError('恢复备份', e);
       throw e;
     });
   }
@@ -27907,7 +27923,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var rbErrs = (e && e.rollbackErrors) ? e.rollbackErrors : [];
     var msg = (e && e.message) ? e.message : '未知错误';
     if(!rbErrs.length){
-      backupErrorModal((title || '恢复失败') + '：' + msg + '（已回滚，原数据未被修改）', title || '恢复失败');
+      /* noWrite：一个分区都没写（如恢复点创建失败），说「已回滚」会误导 */
+      backupErrorModal((title || '恢复失败') + '：' + msg + ((e && e.noWrite) ? '' : '（已回滚，原数据未被修改）'), title || '恢复失败');
       return;
     }
     var snapId = (e && e.snapshotId) ? String(e.snapshotId) : '';
