@@ -28268,6 +28268,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function autobFs(){
     try{ return (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Filesystem) || null; }catch(e){ return null; }
   }
+  /* 自建原生插件 FileStore（save/list/read/delete，直写 getFilesDir()/fandazi-backups）；优先于 Filesystem */
+  function autobStore(){
+    try{
+      if(window.Capacitor){
+        if(Capacitor.Plugins && Capacitor.Plugins.FileStore) return Capacitor.Plugins.FileStore;
+        if(typeof Capacitor.registerPlugin === 'function'){
+          var p = Capacitor.registerPlugin('FileStore');
+          if(p) return p;
+        }
+      }
+    }catch(e){}
+    return null;
+  }
   function autobPad2(n){ return (n < 10 ? '0' : '') + n; }
   function autobFileName(at){
     var d = new Date(num(at) > 0 ? num(at) : Date.now());
@@ -28306,29 +28319,48 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return step(0).catch(function(){ return []; });
   }
   function autobNativeList(){
+    var store = autobStore();
     var fs = autobFs();
-    if(!fs) return Promise.resolve([]);
-    return Promise.all(['Data'].map(function(k){ return autobReadDir(fs, k); })).then(function(all){
-      var seen = {}, out = [];
-      all.forEach(function(list){
-        list.forEach(function(it){
-          if(seen[it.name]) return;
-          seen[it.name] = 1;
-          out.push(it);
+    function viaFs(){
+      if(!fs) return Promise.resolve([]);
+      return Promise.all(['Data'].map(function(k){ return autobReadDir(fs, k); })).then(function(all){
+        var seen = {}, out = [];
+        all.forEach(function(list){
+          list.forEach(function(it){
+            if(seen[it.name]) return;
+            seen[it.name] = 1;
+            out.push(it);
+          });
         });
+        out.sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
+        return out;
       });
-      out.sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
-      return out;
-    });
+    }
+    if(!store) return viaFs();
+    return capSafe(function(){ return store.list(); }, 'filestore:list').then(function(r){
+      var files = (r && r.files) || [];
+      return files.map(function(f){
+        return { name:String((f && f.name) || ''), dirKind:'FileStore', bytes:num(f && f.bytes), at:num(f && f.mtime) || autobNameAt(f && f.name) || 0 };
+      }).filter(function(it){ return AUTOB_FILE_RE.test(it.name); })
+        .sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
+    }, function(){ return viaFs(); });
   }
   function autobNativeDelete(name){
+    var store = autobStore();
     var fs = autobFs();
-    if(!fs) return Promise.resolve(false);
-    return Promise.all(AUTOB_PATHS.map(function(dir){
-      var p = (dir ? dir + '/' : '') + name;
-      return capSafe(function(){ return fs.deleteFile({ directory:'Data', path:p }); }, 'autob:deleteFile')
-        .then(function(){ return true; }, function(){ return false; });
-    })).then(function(r){ return r.some(Boolean); });
+    function viaFs(){
+      if(!fs) return Promise.resolve(false);
+      return Promise.all(AUTOB_PATHS.map(function(dir){
+        var p = (dir ? dir + '/' : '') + name;
+        return capSafe(function(){ return fs.deleteFile({ directory:'Data', path:p }); }, 'autob:deleteFile')
+          .then(function(){ return true; }, function(){ return false; });
+      })).then(function(r){ return r.some(Boolean); });
+    }
+    if(!store) return viaFs();
+    return capSafe(function(){ return store.delete({ name:name }); }, 'filestore:delete').then(function(r){
+      if(r && r.ok) return true;
+      return viaFs();
+    }, function(){ return viaFs(); });
   }
   /* 1.2.1：不再 mkdir / 不再 getUri，只用 writeFile（recursive 自动建父目录）+ 根目录兜底 */
   function autobWriteFile(fs, kind, name, text){
@@ -28336,7 +28368,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       if(i >= AUTOB_PATHS.length){
         var err = new Error('写入失败：子目录与根目录都不可写');
         diagBakNote('autob:write-final', err);
-        return Promise.resolve({ ok:false, name:name, dirKind:kind, uri:'', reason:String(err.message).slice(0, 140) });
+        return Promise.resolve({ ok:false, name:name, dirKind:kind, uri:'', reason:String(err.message) });
       }
       var dir = AUTOB_PATHS[i];
       var p = (dir ? dir + '/' : '') + name;
@@ -28351,31 +28383,58 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     return step(0);
   }
-  /* 自动备份只写应用私有目录 Data：不申请存储权限，也不写 Android/data 外部目录 */
+  /* 自动备份只写应用私有目录：优先自建 FileStore，其次 Capacitor Filesystem，都失败才报失败 */
   function autobNativeWrite(rec){
-    var fs = autobFs();
-    if(!fs) return Promise.resolve({ ok:false, reason:'unavailable', dirKind:'', name:'', perm:'not_needed', degraded:'' });
     var name = rec.nativeName || autobFileName(rec.at);
-    return autobWriteFile(fs, 'Data', name, rec.text).then(function(r){
-      if(r.ok) return { ok:true, name:r.name, dirKind:'Data', uri:r.uri, perm:'not_needed', degraded:'' };
-      return { ok:false, name:name, dirKind:'', reason:(r.reason || '原生写入失败'), perm:'not_needed', degraded:'' };
+    var store = autobStore();
+    function viaFs(){
+      var fs = autobFs();
+      if(!fs) return Promise.resolve({ ok:false, name:name, dirKind:'', uri:'', reason:'原生插件不可用', perm:'not_needed', degraded:'' });
+      return autobWriteFile(fs, 'Data', name, rec.text).then(function(r){
+        if(r.ok) return { ok:true, name:r.name, dirKind:'Data', uri:r.uri, perm:'not_needed', degraded:'' };
+        return { ok:false, name:name, dirKind:'', uri:'', reason:(r.reason || '原生写入失败'), perm:'not_needed', degraded:'' };
+      });
+    }
+    if(!store) return viaFs();
+    return capSafe(function(){ return store.save({ name:name, data:rec.text }); }, 'filestore:save').then(function(r){
+      if(r && r.ok) return { ok:true, name:name, dirKind:'FileStore', uri:String(r.path || ''), perm:'not_needed', degraded:'' };
+      var why = 'FileStore: ' + String((r && r.error) || '未知错误');
+      return viaFs().then(function(fb){
+        if(fb.ok) return fb;
+        return { ok:false, name:name, dirKind:'', uri:'', reason:why + ' ｜ Filesystem: ' + (fb.reason || '写入失败'), perm:'not_needed', degraded:'' };
+      });
+    }, function(e){
+      var why = 'FileStore: ' + String((e && ((e.name || 'Error') + ': ' + (e.message || e))) || e);
+      return viaFs().then(function(fb){
+        if(fb.ok) return fb;
+        return { ok:false, name:name, dirKind:'', uri:'', reason:why + ' ｜ Filesystem: ' + (fb.reason || '写入失败'), perm:'not_needed', degraded:'' };
+      });
     });
   }
   function autobNativeRead(name){
+    var store = autobStore();
     var fs = autobFs();
-    if(!fs) return Promise.resolve('');
-    function step(i){
-      if(i >= AUTOB_PATHS.length) return Promise.resolve('');
-      var dir = AUTOB_PATHS[i];
-      var p = (dir ? dir + '/' : '') + name;
-      return capSafe(function(){ return fs.readFile({ directory:'Data', path:p, encoding:'utf8' }); }, 'autob:readFile').then(function(r){
-        var data = r && r.data;
-        if(typeof data !== 'string') data = autobUtf8FromBase64(data);
-        return data || '';
-      }, function(){ return step(i + 1); });
+    function viaFs(){
+      if(!fs) return Promise.resolve('');
+      function step(i){
+        if(i >= AUTOB_PATHS.length) return Promise.resolve('');
+        var dir = AUTOB_PATHS[i];
+        var p = (dir ? dir + '/' : '') + name;
+        return capSafe(function(){ return fs.readFile({ directory:'Data', path:p, encoding:'utf8' }); }, 'autob:readFile').then(function(r){
+          var data = r && r.data;
+          if(typeof data !== 'string') data = autobUtf8FromBase64(data);
+          return data || '';
+        }, function(){ return step(i + 1); });
+      }
+      return step(0);
     }
-    return step(0);
+    if(!store) return viaFs();
+    return capSafe(function(){ return store.read({ name:name }); }, 'filestore:read').then(function(r){
+      if(r && r.ok) return String(r.data || '');
+      return viaFs();
+    }, function(){ return viaFs(); });
   }
+  function autobNativeCap(){ return !!(autobStore() || autobFs()); }
   function autobNativeRotate(){
     var keep = autobKeep();
     return autobNativeList().then(function(list){
@@ -28459,7 +28518,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         photos:b.obj.stats.photoRefs, recipes:b.obj.stats.recipes, text:b.text, native:false, nativeName:autobFileName(at) };
       return autobPut(rec);
     }).then(function(){
-      if(!autobFs()) return { ok:false, reason:'unavailable', dirKind:'', name:'', perm:'not_needed', degraded:'' };
+      if(!autobNativeCap()) return { ok:false, reason:'unavailable', dirKind:'', name:'', perm:'not_needed', degraded:'' };
       return autobNativeWrite(rec);
     }).then(function(nr){
       rec.native = nr.ok === true;
@@ -28473,10 +28532,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           m.dirKind = nr.dirKind || '';
           m.perm = 'not_needed';
           m.degraded = '';
-          if(autobFs() && nr.ok !== true){
+          if(autobNativeCap() && nr.ok !== true){
             m.failCount = (num(m.failCount) || 0) + 1;
             m.lastFailAt = Date.now();
-            m.lastNativeErr = String(nr.reason || '未知原因').slice(0, 180);
+            m.lastNativeErr = String(nr.reason || '未知原因');
             m.lastErr = '应用私有目录写入失败：' + m.lastNativeErr;
           }else{
             m.lastErr = '';
@@ -28485,9 +28544,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             m.lastNativeErr = '';
           }
           if(nr.ok && nr.uri) m.dirPath = nr.uri;
-          if(!autobFs()){ m.dirPath = ''; m.dirKind = ''; m.nativeOk = false; }
+          if(!autobNativeCap()){ m.dirPath = ''; m.dirKind = ''; m.nativeOk = false; }
           autobMetaSave(m);
-          if(!autobFs()) autobWebSave(rec);
+          if(!autobNativeCap()) autobWebSave(rec);
           return { ok:true, at:rec.at, id:rec.id, bytes:rec.bytes, native:!!nr.ok,
             dirKind:nr.dirKind || '', degraded:nr.degraded || '', perm:nr.perm || 'not_needed',
             nativeReason:nr.reason || '', rotated:removed + nativeRemoved, ms:Math.round(nowMs() - t0) };
@@ -28512,7 +28571,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return autobRunOnce();
     }).then(function(res){
       /* 完成提示：私有目录没写进去时必须明说，不能伪装成已写入 */
-      if(res && res.ok && autobFs() && res.native !== true){
+      if(res && res.ok && autobNativeCap() && res.native !== true){
         try{ toast('自动备份已完成，但应用私有目录写入失败（仅应用内）：' + (res.nativeReason || '未知原因')); }
         catch(e){ logError('自动备份降级提示', e); }
       }
@@ -28604,7 +28663,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!box) return;
     var m = autobMetaLoad();
     autobBadgeRender();
-    var native = !!autobFs();
+    var native = !!autobNativeCap();
     var keep = autobKeep();
     var dirTxt;
     if(native){
@@ -29414,7 +29473,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           if(!res || !res.ok){ toast('自动备份未能完成'); return; }
           var t2 = '自动备份已完成（' + fmtBytes(res.bytes) + '）';
           if(res.native) t2 += '，已写入应用私有目录';
-          else if(autobFs()) t2 += '，应用私有目录写入失败（仅应用内）：' + (res.nativeReason || '未知原因');
+          else if(autobNativeCap()) t2 += '，应用私有目录写入失败（仅应用内）：' + (res.nativeReason || '未知原因');
           else t2 += '，已触发浏览器下载';
           toast(t2);
         }).catch(function(err){
@@ -33589,7 +33648,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       list: function(){ return autobAll(); },
       get: function(id){ return autobGet(id); },
       build: function(){ return autobBuild(); },
-      native: function(){ return !!autobFs(); },
+      native: function(){ return !!autobNativeCap(); },
       dirPath: function(){ return autobMetaLoad().dirPath; },
       probePath: function(){ return autobNativeProbePath(); },
       exportOne: function(id){ return autobExport(id); },

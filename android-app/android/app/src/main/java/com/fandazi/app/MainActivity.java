@@ -38,6 +38,7 @@ public class MainActivity extends BridgeActivity {
         }
         registerPlugin(IconAliasPlugin.class);
         registerPlugin(GeoPermissionPlugin.class);
+        registerPlugin(FileStorePlugin.class);
         super.onCreate(savedInstanceState);
     }
 
