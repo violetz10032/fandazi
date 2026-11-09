@@ -256,6 +256,91 @@ public class FileStoreCoreTest {
         c.save("uni.json", uni);
         check("22 中文与 emoji 往返一致", c.read("uni.json").equals(uni), "len=" + uni.length());
 
+        /* 23 落盘内容损坏（SHA-256 / 长度校验失败）：不替换、保留旧文件、清理临时文件 */
+        c.save("f23.json", "{\"v\":\"old\"}");
+        String old23 = c.read("f23.json");
+        String err23;
+        try { FileStoreCore.FAULT = "corrupt-tmp"; err23 = errOf(() -> c.save("f23.json", "{\"v\":\"new\"}")); }
+        finally { FileStoreCore.FAULT = null; }
+        check("23 落盘内容损坏时保留旧文件",
+                err23.contains("VerifyFailed") && c.read("f23.json").equals(old23) && countParts(c) == 0,
+                "err=" + err23 + " kept=" + c.read("f23.json") + " parts=" + countParts(c));
+
+        /* 24 写入中断（注入：写完但流程中断） */
+        c.save("f24.json", "{\"v\":1}");
+        String err24;
+        try { FileStoreCore.FAULT = "after-write"; err24 = errOf(() -> c.save("f24.json", "{\"v\":2}")); }
+        finally { FileStoreCore.FAULT = null; }
+        check("24 写入中断后旧文件完好且无残留临时文件",
+                err24.contains("InjectedFault") && c.read("f24.json").equals("{\"v\":1}") && countParts(c) == 0,
+                "err=" + err24 + " parts=" + countParts(c));
+
+        /* 25 fsync 失败（注入：flush 后、sync 前中断） */
+        c.save("f25.json", "{\"v\":1}");
+        String err25;
+        try { FileStoreCore.FAULT = "sync-fail"; err25 = errOf(() -> c.save("f25.json", "{\"v\":2}")); }
+        finally { FileStoreCore.FAULT = null; }
+        check("25 同步落盘失败时旧文件完好",
+                err25.contains("InjectedFault") && c.read("f25.json").equals("{\"v\":1}") && countParts(c) == 0,
+                "err=" + err25 + " parts=" + countParts(c));
+
+        /* 26 替换阶段失败（注入）：旧文件必须原样保留，且不残留临时文件 */
+        c.save("f26.json", "{\"v\":\"keep\"}");
+        String old26 = c.read("f26.json");
+        String err26;
+        try { FileStoreCore.FAULT = "before-replace"; err26 = errOf(() -> c.save("f26.json", "{\"v\":\"drop\"}")); }
+        finally { FileStoreCore.FAULT = null; }
+        check("26 替换失败时旧备份不被删除也不被改写",
+                err26.contains("InjectedFault") && c.read("f26.json").equals(old26) && countParts(c) == 0,
+                "err=" + err26 + " kept=" + c.read("f26.json"));
+
+        /* 27 替换机制可追踪：确认本平台实际走的是 renameTo 还是 nio 反射回退 */
+        c.save("f27.json", "{\"v\":1}");
+        String kind = FileStoreCore.LAST_REPLACE_KIND;
+        check("27 记录实际使用的替换机制", kind != null && kind.length() > 0, "kind=" + kind);
+
+        /* 28 清理只针对过期临时文件：不误删其它任务正在写的 .part */
+        File fresh = c.file("other.json.dead_1.part");
+        FileOutputStream fso = new FileOutputStream(fresh);
+        fso.write("in-progress".getBytes("UTF-8"));
+        fso.close();
+        c.save("f28.json", "{\"v\":1}");
+        boolean freshSurvived = fresh.exists();
+        fresh.setLastModified(System.currentTimeMillis() - FileStoreCore.PART_TTL_MS - 5000);
+        c.save("f28.json", "{\"v\":2}");
+        boolean staleRemoved = !fresh.exists();
+        check("28 只清理过期临时文件，不动其它任务的新鲜临时文件",
+                freshSurvived && staleRemoved, "freshSurvived=" + freshSurvived + " staleRemoved=" + staleRemoved);
+
+        /* 29 旧命名与前端正则兼容：可写入、可列出、可读取 */
+        String legacyName = "fandazi-autobak-20261109-120000-123.json";
+        c.save(legacyName, "{\"schemaVersion\":8,\"records\":[]}");
+        boolean listed = contains(namesOf(c.list()), legacyName);
+        boolean reOk = java.util.regex.Pattern.matches(
+                "^fandazi-autobak-[0-9]{8}-[0-9]{6}(?:-[0-9]{1,4})?\\.json$", legacyName);
+        check("29 旧备份命名可写可列可读并匹配前端过滤正则",
+                listed && reOk && c.read(legacyName).contains("\"schemaVersion\":8"),
+                "listed=" + listed + " regex=" + reOk);
+
+        /* 30 强制走 nio 降级路径：替换仍成功、内容正确、旧内容不丢 */
+        c.save("f30.json", "{\"v\":1}");
+        String err30 = "";
+        boolean ok30 = false;
+        String kind30;
+        try {
+            FileStoreCore.FAULT = "force-nio";
+            c.save("f30.json", "{\"v\":2}");
+            ok30 = true;
+        } catch (Exception e) {
+            err30 = String.valueOf(e.getMessage());
+        } finally {
+            FileStoreCore.FAULT = null;
+            kind30 = FileStoreCore.LAST_REPLACE_KIND;
+        }
+        check("30 renameTo 不可用时降级到 nio 原子替换",
+                ok30 && c.read("f30.json").equals("{\"v\":2}") && "nioAtomicMove".equals(kind30),
+                "ok=" + ok30 + " kind=" + kind30 + " err=" + err30);
+
         System.out.println("TOTAL pass=" + pass + " fail=" + fail + " skip=" + skip);
         if (fail > 0) System.exit(1);
     }

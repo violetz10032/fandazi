@@ -40,6 +40,22 @@ public final class FileStoreCore {
     /** 残留临时文件的保留时长（超过即视为可清理）。 */
     public static final long PART_TTL_MS = 60L * 60 * 1000;
 
+    /**
+     * 故障注入点：仅供 FileStoreCoreTest 使用，生产路径恒为 null。
+     * 取值 sync-fail / after-write / corrupt-tmp / before-replace。
+     * 用来真实模拟"落盘后失败""落盘内容被破坏""替换阶段失败"，而不是用正常路径结果冒充故障结果。
+     */
+    static volatile String FAULT = null;
+
+    /** 最近一次成功替换所用的机制（renameTo / nioAtomicMove / renameTo-fallback），供测试与现场诊断。 */
+    static volatile String LAST_REPLACE_KIND = "";
+
+    private static void faultPoint(String point) throws IOException {
+        if (FAULT != null && FAULT.equals(point)) {
+            throw new IOException("InjectedFault: " + point);
+        }
+    }
+
     private static final ConcurrentHashMap<String, Object> LOCKS = new ConcurrentHashMap<String, Object>();
 
     private final File dir;
@@ -181,6 +197,17 @@ public final class FileStoreCore {
         boolean moved = false;
         try {
             writeAndSync(tmp, bytes, name);
+            faultPoint("after-write");   /* 模拟写完但流程中断 */
+
+            if ("corrupt-tmp".equals(FAULT)) {   /* 模拟落盘内容被破坏（长度/哈希必然不符） */
+                FileOutputStream bad = new FileOutputStream(tmp, true);
+                try {
+                    bad.write('!');
+                    bad.flush();
+                } finally {
+                    closeQuietly(bad);
+                }
+            }
 
             long written = tmp.length();
             if (written != bytes.length) {
@@ -201,6 +228,7 @@ public final class FileStoreCore {
             if (dst.isFile() && dst.length() == written && sha256(dst).equals(tmpSha)) {
                 return new Object[] { dst, Long.valueOf(written), "unchanged" };
             }
+            faultPoint("before-replace");   /* 模拟替换阶段失败：必须保留旧文件 */
             if (!replace(tmp, dst)) {
                 throw new IOException("ReplaceFailed: old backup kept, " + name);
             }
@@ -217,6 +245,7 @@ public final class FileStoreCore {
         try {
             out.write(bytes);
             out.flush();
+            faultPoint("sync-fail");   /* 模拟 fsync 失败：此时正式文件尚未被触碰 */
             try {
                 out.getFD().sync();
             } catch (IOException e) {
@@ -234,7 +263,14 @@ public final class FileStoreCore {
         try {
             byte[] tmp = new byte[8192];
             int n;
-            while ((n = in.read(tmp)) > 0) buf.write(tmp, 0, n);
+            long total = 0;
+            while ((n = in.read(tmp)) > 0) {
+                total += n;
+                if (total > MAX_READ_BYTES) {   /* 不只看读前长度：文件在读期间变大也要拦住 */
+                    throw new IOException("TooLarge: " + name + " read over " + MAX_READ_BYTES);
+                }
+                buf.write(tmp, 0, n);
+            }
         } finally {
             closeQuietly(in);
         }
@@ -249,15 +285,28 @@ public final class FileStoreCore {
      * 两种方式都不先删除旧文件：失败即保留旧备份。
      */
     private static boolean replace(File tmp, File dst) {
-        try {
-            if (tmp.renameTo(dst)) return true;
-        } catch (Throwable ignored) {
+        LAST_REPLACE_KIND = "";
+        /* force-nio：仅为测试而跳过 renameTo，用来验证降级路径真的可用 */
+        if (!"force-nio".equals(FAULT)) {
+            try {
+                if (tmp.renameTo(dst)) {
+                    LAST_REPLACE_KIND = "renameTo";
+                    return true;
+                }
+            } catch (Throwable ignored) {
+            }
         }
-        if (nioAtomicMove(tmp, dst)) return true;
+        if (nioAtomicMove(tmp, dst)) {
+            LAST_REPLACE_KIND = "nioAtomicMove";
+            return true;
+        }
         /* 最后手段：仅当目标不存在时才允许落盘，绝不删除已有备份 */
         if (!dst.exists()) {
             try {
-                return tmp.renameTo(dst);
+                if (tmp.renameTo(dst)) {
+                    LAST_REPLACE_KIND = "renameTo-fallback";
+                    return true;
+                }
             } catch (Throwable ignored) {
             }
         }

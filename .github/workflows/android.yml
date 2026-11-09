@@ -4,7 +4,7 @@ name: Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, 'fix/**']
     paths:
       - 'android-app/**'
       - 'index.html'
@@ -29,7 +29,7 @@ permissions:
 
 # 同一 ref 连续提交时取消旧运行，避免重复占用额度
 concurrency:
-  group: android-${{ github.workflow }}-${{ github.ref }}
+  group: android-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
