@@ -140,4 +140,28 @@ public class FileStorePlugin extends Plugin {
         }
         call.resolve(ret);
     }
+
+    /** 诊断：返回最近一次自动清理的真实结果与容量上限。只读，不改任何数据。 */
+    @PluginMethod
+    public void diag(PluginCall call) {
+        JSObject ret = new JSObject();
+        try {
+            FileStoreCore c = core();
+            FileStoreCore.CleanupDiagnostics d = c.cleanupDiagnostics();
+            JSObject lc = new JSObject();
+            lc.put("at", d.at());
+            lc.put("removed", d.removed());
+            lc.put("failed", d.failed());
+            lc.put("error", d.error() == null ? "" : d.error());
+            lc.put("failedName", d.failedName() == null ? "" : d.failedName());
+            ret.put("ok", true);
+            ret.put("lastCleanup", lc);
+            ret.put("maxReadBytes", FileStoreCore.MAX_READ_BYTES);
+            ret.put("maxWriteBytes", FileStoreCore.MAX_WRITE_BYTES);
+        } catch (Throwable e) {
+            ret.put("ok", false);
+            ret.put("error", errText(e));
+        }
+        call.resolve(ret);
+    }
 }

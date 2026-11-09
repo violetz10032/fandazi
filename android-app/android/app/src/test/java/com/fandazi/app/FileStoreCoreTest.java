@@ -1,6 +1,7 @@
 package com.fandazi.app;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -415,6 +416,60 @@ public class FileStoreCoreTest {
         check("33 故障注入只能由构造函数传入，生产实例无静态开关",
                 !staticFault && prod.lastReplaceKind().length() > 0,
                 "staticFaultField=" + staticFault + " prodKind=" + prod.lastReplaceKind());
+
+
+        /* 34 清理失败：诊断可查、且不影响保存与读取旧备份 */
+        c.save("keep.json", "{\"v\":\"keep\"}");
+        File stuck2 = c.file("stuck2.json.stuck_1.part");
+        writeBytes(stuck2, "x");
+        stuck2.setLastModified(System.currentTimeMillis() - FileStoreCore.PART_TTL_MS - 60000);
+
+        FileStoreCore.Cleanup cp34;
+        boolean injected34;
+        if (WINDOWS) {
+            FileInputStream hold = new FileInputStream(stuck2);   /* 持有句柄：Windows 下删除失败 */
+            try { cp34 = c.cleanupStaleParts(null); } finally { hold.close(); }
+            injected34 = cp34.failed > 0;
+        } else {
+            File dir34 = c.dir();
+            dir34.setWritable(false);
+            try { cp34 = c.cleanupStaleParts(null); } finally { dir34.setWritable(true); }
+            injected34 = cp34.failed > 0;
+        }
+
+        /* 清理失败后：正常保存新备份、旧备份仍可读 */
+        Object[] r34 = c.save("keep2.json", "{\"v\":\"ok\"}");
+        boolean read34 = c.read("keep.json").equals("{\"v\":\"keep\"}")
+                && c.read("keep2.json").equals("{\"v\":\"ok\"}");
+        boolean diag34 = cp34.failed > 0 && cp34.error != null && cp34.failedName != null;
+        check("34 清理失败可诊断且不影响保存与读取",
+                injected34 && diag34 && read34 && "replaced".equals(r34[2]),
+                "injected=" + injected34 + " cp={" + cp34.toText() + "} read=" + read34);
+
+        /* 34b 自动清理失败会被记录进诊断（Windows 可构造；Linux 删除总能成功，跳过） */
+        if (WINDOWS) {
+            File stuck3 = c.file("stuck3.json.stuck_1.part");
+            writeBytes(stuck3, "x");
+            stuck3.setLastModified(System.currentTimeMillis() - FileStoreCore.PART_TTL_MS - 60000);
+            FileInputStream hold3 = new FileInputStream(stuck3);
+            boolean saveOk3;
+            try {
+                c.save("auto.json", "{\"v\":1}");
+                saveOk3 = true;
+            } catch (Exception e) {
+                saveOk3 = false;
+            } finally {
+                hold3.close();
+            }
+            FileStoreCore.CleanupDiagnostics d34 = c.cleanupDiagnostics();
+            check("34b 自动清理失败写入诊断且不阻断保存",
+                    saveOk3 && d34.lastFailed() && d34.failedName() != null,
+                    "saveOk=" + saveOk3 + " diag=" + d34.removed() + "/" + d34.failed()
+                            + "/" + d34.error() + " name=" + d34.failedName());
+            stuck3.delete();
+        } else {
+            info("34b 自动清理失败写入诊断", "Linux 下删除不受写位限制，无法在单次 save 内构造清理失败；CI 走 34a 的目录只读路径");
+        }
 
         System.out.println("TOTAL pass=" + pass + " fail=" + fail + " skip=" + skip);
         if (fail > 0) System.exit(1);

@@ -61,17 +61,49 @@ public final class FileStoreCore {
         public final int removed;
         public final int failed;
         public final String error;
-        Cleanup(int removed, int failed, String error) {
+        public final String failedName;
+        Cleanup(int removed, int failed, String error, String failedName) {
             this.removed = removed;
             this.failed = failed;
             this.error = error;
+            this.failedName = failedName;
         }
         public boolean ok() { return failed == 0 && error == null; }
+        public String toText() {
+            return "removed=" + removed + " failed=" + failed
+                    + (error == null ? "" : " error=" + error)
+                    + (failedName == null ? "" : " name=" + failedName);
+        }
+    }
+
+    /** 清理诊断快照：线程安全，供插件/界面查询「上次自动清理」的真实结果。 */
+    public static final class CleanupDiagnostics {
+        private volatile long at = 0L;
+        private volatile int removed = 0;
+        private volatile int failed = 0;
+        private volatile String error = null;
+        private volatile String failedName = null;
+
+        void record(Cleanup c) {
+            if (c == null) return;
+            this.at = System.currentTimeMillis();
+            this.removed = c.removed;
+            this.failed = c.failed;
+            this.error = c.error;
+            this.failedName = c.failedName;
+        }
+        public long at() { return at; }
+        public int removed() { return removed; }
+        public int failed() { return failed; }
+        public String error() { return error; }
+        public String failedName() { return failedName; }
+        public boolean lastFailed() { return failed > 0 || error != null; }
     }
 
     private final File dir;
     private final FaultHook fault;
     private volatile String lastReplaceKind = "";
+    private final CleanupDiagnostics cleanupDiag = new CleanupDiagnostics();
 
     public FileStoreCore(File dir) {
         this(dir, null);
@@ -93,6 +125,11 @@ public final class FileStoreCore {
     /** 最近一次成功替换所用机制（renameTo / nioAtomicMove / renameTo-fallback）。 */
     public String lastReplaceKind() {
         return lastReplaceKind;
+    }
+
+    /** 最近一次自动清理的诊断结果（清理失败不会被伪装成成功）。 */
+    public CleanupDiagnostics cleanupDiagnostics() {
+        return cleanupDiag;
     }
 
     private void faultPoint(String point) throws IOException {
@@ -262,7 +299,7 @@ public final class FileStoreCore {
         } finally {
             ACTIVE.remove(tmp.getAbsolutePath());
             if (!moved) deleteQuietly(tmp);
-            cleanupStaleParts(dst);
+            cleanupDiag.record(cleanupStaleParts(dst));   /* 清理失败留痕，但不影响已成功的写入 */
         }
     }
 
@@ -372,14 +409,15 @@ public final class FileStoreCore {
     public Cleanup cleanupStaleParts(File keepDst) {
         int removed = 0, failed = 0;
         String error = null;
+        String failedName = null;
         File[] all;
         try {
             all = dir.listFiles();
         } catch (Throwable e) {
-            return new Cleanup(0, 0, "ListFailed: " + e.getClass().getSimpleName());
+            return new Cleanup(0, 0, "ListFailed: " + e.getClass().getSimpleName(), null);
         }
         if (all == null) {
-            return new Cleanup(0, 0, dir.exists() ? "ListFailed: listFiles returned null" : null);
+            return new Cleanup(0, 0, dir.exists() ? "ListFailed: listFiles returned null" : null, null);
         }
         long now = System.currentTimeMillis();
         for (int i = 0; i < all.length; i++) {
@@ -401,14 +439,14 @@ public final class FileStoreCore {
                     removed++;
                 } else {
                     failed++;
-                    if (error == null) error = "DeleteFailed: " + f.getName();
+                    if (error == null) { error = "DeleteFailed: " + f.getName(); failedName = f.getName(); }
                 }
             } catch (Throwable e) {
                 failed++;
                 if (error == null) error = "DeleteFailed: " + f.getName() + " " + e.getClass().getSimpleName();
             }
         }
-        return new Cleanup(removed, failed, error);
+        return new Cleanup(removed, failed, error, failedName);
     }
 
     /** 当前登记中的活动写入数量（诊断/测试用）。 */
