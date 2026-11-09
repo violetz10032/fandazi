@@ -1,10 +1,12 @@
 # i吃饭 · 框架方案（v8 · 第二阶段：统一反馈 / 合并增强 / 旅行多站点 / 架构收口）
 
+> 适用版本：1.2.3（versionCode 16）· 最后核对：2026-11-09 · 1.2.2 冻结基线：`1870052` / `bc26bb8`。
+
 > 一个「美食记录 + 场景决策 + 时间/距离推荐 + 价格区间抽签 + 批量导出 + 好友本地互导」的单页应用。
 > 当前实现：`index.html` 单文件内联 CSS/JS；同级 `manifest.webmanifest`、`sw.js`、4 个本地图标。
-> 数据版本：3（旧 v1/v2 自动迁移）；应用版本：v8（第二阶段全部落地，含 7 个独立增量键）。
+> 数据版本：3（旧 v1/v2 自动迁移）；应用版本：1.2.3（versionCode 16）；文中旧称「v8」是第二阶段收口编号，与商店版本号 1.2.x 不是同一套，勿混用。
 > 历史版本：`_backups/index-v1.html`（v1）… `index-v7.html`（最新一份备份）。备份文件不入库，版本演进见 git 提交历史。
-> 日期：2026-11-05
+> 日期：2026-11-09（1.2.3 增补；上一版 2026-11-05）
 
 ---
 
@@ -18,7 +20,7 @@
 | 数据来源 | **只有用户手动录入**，不抓取任何平台数据 |
 | 数据存储 | `localStorage` 存结构化数据 + `IndexedDB` 存照片，全部留在本机 |
 | 技术栈 | 原生 HTML + CSS + JavaScript；零构建、零 CDN、零第三方脚本 |
-| PWA | Manifest + Service Worker（仅同源静态资源） |
+| PWA | Manifest + Service Worker（仅同源静态资源；原生壳内不注册） |
 | 位置能力 | **不申请定位权限**；距离、耗时、营业时间均为手填估算 |
 | 通知 | 默认只用应用内提醒条；浏览器通知仅在用户点击按钮后申请 |
 | 非目标 | 店铺发现/榜单/团购比价、账号、云同步、多人实时投票、服务端推送 |
@@ -96,7 +98,7 @@ PWA 层   manifest.webmanifest / sw.js / registerSW / updateBar
 | 导航请求 | 网络优先；成功后把 `index.html` 写入缓存；失败回退缓存 `index.html`；都没有则返回 503 文本 |
 | 同源静态 | 缓存优先 + 后台更新（stale-while-revalidate） |
 
-缓存名格式：`fandazi-cache-fandazi-pwa-v4-20261105`。版本号变更即触发旧缓存清理。
+缓存名格式：`fandazi-cache-fandazi-pwa-v11-20261109`。版本号变更即触发旧缓存清理。
 
 ### 2.3 更新提示
 
@@ -231,7 +233,7 @@ PWA 层   manifest.webmanifest / sw.js / registerSW / updateBar
 
 - `shopMetaNormEntry()` 做白名单：`aliases` / `relatedShops` 截断到 50 条，`dupIgnored` 截断到 100 条；非法值丢弃，不丢弃整段。
 - 旧 version 1 条目（只有 `updatedAt / links / fields / location`）原样可读；写入时按新版本落盘。
-- 备份中的 `payload.shopmeta` 随之为 version 2；完整备份格式仍为 `schemaVersion: 7`，旧备份导入走同一套可选字段归一，不报错。
+- 备份中的 `payload.shopmeta` 随之为 version 2；完整备份格式仍为 `schemaVersion: 8`，旧备份导入走同一套可选字段归一，不报错。
 
 推荐反馈 `fandazi.feedback` 升到 **version 2**，每条新增可选 `surface`：
 
@@ -596,6 +598,19 @@ i吃饭 · 分享清单
 - `haptic(pattern)` 在可用时调用 `navigator.vibrate`；不可用静默忽略。
 - 无横向溢出（375×812 实测）。
 
+### 7.1 启动阶段与原生桥接（1.2.0 起）
+
+- **启动路径零文件系统操作**：`init()` / `renderAll()` / 首屏渲染期间不调用 `FileStore` / `Filesystem` / `Share`；自动备份的启动检查（`autobBootCheck`）已从启动序列移除，改为 `autobArmBootAuto()` 只挂一次性监听。
+- **自动备份默认关闭**：`autobMetaLoad().bootAuto` 默认 `false`（「我的 → 本机数据 → 启动时自动备份（仅应用内）」）；关闭时 `autobBootCheck()` 与 `autobCheckSoon()` 直接返回，不触发任何桥接。
+- **只在明确操作后检查一次**：开关打开后，首次 `pointerdown` / `keydown`、保存记录、或进入本机数据页时，才在 `requestIdleCallback` 里检查一次「距上次超过 24 小时」。
+- **面板未真正打开不读私有目录**：`autobRenderBox()` 只在 `#autoBakBox` 可见且 `activeView === 'more'` 时才 `readdir` / `stat`。
+- **桥接调用逐个兜底**：`FileStore.save / list / read / delete`、`Filesystem.writeFile / readdir / stat / readFile / deleteFile` 与 `Share.share` 全部经 `capSafe()` 包裹，同步抛错转 `rejected Promise`，异常不再冒泡到 Capacitor 线程。
+- **原生文件存储换成自建插件（1.2.2）**：`FileStorePlugin.java`（`@CapacitorPlugin(name="FileStore")`）直写 `getContext().getFilesDir()/fandazi-backups`，暴露 `save({name,data})` → `{ok,path,bytes}`、`list()` → `{ok,files:[{name,bytes,mtime}]}`、`read({name})` → `{ok,data}`、`delete({name})` → `{ok,deleted}`；每个方法 `try/catch` 后 `resolve({ok:false,error})`，`MainActivity` 与 IconAlias / GeoPermission 并列注册。
+- **崩溃根因与旧行为差异**：1.2.0 前 `@capacitor/filesystem` 在本机写应用私有目录失败，rejected promise 冒泡到 Capacitor 线程，原生 Java 异常直接闪退；1.2.0 用 `capSafe()` 兜住后不再闪退，但仍报「私有目录写入失败」；1.2.2 改走 `FileStore` 才真正落盘成功。`list / read / delete` 也从「只写走新插件」补齐为「优先 `FileStore`，失败再退 `Filesystem`」。
+- **1.2.3 加固（`FileStoreCore`）**：插件层只处理参数与 JSON，落盘逻辑拆到纯 Java 的 `FileStoreCore`（不依赖 Android / Capacitor，可在普通 JVM 上跑故障场景）：写 `<name>.part` → `flush + fsync` → 读回比对字节数与 SHA-256 → `Files.move(ATOMIC_MOVE, REPLACE_EXISTING)`，失败退 `renameTo`；任一步失败不动正式文件，替换失败保留旧备份；`listFiles` 为 null 且目录存在时抛错而不是返回空列表；单文件读取上限 `MAX_READ_BYTES = 32 MB`，`.part` 被 `list()` 过滤。该逻辑由 CI 的「FileStoreCore 故障场景测试」步骤（`javac` 编译 + `java` 运行 `FileStoreCoreTest`）执行，任一用例失败即中断构建。
+- **失败降级顺序**：写 `FileStore.save` → `Filesystem.writeFile` 子目录 `fandazi-backups/` → `Filesystem.writeFile` `Data` 根目录 → 失败提示；写失败提示同时保留 `FileStore: <error>` 与 `Filesystem: <reason>` 两段原文，不截断。读 / 列 / 删按同一优先级降级。
+- **照片本体不进自动备份**：自动备份只写记录与照片引用，照片仍在 IndexedDB。
+
 ---
 
 ## 8. 性能实测（2026-11-05）
@@ -642,8 +657,8 @@ i吃饭 · 分享清单
 7. 抽签距离筛选固定 3 km；日常推荐支持 0.5–10 km 半径。
 8. 状态栏/通知与 PWA 行为受浏览器与系统版本影响，未覆盖所有机型。
 9. 压测为本机 headless 结果，不代表所有低端机。
-10. 链接分享依赖当前页面地址：`file://` 或 `127.0.0.1` 下的链接只适合本机/同路径场景；跨设备优先用 `.fanzi.json` 文件。链接二维码受 v40-L 容量限制，超长时只能复制链接。
-11. 导入撤销快照保存在内存，刷新或关闭页面后失效；跨会话恢复请使用导出的 JSON 备份。
+10. 链接分享统一走 `shareBaseUrl()`：APK 内固定用线上 Pages 地址（`https://violetz10032.github.io/fandazi/`），网页用当前地址；`file://` 双击打开时没有可访问地址，会明确提示改用 `.fanzi.json` 文件而不是生成一条打不开的链接。链接二维码受 v40-L 容量限制，超长时只能复制链接。
+11. 导入撤销快照保存在内存，刷新或关闭页面后失效；跨会话恢复请使用导出的 JSON 备份。撤销按本次导入涉及的记录 id 精确回滚：只删本次新增、只把被覆盖的记录还原成导入前的单条快照，导入后你自己新建/编辑过的记录不会被一起吞掉；删除照片前先查引用索引，被新记录引用的照片不会被误删。
 12. 冲突选项的「覆盖」会替换对方记录中的可见字段，但不会删除本机原有照片。
 13. 互导教程为静态说明层，不直接替你勾选记录或执行分享/导入；轻提示只出现一次，清空 `localStorage['fandazi.tut.hint']` 或清除站点数据后会再次出现。
 14. 重复店铺识别只能处理聚合键不同的店；同名同城但实际是不同分店的记录，会先被 `keyOf` 合成同一家，档案页无法拆开。合并后目标店的地址 / 坐标取最近一次到访，可能随并入记录变化。
@@ -664,6 +679,10 @@ i吃饭 · 分享清单
 | B4 分享/导入 | 互导 10 条、重复导入、8%/12% 边界、20 条链接、81 条阈值、二维码矩阵比对、损坏 JSON/version 2/11MB、1000 条耗时、375×812 预览 | 通过 |
 | 互导教程 | 帮助/分享/导入入口角色、首次提示与标记、引导冲突、1000 条耗时、375×812 与 375×520 布局、控制台/外部请求 | 通过 |
 | 店铺档案增强（第一阶段） | `shop-archive-test.js`：POI / 地址 / 坐标判重、跨城不误判、不自动合并、实际与参考人均分离、无数据「暂无数据」、时间轴、关联 / 忽略不改记录、合并保留历史与照片、四入口反馈 `surface`、想去只进 `wishlist`、v1 shopmeta 备份兼容、console/exception 0 | **28/28 通过** |
+| FileStore 全链路 | `.tmp/filestore-chain-check.js`：`save → list → read → delete` 全走 `FileStore` | **A 通过**：写入 320,699 B → 列表 1 条（同名同字节同 mtime）→ 读回 320,699 字符、`JSON.parse` 无错 → 删除后列表 0 |
+| 原生备份恢复 | `.tmp/restore-check.js`：好文件进恢复预览；`不存在.json` 失败不动数据 | **B 通过**：好文件打开 `#backupMask`；坏文件 `ok=false`、提示「原数据没有被修改」、records 0 → 0 |
+| 恢复前恢复点 | `.tmp/snapshot-check.js`：恢复成功后恢复点 +1；坏 JSON 失败不建点、数据不变 | **通过**：恢复点 0 → 1（`snapshotId` 有值）；坏 JSON 报「不是有效的 JSON」、records 2 → 2、恢复点仍 1 |
+| 启动自动备份开关 | `.tmp/filestore-chain-check.js`：默认关 vs 打开 | **C/D 通过**：关时桥接调用 0 次、写入 0；打开后首次 `pointerdown` 触发 `save` + `list` 各 1 次 |
 | 移动截图 | 375×812 推荐页/抽签页/导入预览/教程顶底部；375×520 矮视口 | 布局正常，无溢出 |
 
 ### 10.2 手工自测清单
@@ -691,8 +710,9 @@ i吃饭 · 分享清单
 | 文件 | 作用 |
 | --- | --- |
 | `index.html` | v6 应用本体 |
+| `android-app/android/app/src/main/java/com/fandazi/app/FileStorePlugin.java` | 自建 `FileStore` 插件（`save / list / read / delete`，落盘 `files/fandazi-backups`） |
 | `manifest.webmanifest` | PWA 清单 |
-| `sw.js` | Service Worker（v5 缓存） |
+| `sw.js` | Service Worker（v11 缓存；`Capacitor.isNativePlatform()` 为真时直接跳过注册，避免 APK 长期缓存旧页面） |
 | `icons/icon-192.png` / `icons/icon-512.png` | 普通图标 |
 | `icons/icon-192-maskable.png` / `icons/icon-512-maskable.png` | maskable 图标 |
 | `_backups/index-v1.html` … `index-v7.html` | 历史版本备份（`.gitignore` 忽略，不入库） |
@@ -743,6 +763,7 @@ i吃饭 · 分享清单
 - **迁移清单**（`shopMergeKeys`）：记录改名（`keyOf` 归一）、`shopmeta` 合并、收藏键改写（`favoriteKeyOf`）、想去键改写（`wishlistMigrateKey`）、黑名单（`blacklistMigrateKey`）、反馈（`feedbackMigrateKey`）、旅行 stop 的 `shopId` 与名称（`tripsMigrateStops`，重复 stop 去重）。
 - **失败回滚**：迁移前 `mergeRawSnap()` 抓 5 键原始字符串；任一步失败或最终校验发现源键残留，`mergeRestoreRaws()` 逐键写回并给用户可见错误，不静默覆盖。
 - **撤销**：成功后把 `{before, after}` 写进 `fandazi.mergeundo`；`shopMergeUndo()` 先逐键比对当前 raw 与 `after`，不一致就拒绝并提示「合并后数据已变动」，保留现状。
+- **位置随合并迁移（1.2.3）**：`shopMetaMergeInto` 会把双方 `locationHistory` 合并去重，并按 `updatedAt` 排序后截断到 `SHOP_LOCATION_HISTORY_MAX`；当前坐标仍按「目标店优先」（`to.location || from.location`）。被放弃的一方坐标、以及目标店无位置时被继承过来的坐标，都会先写进历史留痕，避免合并后坐标凭空出现或旧位置无从追溯。只填充已有的可选字段，不改数据结构；记录的 `lat/lng` 不因合并被改写。
 
 ### 11.4 旅行多站点（第二阶段⑤）
 

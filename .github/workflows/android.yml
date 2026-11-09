@@ -41,6 +41,15 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # 纯 JVM 校验 FileStoreCore 的原子写 / 校验 / 失败保留逻辑，任一失败即中断构建
+      - name: FileStoreCore 故障场景测试
+        run: |
+          mkdir -p /tmp/fs-test
+          javac -encoding UTF-8 -d /tmp/fs-test \
+            android/app/src/main/java/com/fandazi/app/FileStoreCore.java \
+            android/app/src/test/java/com/fandazi/app/FileStoreCoreTest.java
+          java -cp /tmp/fs-test com.fandazi.app.FileStoreCoreTest /tmp/fs-store
+
       - name: 安装 Node 20
         uses: actions/setup-node@v4
         with:

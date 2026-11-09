@@ -1,5 +1,7 @@
 # i吃饭 · fandazi
 
+> 适用版本：1.2.3（versionCode 16）· 最后核对：2026-11-09 · 1.2.2 冻结基线：`1870052` / `bc26bb8`。
+
 记录吃过的店，按场景、时间与距离决定下一顿。
 
 单页应用，**零构建、零依赖、零 CDN、零后端**；所有记录、评分、照片只存在你自己的设备上，不抓取任何平台数据。
@@ -84,7 +86,7 @@
 - 位置：**我的 → 本机数据 → WebDAV 云备份**（可折叠面板），填写服务器地址（指向网盘里的一个文件夹）、用户名、应用独立密码、备份文件名（默认 `fandazi_backup.json`）。
 - **网页版如实受限**：浏览器跨域（CORS）会拦截 WebDAV 的 `PROPFIND` / `PUT`，面板保留入口并明确提示「建议在 APK 内使用」，不绕行、不走代理。
 - **APK 内走原生 HTTP**：直接调用 CapacitorHttp（不启用它的全局 fetch 补丁，因此不影响高德 JS API 动态加载与 Gist 同步），不受浏览器跨域限制。
-- **复用现有完整备份**：上传就是把「完整备份」对象原样 `PUT`（`format` / `schemaVersion` 7 / SHA-256 校验值全部沿用），没有另造格式；上传成功会同步「上次备份」时间与体积。
+- **复用现有完整备份**：上传就是把「完整备份」对象原样 `PUT`（`format` / `schemaVersion` 8 / SHA-256 校验值全部沿用），没有另造格式；上传成功会同步「上次备份」时间与体积。
 - **拉取还原**：`GET` 回来后走现有 `parseBackupText` + SHA-256 校验，再进入现有的「合并 / 完整替换」恢复弹窗（含恢复前自动恢复点）。
 - **测试连接**：`PROPFIND` 只读探测目录，状态码翻成人话——401 密码或用户名错（坚果云需「应用独立密码」，不是登录密码）/ 403 权限或路径不对 / 404 目录或文件不存在 / 405 不是 WebDAV 地址 / 409 父目录缺失 / 507 空间不足 / 超时或 HTTP 0 多为跨域被拦。
 - **密码只存本机**：写在 `localStorage`（`fandazi.webdav`），界面明说「未加密，建议使用应用独立密码」，可一键「清除本机口令」。
@@ -103,6 +105,24 @@
 - **Gist / Contents** 只搬运「到店记录 + 照片」；它们不会读取也不会写入上表中的其他键。**烹饪数据（`fandazi.recipes` / `fandazi.pantry` / `fandazi.cooklog` / `fandazi.homefb`）明确不进入 Gist / Contents 增量同步**，只随完整备份整包搬运。
 - **WebDAV** 不是增量同步，而是把「完整备份」JSON 整包上传 / 拉取；整包天然包含上表全部数据（含在家吃数据），但**没有**为烹饪数据扩展任何独立同步字段。网页版受 CORS 限制时，仍可用「导出 / 导入完整备份」文件搬运。
 - **只能靠备份文件搬**：想去、收藏、地点、设置、投票、在家吃数据、店铺补充信息 / 旅行 / 菜品库。换设备或清浏览器数据前，请先导出完整备份；旧备份缺少收藏段时恢复**不会清空本机收藏**，缺在家吃段（含一周菜单 `week` / 烹饪进度 `cookprog`）同样保持本机现状。
+
+### 本机备份的三层边界（自动备份 / 恢复点 / 完整备份）
+
+| 机制 | 存在哪 | 含什么 | 不含什么 | 什么时候消失 |
+| --- | --- | --- | --- | --- |
+| 自动备份（**默认关闭**；开关打开后每 24 小时一次，且只在明确操作后空闲时写） | 网页：IndexedDB `fandazi.backups`；APK：应用私有目录 `fandazi-backups`（另在本机 IndexedDB 留一份可读副本） | 记录与配置整包 + 照片**引用** | **照片本体**（照片只在 IndexedDB） | 清理站点数据 / Android「清除数据」/ 卸载 App |
+| 恢复点（导入、恢复、清空照片前自动建，保留最近 2 份） | IndexedDB `snapshots` | 当时的记录与配置 | **照片本体**（只存 `photoId` 引用；照片被清理后恢复点也找不回） | 下一次导入会覆盖最旧的一份 |
+| 完整备份（手动导出 `.fanzi.json` / 上传 WebDAV） | 你自己的下载目录 / 网盘 | 记录、配置，**可选是否内联照片 base64** | — | 只要文件还在就一直可用 |
+
+- **APK 内自动备份目录在文件管理器里看不到**：`fandazi-backups` 是应用私有目录（系统限制，正常现象），不申请存储权限、也不写 `Android/data`。实际落盘位置是 `getFilesDir()/fandazi-backups`（即 `/data/data/com.fandazi.app/files/fandazi-backups`），`list / read / delete` 与 `save` 都优先走这个目录。要把备份取出来，请用「我的 → 本机数据 → 导出备份到手机目录」，在弹出的系统面板里另存或发给自己。
+- **原生写入改用自建 `FileStore` 插件（1.2.2 起）**：不再用 `@capacitor/filesystem` 写私有目录。崩溃根因是后者在本机（小米 14 / Android 16）写入失败并让 rejected promise 冒泡到 Capacitor 线程，原生 Java 异常直接闪退；1.2.0 用 `capSafe()` 包住后不再闪退，但仍报「私有目录写入失败」；1.2.2 换成 `FileStorePlugin` 后才真正写成。
+- **失败降级顺序**：`FileStore.save` → `Filesystem.writeFile` 的 `fandazi-backups/` 子目录 → `Filesystem.writeFile` 的 `Data` 根目录 → 失败提示（`FileStore` 与 `Filesystem` 两段 `error` 原文完整显示，不截断）。列表 / 读取 / 删除同样「先 FileStore，失败再依次探测 Filesystem 两条路径」。
+- **照片要跟着走，必须用完整备份**：自动备份与恢复点都只存引用；换机或清数据前，请在完整备份里勾选「包含照片」。
+- **启动阶段不做任何文件系统操作**：`init()` / 首屏渲染期间不调用 `Filesystem` / `Share` 等原生桥接；自动备份的启动检查被移除，改成「开关打开 + 你有明确操作（首次点按、保存记录、进入本机数据页）之后才检查一次」。
+- **自动备份默认关闭**：开关在「我的 → 本机数据 → 启动时自动备份（仅应用内）」，默认关；关着时启动阶段与后台都不会读写私有目录。手动「立即备份」不受开关影响，始终可用且只写应用私有目录。
+- **照片本体不进自动备份**：自动备份只含记录与照片引用，照片本体仍在 IndexedDB，需用完整备份带走。
+- **Android 系统云备份**（`allowBackup`）保持开启，用于换机时由系统代为搬运；它属于操作系统行为，不是本应用上传。不需要可在系统设置里关闭该应用的云备份。
+- **1.2.3 起加固（`FileStoreCore` 拆层）**：`FileStorePlugin` 只处理参数与 JSON，落盘逻辑移到纯 Java 的 `FileStoreCore`：写 `<name>.part` → `flush + fsync` → 读回比对字节数与 SHA-256 → 原子替换（`Files.move(ATOMIC_MOVE)`，失败退 `renameTo`）。任一步失败都不动正式文件，替换失败保留旧备份；`listFiles` 返回 null 且目录存在时报「读取失败」，不再伪装成空列表；单文件读取上限 32 MB；`.part` 不进入 `list()`。前端据此区分「原生成功 / 仅应用内 / 失败」三态，原生目录读不出来时在列表区写明原因，不再显示成「还没有备份」。
 
 ## AA 分账与复古票根
 
@@ -195,7 +215,18 @@ android-app/
 └── android/                  # Capacitor 生成的 Android 工程（Gradle + 原生壳）
 ```
 
+原生壳里共有 3 个自建插件（都在 `android/app/src/main/java/com/fandazi/app/`，由 `MainActivity.onCreate` 注册）：
+
+| 文件 | 插件名 | 作用 |
+| --- | --- | --- |
+| `IconAliasPlugin.java` | `IconAlias` | 切换桌面图标 A / B |
+| `GeoPermissionPlugin.java` | `GeoPermission` | 定位权限状态查询与跳转设置 |
+| `FileStorePlugin.java` | `FileStore` | 直写 `getFilesDir()/fandazi-backups` 的 `save / list / read / delete` |
+
+`FileStore` 是 1.2.2 新增：全部方法 `try/catch` 后 `resolve({ok:false,error})`，绝不把异常抛回 Capacitor 线程。
+
 `index.html` 仍然只有一份"源头"在仓库根，`www/` 里的副本在 CI 里用 `npm run sync:www` 重新生成，所以不必担心两边不同步。`node_modules/`、`android/build/`、`android/.gradle/` 都在 `.gitignore` 里。
+| `FileStoreCore.java` | （非插件） | `FileStore` 的纯 Java 落盘逻辑：临时文件 / fsync / SHA-256 校验 / 原子替换 / 读取上限 |
 
 本地想自己改原生壳、重新出包：
 
@@ -211,7 +242,7 @@ cd android && ./gradlew assembleDebug
 
 ### 签名与分发限制
 
-- 当前是 **debug 签名**（Gradle 自动用 debug keystore 签名，`applicationId` = `com.fandazi.app`，`versionName` 1.0.4、`versionCode` 5）。
+- 当前是 **debug 签名**（Gradle 自动用 debug keystore 签名，`applicationId` = `com.fandazi.app`，`versionName` 1.2.3、`versionCode` 16）。
 - debug APK **只能自己装**：需要手动允许「未知来源」，也不能上传 Google Play / 国内应用商店，部分国产 ROM 会额外提示风险。
 - 真要正式发布，需要自己的 keystore + `release` 构建类型，并把 keystore 以 GitHub Secrets（base64）形式注入 CI，`./gradlew assembleRelease` 后再用 `apksigner` 校验；keystore 文件本身绝不能进仓库。
 
@@ -797,12 +828,12 @@ outbox（`.tmp/sync-outbox-test.js`）**17/17 通过**：断网进入 30 秒退�
 3. 生成后记下 `fandazi.backup.last`（时间、记录条数、文件大小），「我的 → 数据」会显示「上次备份：X 天前（N 条 / M.B）」；
 4. 距上次备份超过 7 天，或自上次备份后新增/修改 ≥10 条记录，「我的」页顶部会出现一条备份提醒（复用应用内提醒条），点「去备份」直达面板。
 
-文件结构（`schemaVersion` 是「备份格式版本」，本版为 7；`payload.version` 是数据结构版本，仍为 3）：
+文件结构（`schemaVersion` 是「备份格式版本」，本版为 8；`payload.version` 是数据结构版本，仍为 3）：
 
 ```json
 {
   "format": "fandazi-backup",
-  "schemaVersion": 7,
+  "schemaVersion": 8,
   "exportedAt": "2026-11-05T...",
   "checksum": { "algo": "SHA-256", "scope": "canonical(payload+photos)", "value": "…64 位十六进制…" },
   "stats": { "records": 30, "photos": 5, "photoBytes": 29167, … },
@@ -851,7 +882,9 @@ outbox（`.tmp/sync-outbox-test.js`）**17/17 通过**：断网进入 30 秒退�
 | 照片写入失败 / 空间不足 | IndexedDB 空间不够、被其他标签页占用或无权限 | 清理浏览器存储、关闭其他标签页后重试；原数据不会被改动 |
 | 恢复点不存在或已被覆盖 | 又做了一次导入，旧恢复点已被挤掉 | 用备份文件重新恢复；恢复点只保留最近 2 份 |
 
-**未实现**：云备份 / 跨设备自动同步 / 备份加密与密码保护 / 定时自动备份；完整备份文件是本机明文 JSON，请自行保管。恢复点同样只在本机，清浏览器数据会一起消失。
+**未实现**：云备份 / 跨设备自动同步 / 备份加密与密码保护；完整备份文件是本机明文 JSON，请自行保管。恢复点同样只在本机，清浏览器数据会一起消失。定时自动备份已提供但**默认关闭**（「我的 → 本机数据 → 启动时自动备份（仅应用内）」），且只写应用私有目录。
+
+**1.2.0 崩溃修复**：1.1.0 在 Android 16 上启动闪退，原因是启动阶段经 Capacitor 桥接调用 `Filesystem` 写自动备份；1.2.0 把该检查移出启动路径、改成默认关闭的开关，并给所有 `Filesystem` / `Share` 调用加了同步异常兜底，真机已确认可正常启动。
 
 ## 推荐反馈（六档）
 

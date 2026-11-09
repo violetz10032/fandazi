@@ -21,7 +21,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 <title>i吃饭 · 美食记录与聚餐决策</title>
 <style>
   :root{
-    --bg:#faf7f2; --bg-2:#faf7f2; --card:#fff; --ink:#221d19; --ink2:#6b615a; --ink3:#9a8f86;
+    --bg:#faf7f2; --bg-2:#faf7f2; --card:#fff; --ink:#221d19; --ink2:#6b615a; --ink3:#7a6f65;
     --line:#eee6db; --accent:#e8590c; --accent2:#f08c3a; --soft:#fff1e6; --soft-ink:#b8460a; --price-ink:#a8460a;
     --accent-line:#ffd9bf; --chip:#f8f4ee; --seg-bg:#f1ebe2; --seg-on:#fff; --track:#f1eae0;
     --panel:#fbf8f3; --panel-2:#fcfaf7; --canvas:#f3ece2; --icon-bg:#f4efe8;
@@ -41,7 +41,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     --map-ring1:rgba(232,89,12,.42); --map-ring2:rgba(232,89,12,.20);
     --map-dot-stroke:rgba(255,255,255,.85); --map-label:rgba(140,110,85,.75);
     --map-scale:rgba(107,97,90,.55); --map-me-label:#b8460a; --map-wish:#2f7fd6; --map-fav:#b7791f;
-    --chart-axis:#e8ded2; --chart-grid:#f1eae0; --chart-text:#9a8f86;
+    --chart-axis:#e8ded2; --chart-grid:#f1eae0; --chart-text:#7a6f65;
     --chart-1:#e8590c; --chart-2:#2f8c5a; --chart-3:#6b5bd6; --chart-4:#b7791f; --chart-5:#3d7ea6; --chart-6:#9a8f86;
     --green:#2f8c5a; --amber:#b7791f; --danger:#b42318;
     --shadow:0 1px 2px rgba(80,55,30,.05), 0 6px 20px rgba(80,55,30,.06); --r:16px;
@@ -189,7 +189,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   /* --- P4 黄 / 电视 / 波普 --- */
   html[data-skin="p4"]{
-    --bg:#FFFCF2; --bg-2:#FFFDF7; --card:#FFFFFF; --ink:#1A1408; --ink2:#6B5A2E; --ink3:#8A7A4E;
+    --bg:#FFFCF2; --bg-2:#FFFDF7; --card:#FFFFFF; --ink:#1A1408; --ink2:#6B5A2E; --ink3:#83713F;
     --line:#D9C48A; --border-strong:#A08A55; --accent:#FFC400; --accent2:#F0A800; --accent-text:#8A5600; --accent-ink:#1A1408;
     --soft:#FFF1CC; --soft-ink:#8A5600; --price-ink:#8A5600; --accent-line:#E8CE7A;
     --chip:#F5F1E6; --seg-bg:#F4F0E4; --seg-on:#FFFFFF; --track:#EAE3CF;
@@ -252,7 +252,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   /* --- P3 蓝 / 水 / 月 --- */
   html[data-skin="p3"]{
-    --bg:#EAF3F8; --bg-2:#EAF3F8; --card:#FFFFFF; --ink:#062032; --ink2:#4E6B80; --ink3:#5E7A8F;
+    --bg:#EAF3F8; --bg-2:#EAF3F8; --card:#FFFFFF; --ink:#062032; --ink2:#4E6B80; --ink3:#547083;
     --line:#BFD4E2; --border-strong:#6E8CA0; --accent:#0B6D9E; --accent2:#1B90C4; --accent-text:#0B6D9E; --accent-ink:#FFFFFF;
     --soft:#DCEEF8; --soft-ink:#0B6D9E; --price-ink:#0B6D9E; --accent-line:#B7D9EA;
     --chip:#E3F0F8; --seg-bg:#DCEEF8; --seg-on:#FFFFFF; --track:#D8E9F3;
@@ -356,7 +356,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   html[data-skin="p3"] .tabbar{border-top:1px solid var(--border-strong)}
   /* --- Cream Editorial / 奶油纸感：衬线标题 + 细线分隔 + 直角 + 无阴影，独立排版语言 --- */
   html[data-skin="cream"]{
-    --bg:#F6F1E7; --bg-2:#F2ECDF; --card:#FFFDF8; --ink:#211E19; --ink2:#6A6257; --ink3:#8E8579;
+    --bg:#F6F1E7; --bg-2:#F2ECDF; --card:#FFFDF8; --ink:#211E19; --ink2:#6A6257; --ink3:#6F675C;
     --line:#D8CFBE; --border-strong:#9E927F; --accent:#9B4526; --accent2:#B96A46; --accent-text:#8E3C20; --accent-ink:#FFFDF8;
     --soft:#F6E3D8; --soft-ink:#8E3C20; --price-ink:#8E3C20; --accent-line:#E2C6B4;
     --chip:#EFE8DA; --seg-bg:#EFE8DA; --seg-on:#FFFDF8; --track:#E5DCCA;
@@ -1795,7 +1795,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
           </div>
           <div class="cal-grid" id="calGrid"></div>
-          <p class="muted" style="margin-top:10px">有记录的日期会高亮，点日期查看当天吃了什么。</p>
+          <p class="muted" style="margin-top:10px">有记录的日期会高亮，点日期查看当天吃了什么。<span id="calUnknown"></span></p>
         </div>
         <div id="calDayBox"></div>
       </div>
@@ -3536,6 +3536,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         <select class="input" id="importDupMode">
           <option value="skip">跳过重复</option>
           <option value="overwrite">用对方的覆盖</option>
+          <option value="new">作为新记录导入</option>
         </select>
       </div>
       <div id="importConflictBox"></div>
@@ -5811,6 +5812,31 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return null;
   }
   function homeNormName(v, n){ return String(v == null ? '' : v).trim().slice(0, n || 60); }
+  /* 表情按「字形簇」截断：组合表情（👨‍🍳 这类 ZWJ 序列）不会被切成半个字符 */
+  var homeSegCache = null;
+  function homeNormEmoji(v, n){
+    var s = String(v == null ? '' : v).trim();
+    if(!s) return '';
+    var max = n || 3, out = '', k = 0;
+    try{
+      if(typeof Intl === 'object' && typeof Intl.Segmenter === 'function'){
+        if(!homeSegCache) homeSegCache = new Intl.Segmenter('zh', { granularity:'grapheme' });
+        var it = homeSegCache.segment(s)[Symbol.iterator]();
+        while(k < max){
+          var step = it.next();
+          if(step.done) break;
+          var seg = step.value;
+          out += (seg && typeof seg === 'object' && typeof seg.segment === 'string') ? seg.segment : String(seg);
+          k++;
+        }
+        return out;
+      }
+    }catch(e){}
+    var arr = typeof Array.from === 'function' ? Array.from(s) : s.split('');
+    out = arr.slice(0, max).join('');
+    /* 兜底路径按码点切，可能把 ZWJ 序列切在连接符上，去掉悬空的连接符 / 变体选择符 */
+    return out.replace(/[\u200D\uFE0F]+$/, '');
+  }
   function homeNumOrNull(v, max){
     if(v == null || v === '') return null;
     var n = Number(v);
@@ -5892,7 +5918,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var airMinutes = homeNumOrNull(r.airMinutes, 180);
     if(airMinutes != null){ airMinutes = Math.round(airMinutes); if(airMinutes < 1) airMinutes = null; }
     return {
-      id: id, name: name, emoji: homeNormName(r.emoji, 4) || '🍽️',
+      id: id, name: name, emoji: homeNormEmoji(r.emoji) || '🍽️',
       category: cat, tags: tags,
       kinds: kinds, role: role, nutritionEst: !!r.nutritionEst,
       airTemp: airTemp, airMinutes: airMinutes, airNote: (airTemp != null && airMinutes != null) ? '不同机型需按实际调整' : '',
@@ -8063,9 +8089,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     (r.ingredients || []).forEach(function(x){ ctx.ings[homeKeyName(x.name)] = 1; });
     ctx.cats[r.category] = (ctx.cats[r.category] || 0) + 1;
   }
+  /* 返回 { ok, reason }：reason = '' | 'empty'（菜谱库为空，不覆盖原菜单）| 'storage'（写盘失败） */
   function homeWeekGenerate(){
     var wk = homeWeekLoad();
     var ctx = { pool:homeWeekPool(), used:{}, recent:homeWeekRecentIds(), ings:{}, cats:{} };
+    var poolEmpty = !ctx.pool.main.length && !ctx.pool.side.length && !ctx.pool.soup.length && !ctx.pool.staple.length;
+    if(poolEmpty) return { ok:false, reason:'empty' };
     wk.days.forEach(function(day){
       if(!day.locked) return;
       HOME_WEEK_ROLES.forEach(function(role){
@@ -8083,8 +8112,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       });
       day.dishes = dishes;
     });
-    if(!homeWeekPersist(wk)) toast('一周菜单保存失败：本机存储空间不足');
+    if(!homeWeekPersist(wk)){ renderHomeWeek(); return { ok:false, reason:'storage' }; }
     renderHomeWeek();
+    return { ok:true, reason:'' };
   }
   function homeWeekToggleLock(idx){
     var wk = homeWeekLoad();
@@ -8876,6 +8906,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<button type="button" data-hlog-again="' + esc(c.id) + '">再做</button>' +
         '<button type="button" data-hlog-adjust="' + esc(c.id) + '">调用量</button>' +
         '<button type="button" data-hlog-recipe="' + esc(c.id) + '">生成菜谱</button>' +
+        '<button type="button" data-hlog-del="' + esc(c.id) + '">删除</button>' +
       '</div></div>';
   }
   function renderHomeLog(){
@@ -9267,12 +9298,16 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
     /* 第三阶段：一周菜单 / 采购清单 / 烹饪模式 */
     if($('#homeWeekGen')) $('#homeWeekGen').addEventListener('click', function(){
-      homeWeekGenerate();
-      toast('已生成未来七天菜单');
+      var r = homeWeekGenerate();
+      if(r.ok) toast('已生成未来七天菜单');
+      else if(r.reason === 'empty') toast('菜谱库还没有菜，先添加菜谱再生成菜单');
+      else toast('一周菜单保存失败：本机存储空间不足');
     });
     if($('#homeWeekReroll')) $('#homeWeekReroll').addEventListener('click', function(){
-      homeWeekGenerate();
-      toast('已重排未锁定的天数');
+      var r = homeWeekGenerate();
+      if(r.ok) toast('已重排未锁定的天数');
+      else if(r.reason === 'empty') toast('菜谱库还没有菜，先添加菜谱再重排');
+      else toast('重排失败：本机存储空间不足');
     });
     if($('#homeWeekBudget')) $('#homeWeekBudget').addEventListener('change', function(){
       var v = $('#homeWeekBudget').value;
@@ -9333,6 +9368,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       if(adjust){ homeLogOpen({ logId:adjust.getAttribute('data-hlog-adjust') }); return; }
       var regen = e.target.closest('[data-hlog-recipe]');
       if(regen){ homeLogRegenRecipe(regen.getAttribute('data-hlog-recipe')); return; }
+      var delLog = e.target.closest('[data-hlog-del]');
+      if(delLog){
+        var cid = delLog.getAttribute('data-hlog-del');
+        var item = homeCookBy(cid);
+        if(!item) return;
+        if(!confirm('删除这条制作记录？\n\n' + item.title + ' · ' + (item.date || '') + '\n删除后不能在本机恢复；如果之前建过备份恢复点，可以从恢复点找回。')) return;
+        if(homeCookRemove(cid)){
+          renderHomeLog();
+          try{ renderHomeStats(); }catch(e){}
+          toast('已删除制作记录');
+        }else{
+          toast('删除失败：本机存储空间不足');
+        }
+        return;
+      }
     });
     /* 制作记录表单 */
     if($('#homeLogClose')) $('#homeLogClose').addEventListener('click', homeLogClose);
@@ -10958,6 +11008,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         ? '回收站里的照片不参与展示；清空前会自动建恢复点，仍被记录/报告/恢复点引用的照片会保留。'
         : '带有效引用的照片不能直接删除；请先改关联或解除关联，再用「孤立照片清理」处理。';
     }
+    var orphanBtn = $('#pwOrphanBtn');
+    if(orphanBtn){
+      var orphanN = (st.list || []).filter(function(v){
+        return v && !v.trashAt && !(st.refs[String(v.id)] || []).length;
+      }).length;
+      orphanBtn.textContent = orphanN ? ('孤立照片清理（' + orphanN + '）') : '孤立照片清理';
+    }
     var sort = $('#pwSort');
     if(sort) sort.textContent = st.desc ? '时间倒序' : '时间正序';
     var sub = $('#pwSub');
@@ -11055,21 +11112,47 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     });
   }
 
+  var photoHydrateIO = null;
+  function hydratePhotoOne(img){
+    var pid = img.getAttribute('data-photo');
+    if(!pid) return;
+    var thumb = img.getAttribute('data-thumb') === '1';
+    var key = thumb ? pid + '#t' : pid;
+    if(photoCache[key]){ img.src = photoCache[key]; return; }
+    var load = thumb ? photoGetThumb(pid) : photoGet(pid);
+    load.then(function(url){
+      if(!url) return;
+      photoCache[key] = url;
+      img.src = url;
+    }).catch(function(e){ logError('照片读取', e); });
+  }
+  /* 只给进入视口附近（320px 预加载）的照片解码，视口外的等滚动到再取，避免一次性把全部缩略图读出来。
+     少量图片（表单、详情、照片墙单页 ≤24 张）仍即时加载，保证弹层打开即有图、分享图能直接取 src。 */
   function hydratePhotos(root){
     var imgs = $$('img[data-photo]', root || document);
     if(!imgs.length) return;
+    if(imgs.length <= 24 || typeof IntersectionObserver !== 'function'){
+      imgs.forEach(hydratePhotoOne);
+      return;
+    }
+    if(!photoHydrateIO){
+      photoHydrateIO = new IntersectionObserver(function(entries){
+        entries.forEach(function(en){
+          if(!en.isIntersecting) return;
+          photoHydrateIO.unobserve(en.target);
+          hydratePhotoOne(en.target);
+        });
+      }, { rootMargin:'320px 0px' });
+    }
     imgs.forEach(function(img){
       var pid = img.getAttribute('data-photo');
       if(!pid) return;
       var thumb = img.getAttribute('data-thumb') === '1';
       var key = thumb ? pid + '#t' : pid;
       if(photoCache[key]){ img.src = photoCache[key]; return; }
-      var load = thumb ? photoGetThumb(pid) : photoGet(pid);
-      load.then(function(url){
-        if(!url) return;
-        photoCache[key] = url;
-        img.src = url;
-      }).catch(function(e){ logError('照片读取', e); });
+      if(img.getAttribute('data-photo-watch') === '1') return;
+      img.setAttribute('data-photo-watch', '1');
+      photoHydrateIO.observe(img);
     });
   }
   function hydrateArchivedPhotos(root){
@@ -13189,8 +13272,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     lines.push('以上来自我个人的吃饭记录整理，仅供参考，不代表平台评价。');
     return lines.join('\n');
   }
+  /* 分享链接的基地址：APK 内 location.href 是 https://localhost，对方打不开，改用线上 Pages 地址；
+     双击 file:// 打开时同样无法对外分享，返回空串由调用方明确提示，不生成假链接。 */
+  var SHARE_PUBLIC_BASE = 'https://violetz10032.github.io/fandazi/';
+  function shareBaseUrl(){
+    try{
+      var C = window.Capacitor;
+      if(C && typeof C.isNativePlatform === 'function' && C.isNativePlatform()) return SHARE_PUBLIC_BASE;
+    }catch(e){}
+    if(/^file:/.test(location.protocol)) return '';
+    try{ return location.href.split('#')[0]; }catch(e){ return ''; }
+  }
   function shareLink(payload){
-    return location.href.split('#')[0] + '#share=' + b64urlEncode(JSON.stringify(payload));
+    var base = shareBaseUrl();
+    if(!base) return '';
+    return base + '#share=' + b64urlEncode(JSON.stringify(payload));
   }
   function readShareHash(){
     var h = String(location.hash||'');
@@ -14161,11 +14257,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
 
   var LIST_PAGE = 30;
-  var listState = { items:null, shown:0, sig:'' };
+  var listState = { items:null, shown:0, sig:'', filterSig:'' };
 
-  function listSignature(){
+  /* 筛选/排序条件签名：条件不变时保留已加载页数，只重建列表内容 */
+  function listFilterSignature(){
     return [
-      db.records.length,
       $('#q').value || '',
       $('#catFilter').value || '',
       $('#ratingFilter').value || '',
@@ -14173,6 +14269,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       $('#favFilter') ? ($('#favFilter').value || '') : '',
       $('#sort').value || ''
     ].join('\u0001');
+  }
+  /* 内容签名：条数一样时，改评分/分类/备注也要让缓存失效 */
+  function listContentSignature(){
+    var h = 0;
+    for(var i = 0; i < db.records.length; i++){
+      var r = db.records[i];
+      var s = (r.id || '') + '\u0002' + (r.updatedAt || '') + '\u0002' + num(r.rating) + '\u0002' + (r.category || '') + '\u0002' + (r.visitDate || '');
+      for(var k = 0; k < s.length; k++){ h = (h * 31 + s.charCodeAt(k)) | 0; }
+    }
+    return h;
+  }
+  function listSignature(){
+    return listContentSignature() + '\u0001' + listFilterSignature();
   }
 
   /* force=true 时重新过滤排序；force=false 时复用缓存（用于“加载更多”） */
@@ -14209,7 +14318,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       else items.sort(function(a,b){ return quickScore(b) - quickScore(a); });
 
       listState.items = items;
-      listState.shown = LIST_PAGE;
+      var fSig = listFilterSignature();
+      /* 只有筛选/排序变了才回到第一页；保存、删除等重绘保留用户已加载的页数 */
+      if(listState.filterSig !== fSig || !listState.shown) listState.shown = LIST_PAGE;
+      listState.filterSig = fSig;
       listState.sig = sig;
     }
 
@@ -14253,6 +14365,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
 
   /* ================= 日历 ================= */
   function recordsOn(dateStr){
+    if(String(dateStr || '') === V2_DATE_SENTINEL) return [];
     return db.records.filter(function(r){ return r.visitDate === dateStr; });
   }
   function renderCalendar(){
@@ -14260,10 +14373,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#calTitle').textContent = y+' 年 '+(m+1)+' 月';
     var firstWeek = new Date(y, m, 1).getDay();
     var days = new Date(y, m+1, 0).getDate();
-    var byDate = {};
+    var byDate = {}, dateUnknown = 0;
     db.records.forEach(function(r){
-      if(r.visitDate) byDate[r.visitDate] = (byDate[r.visitDate] || 0) + 1;
+      if(!r.visitDate) return;
+      /* 迁移哨兵日期代表「日期未知」，不能当成 2000 年 1 月的真实到访 */
+      if(r.visitDate === V2_DATE_SENTINEL){ dateUnknown++; return; }
+      byDate[r.visitDate] = (byDate[r.visitDate] || 0) + 1;
     });
+    if($('#calUnknown')) $('#calUnknown').textContent = dateUnknown ? (' 另有 ' + dateUnknown + ' 条日期未知，未计入日历。') : '';
     var html = '';
     for(var i=0;i<firstWeek;i++) html += '<div class="cal-cell empty"></div>';
     var today = todayStr();
@@ -14274,7 +14391,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       if(cnt) cls += ' has';
       if(ds === today) cls += ' today';
       if(ds === calSelected) cls += ' sel';
-      html += '<div class="'+cls+'" data-day="'+ds+'">'+d+(cnt ? '<i>'+cnt+' 餐</i>' : '')+'</div>';
+      html += '<div class="'+cls+'" data-day="'+ds+'" role="button" tabindex="0" aria-label="'+ds+(cnt ? ('，'+cnt+' 餐') : '，没有记录')+'">'+d+(cnt ? '<i>'+cnt+' 餐</i>' : '')+'</div>';
     }
     $('#calGrid').innerHTML = html;
     renderCalDay();
@@ -14382,13 +14499,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     ].join(' · ');
     var dateEl = unk
       ? '<span class="diary-date unk">日期未知</span>'
-      : '<span class="diary-date" data-diary-day="'+esc(r.visitDate)+'" title="只看这一天">'+esc(String(r.visitDate).slice(5))+'</span>';
+      : '<span class="diary-date" data-diary-day="'+esc(r.visitDate)+'" role="button" tabindex="0" title="只看这一天">'+esc(String(r.visitDate).slice(5))+'</span>';
     var thumb = r.photoId
       ? '<img class="diary-thumb" data-photo="'+esc(r.photoId)+'" data-thumb="1" loading="lazy" decoding="async" alt="到访照片">'
       : (r.photo
         ? '<img class="diary-thumb" src="'+esc(r.photo)+'" loading="lazy" decoding="async" alt="到访照片">'
         : '<div class="diary-thumb no">无照片</div>');
-    return '<article class="diary-row" data-diary-id="'+esc(r.id)+'">'+
+    return '<article class="diary-row" data-diary-id="'+esc(r.id)+'" role="button" tabindex="0" aria-label="查看 '+esc(r.name)+' 的记录">'+
       thumb+
       '<div class="diary-main">'+
         '<div class="diary-top">'+dateEl+'<h3 class="diary-name">'+esc(r.name)+'</h3></div>'+
@@ -15323,9 +15440,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '<div class="share-box" id="shareTextBox">'+esc(text)+'</div>'+
         '<div class="actions" style="margin-top:12px">'+
           '<button class="btn btn-primary btn-sm" data-act="copyShareText">复制文案</button>'+
-          '<button class="btn btn-sm" data-act="copyShareLink">复制链接</button>'+
+          (link ? '<button class="btn btn-sm" data-act="copyShareLink">复制链接</button>' : '')+
         '</div>'+
-        '<p class="muted" style="margin-top:8px">链接把推荐内容编码在 #share= 片段里，不上传；对方打开本页面即可查看。</p>'+
+        (link
+          ? '<p class="muted" style="margin-top:8px">链接把推荐内容编码在 #share= 片段里，不上传；对方打开本页面即可查看。</p>'
+          : '<p class="muted" style="margin-top:8px">当前环境无法生成可分享链接（双击本地文件打开时没有可访问地址），请只复制上面的文案发给朋友。</p>')+
       '</div>';
     friendState.payload = payload;
     friendState.text = text;
@@ -21228,11 +21347,29 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var related = shopMetaRefsAdd((to.relatedShops || []).concat(from.relatedShops || []), { shopId:fromId, name:fromStore.name, city:fromStore.city || '', at:nowIso })
       .filter(function(x){ return x.shopId !== toId; });
     var ignored = ((to.dupIgnored || []).concat(from.dupIgnored || [])).filter(function(x){ return x !== fromId && x !== toId; });
+    /* 位置随合并迁移：当前坐标仍按「目标店优先」，被放弃或被继承的那份一律写进历史留痕，
+       避免合并后坐标凭空出现、或旧位置无从追溯。只用已有的可选字段 locationHistory，不改结构。 */
+    var locSeen = {}, locHist = [];
+    function pushLocHist(x){
+      if(!x) return;
+      var k = [x.lat, x.lng, x.source || '', x.coordinateSystem || '', x.updatedAt || ''].join('|');
+      if(locSeen[k]) return;
+      locSeen[k] = 1;
+      locHist.push(JSON.parse(JSON.stringify(x)));
+    }
+    (Array.isArray(to.locationHistory) ? to.locationHistory : []).forEach(pushLocHist);
+    (Array.isArray(from.locationHistory) ? from.locationHistory : []).forEach(pushLocHist);
+    /* 目标店没有位置、由被合并店继承 → 留下来源；两边都有且不同 → 给被放弃的那份留痕 */
+    if(from.location && (!to.location ||
+      to.location.lat !== from.location.lat || to.location.lng !== from.location.lng)) pushLocHist(from.location);
+    locHist.sort(function(a, b){ return String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')); });
+    if(locHist.length > SHOP_LOCATION_HISTORY_MAX) locHist = locHist.slice(locHist.length - SHOP_LOCATION_HISTORY_MAX);
     var merged = {
       updatedAt: nowIso, links: links, fields: fields,
       location: to.location || from.location,
       aliases: aliases, relatedShops: related, dupIgnored: ignored
     };
+    if(locHist.length) merged.locationHistory = locHist;
     if(to.relatedTo && to.relatedTo !== fromId) merged.relatedTo = to.relatedTo;
     var next = { version:SHOPMETA_VERSION, items:JSON.parse(JSON.stringify(st.items)) };
     delete next.items[fromId];
@@ -23183,7 +23320,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       (poiState.distNote ? '；' + poiState.distNote : '') +
       '。可直接手改，改后按 WGS84 处理。';
   }
-  /* 按「出发地点」的坐标实算到店铺坐标的直线距离，自动带出到「与我距离 km」 */
+  /* 按「出发地点」的坐标实算到店铺坐标的直线距离，自动带出到「与我距离 km」。
+     起点（常用地点的「坐标」弹窗写明是高德坐标）按 GCJ-02 处理；店铺坐标按来源判基准，
+     先统一到 GCJ-02 再算，避免两套基准直接 haversine（GM-03）。来源未知不猜。 */
   function formAutoDist(){
     poiState.distNote = '';
     var p = mapOriginPlace($('#f-place') ? $('#f-place').value : '');
@@ -23192,12 +23331,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!p || !mapHasCoords(p)) return '';
     var now = String($('#f-dist').value || '').trim();
     if(now !== '' && !distAuto) return '';     /* 用户手填的距离不覆盖 */
-    var d = haversineKm(p.lat, p.lng, lat, lng);
+    var sys = mapSourceSys(poiCoordSource);
+    if(!sys){
+      poiState.distNote = '坐标基准未知，未按起点实算' + (now !== '' ? '，保留手填 ' + now + ' km' : '，可直接手填距离');
+      return poiState.distNote;
+    }
+    var ll = mapDisplayLL(lat, lng, sys);      /* GCJ02 原样；WGS84 转为 GCJ-02，与起点同基准 */
+    var d = haversineKm(p.lat, p.lng, ll.lat, ll.lng);
     if(!isFinite(d)) return '';
     var km = Math.round(d * 10) / 10;
     $('#f-dist').value = km;
     distAuto = true;
-    poiState.distNote = '已按起点「' + p.name + '」实算 ' + distText(km) + '（直线距离，可手改）';
+    poiState.distNote = '已按起点「' + p.name + '」实算 ' + distText(km) + '（' +
+      (sys === 'GCJ02' ? 'GCJ-02' : 'WGS84→GCJ-02') + ' 同基准直线距离，可手改）';
     return poiState.distNote;
   }
   function poiApply(idx){
@@ -23608,6 +23754,61 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       return (p && p[name]) || null;
     }catch(e){ return null; }
   }
+  /* 桥接调用统一兜底：插件方法同步抛错时也转成 rejected Promise，绝不冒泡到 Capacitor 线程 */
+  function capSafe(fn, tag){
+    var p;
+    try{ p = Promise.resolve(fn()); }
+    catch(e){ if(tag) diagBakNote(tag, e); return Promise.reject(e); }
+    if(!tag) return p;
+    return p.then(function(v){ return v; }, function(e){ diagBakNote(tag, e); throw e; });
+  }
+  /* ---- 备份诊断（1.2.1-diag）：只记录桥接结果；读/写原生文件都只在用户点击后发生 ---- */
+  var diagBakLines = [];
+  function diagBakNote(tag, err){
+    try{
+      if(!diagBakLines) diagBakLines = [];
+      var e = err || {};
+      var line = new Date().toISOString().slice(11, 23) + ' ' + tag + ' → ' + ((e.name || 'Error') + ': ' + (e.message || String(e)));
+      diagBakLines.push(line);
+      if(diagBakLines.length > 80) diagBakLines = diagBakLines.slice(-80);
+      try{ localStorage.setItem('fandazi.diagbak', JSON.stringify({ at:Date.now(), lines:diagBakLines })); }catch(_){}
+    }catch(_){}
+    diagBakRender();
+  }
+  function diagBakLoadLines(){
+    try{
+      var o = JSON.parse(localStorage.getItem('fandazi.diagbak') || '{}');
+      return (o && o.lines) || [];
+    }catch(_){ return []; }
+  }
+  function diagBakText(){ return diagBakLoadLines().slice(-20).join('\n'); }
+  function diagBakShow(text){
+    var el = document.getElementById('diagBakPre');
+    if(el) el.textContent = String(text == null ? '' : text);
+  }
+  function diagBakRender(){ diagBakShow(diagBakText() || '（暂无桥接失败记录）'); }
+  function diagBakFs(){
+    try{ return (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Filesystem) || null; }catch(e){ return null; }
+  }
+  function diagBakReadNative(name){
+    var fs = diagBakFs();
+    if(!fs){ diagBakShow('网页端没有原生目录；下面是本页记录：\n' + (diagBakText() || '（空）')); return; }
+    diagBakShow('读取 ' + name + ' …');
+    capSafe(function(){ return fs.readFile({ directory:'Data', path:name, encoding:'utf8' }); }, 'diag:readFile')
+      .then(function(r){
+        var txt = (r && typeof r.data === 'string') ? r.data : autobUtf8FromBase64(r && r.data);
+        diagBakShow((txt || ('（' + name + ' 为空或不存在）')).split('\n').slice(0, 40).join('\n'));
+      }, function(e){
+        diagBakShow('读取失败：' + ((e && e.name) || 'Error') + ': ' + ((e && e.message) || '') + '\n\n本页记录：\n' + (diagBakText() || '（空）'));
+      });
+  }
+  function diagBakWriteNative(){
+    var fs = diagBakFs();
+    if(!fs){ toast('网页端没有原生目录，诊断记录只在本页显示'); return; }
+    var text = 'diag-backup ' + new Date().toISOString() + '\n' + (diagBakText() || '(empty)') + '\n';
+    capSafe(function(){ return fs.writeFile({ directory:'Data', path:'diag-backup.txt', data:text, encoding:'utf8' }); }, 'diag:writeFile')
+      .then(function(){ toast('已写入 diag-backup.txt（应用私有目录）'); }, function(e){ toast('写 diag-backup.txt 失败：' + ((e && e.message) || '')); });
+  }
   function nativeFileBridge(){
     return capNative() && !!capPlugin('Filesystem') && !!capPlugin('Share');
   }
@@ -23635,18 +23836,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var FS = capPlugin('Filesystem'), Share = capPlugin('Share');
     if(!FS || !Share) return Promise.reject(new Error('原生插件不可用'));
     if(!base64) return Promise.reject(new Error('文件内容为空'));
-    return FS.writeFile({ path: filename, data: base64, directory: 'CACHE', recursive: true })
-      .then(function(){ return FS.getUri({ path: filename, directory: 'CACHE' }); })
+    return capSafe(function(){ return FS.writeFile({ path: filename, data: base64, directory: 'CACHE', recursive: true }); })
+      .then(function(){ return capSafe(function(){ return FS.getUri({ path: filename, directory: 'CACHE' }); }); })
       .then(function(res){
         var uri = (res && res.uri) || '';
         if(!uri) throw new Error('无法取得文件地址');
-        return Share.share({ title: title || 'i吃饭', text: mime === 'image/png' ? '数据来自本人记录' : '', files: [uri], dialogTitle: title || 'i吃饭' });
+        return capSafe(function(){ return Share.share({ title: title || 'i吃饭', text: mime === 'image/png' ? '数据来自本人记录' : '', files: [uri], dialogTitle: title || 'i吃饭' }); });
       });
   }
   function nativeShareText(text, title){
     var Share = capPlugin('Share');
     if(!Share) return Promise.reject(new Error('原生插件不可用'));
-    return Share.share({ title: title || 'i吃饭', text: text, dialogTitle: title || 'i吃饭' });
+    return capSafe(function(){ return Share.share({ title: title || 'i吃饭', text: text, dialogTitle: title || 'i吃饭' }); });
   }
   function nativeFailMsg(where, e, action){
     logError(where, e);
@@ -23958,6 +24159,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function registerSW(){
     if(!/^https?:/.test(location.protocol)) return;
     if(!('serviceWorker' in navigator)) return;
+    /* 原生壳的 origin 也是 https://localhost，但 APK 内资源随包更新，不需要也不应让 SW 缓存旧页面 */
+    try{
+      var C = window.Capacitor;
+      if(C && typeof C.isNativePlatform === 'function' && C.isNativePlatform()) return;
+    }catch(e){}
     try{
       navigator.serviceWorker.register('./sw.js').then(function(reg){
         swReg = reg;
@@ -25251,22 +25457,31 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function downloadJsonSelected(){
     var records = exportTargets.slice(), opts = exportOpts();
     if(!records.length){ toast('没有选中记录'); return; }
-    var out = {
+    var meta = {
       应用: 'i吃饭',
       生成时间: new Date().toISOString(),
       说明: '由「i吃饭」在本机导出，未上传服务器；照片仅在本机 IndexedDB。',
       免责声明: '数据来自本人记录，不代表平台评价',
       字段选项: opts,
-      记录数: records.length,
-      记录: [],
-      署名: '由 i吃饭 生成'
+      记录数: records.length
     };
+    /* 逐条序列化再拼装：避免「整包对象 + 全量 base64」再整体 stringify 一份，千条级时峰值内存约减半 */
+    var parts = [];
+    function finishJson(){
+      var head = JSON.stringify(meta, null, 2);
+      head = head.slice(0, head.lastIndexOf('}')).replace(/\s+$/, '');
+      var body = parts.length
+        ? '  "记录": [\n' + parts.map(function(s){ return '    ' + s.replace(/\n/g, '\n    '); }).join(',\n') + '\n  ]'
+        : '  "记录": []';
+      var text = head + ',\n' + body + ',\n  "署名": "由 i吃饭 生成"\n}\n';
+      download('i吃饭-选中记录-'+todayStr()+'.json', text, 'application/json');
+      toast('已导出 JSON（'+records.length+' 条）');
+      closeExport();
+    }
     var i = 0;
     function next(){
       if(i >= records.length){
-        download('i吃饭-选中记录-'+todayStr()+'.json', JSON.stringify(out, null, 2), 'application/json');
-        toast('已导出 JSON（'+records.length+' 条）');
-        closeExport();
+        finishJson();
         return;
       }
       var r = records[i++];
@@ -25274,15 +25489,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       if(opts.photo && r.photoId){
         photoGet(r.photoId).then(function(url){
           if(url) item.照片 = url;
-          out.记录.push(item);
+          parts.push(JSON.stringify(item, null, 2));
           setTimeout(next, 0);
         }).catch(function(){
-          out.记录.push(item);
+          parts.push(JSON.stringify(item, null, 2));
           setTimeout(next, 0);
         });
       }else{
         if(opts.photo && r.photo) item.照片 = r.photo;
-        out.记录.push(item);
+        parts.push(JSON.stringify(item, null, 2));
         setTimeout(next, 0);
       }
     }
@@ -25483,8 +25698,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var it = items[idx++];
       blobBase64(it.blob, function(b64){
         if(!b64){ step(); return; }
-        FS.writeFile({ path: it.name, data: b64, directory: 'CACHE', recursive: true })
-          .then(function(){ return FS.getUri({ path: it.name, directory: 'CACHE' }); })
+        capSafe(function(){ return FS.writeFile({ path: it.name, data: b64, directory: 'CACHE', recursive: true }); })
+          .then(function(){ return capSafe(function(){ return FS.getUri({ path: it.name, directory: 'CACHE' }); }); })
           .then(function(r){ if(r && r.uri) uris.push(r.uri); step(); })
           .catch(function(e){ logError('长图写入', e); step(); });
       });
@@ -25496,7 +25711,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(nativeFileBridge()){
       nativeShareBlobs(longBlobs.slice(0, 10), function(err, uris){
         if(err || !uris.length){ nativeFailMsg('保存长图', err || new Error('文件写入失败'), '保存'); return; }
-        capPlugin('Share').share({ title:'i吃饭 · 长图', files: uris, dialogTitle:'保存长图' })
+        capSafe(function(){ return capPlugin('Share').share({ title:'i吃饭 · 长图', files: uris, dialogTitle:'保存长图' }); })
           .then(function(){ toast('已生成 '+uris.length+' 张长图，请在分享面板里保存'); })
           .catch(function(e){ if(nativeCanceled(e)) return; nativeFailMsg('保存长图', e, '保存'); });
       });
@@ -25516,7 +25731,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(nativeFileBridge()){
       nativeShareBlobs(longBlobs.slice(0, 10), function(err, uris){
         if(err || !uris.length){ nativeFailMsg('分享长图', err || new Error('文件写入失败'), '分享'); return; }
-        capPlugin('Share').share({ title:'i吃饭 · 分享清单', text:longText || '数据来自本人记录，不代表平台评价', files: uris, dialogTitle:'分享清单' })
+        capSafe(function(){ return capPlugin('Share').share({ title:'i吃饭 · 分享清单', text:longText || '数据来自本人记录，不代表平台评价', files: uris, dialogTitle:'分享清单' }); })
           .then(function(){ toast('已调起系统分享'); })
           .catch(function(e){ if(nativeCanceled(e)) return; nativeFailMsg('分享长图', e, '分享'); });
       });
@@ -25653,7 +25868,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(encoded.length > FANZI_LINK_MAX){
       return { error:'压缩后 '+encoded.length+' 字符，超过链接上限 '+FANZI_LINK_MAX+'，请改用文件分享' };
     }
-    return { url: location.href.split('#')[0] + '#fanzi=' + encoded, encoded:encoded,
+    var base = shareBaseUrl();
+    if(!base) return { error:'当前环境无法生成可分享链接（双击本地文件打开时没有可访问地址），请改用 .fanzi.json 文件分享' };
+    return { url: base + '#fanzi=' + encoded, encoded:encoded,
       count:(t.stops || []).length, unit:'家店铺' };
   }
   function openTripFanzi(tid){
@@ -25837,7 +26054,9 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(encoded.length > FANZI_LINK_MAX){
       return { error:'压缩后 '+encoded.length+' 字符，超过链接上限 '+FANZI_LINK_MAX+'，请改用文件分享' };
     }
-    return { url: location.href.split('#')[0] + '#fanzi=' + encoded, encoded:encoded, count:recs.length };
+    var base = shareBaseUrl();
+    if(!base) return { error:'当前环境无法生成可分享链接（双击本地文件打开时没有可访问地址），请改用 .fanzi.json 文件分享' };
+    return { url: base + '#fanzi=' + encoded, encoded:encoded, count:recs.length };
   }
   function fanziMakeLink(){
     var r = buildFanziLink();
@@ -26300,9 +26519,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!st) return { sum:{new:0,dup:0,conflict:0}, write:0, skip:0, dupWrite:0, confWrite:0 };
     var sum = importSummary(st.rows);
     var dupMode = $('#importDupMode').value;
-    var dupWrite = dupMode === 'overwrite' ? sum.dup : 0;
+    /* overwrite 覆盖本机那一条；new 另起一条新记录（同一天同店吃两顿时不会盖掉原来的） */
+    var dupWrite = (dupMode === 'overwrite' || dupMode === 'new') ? sum.dup : 0;
     var confWrite = 0;
-    st.rows.forEach(function(row){ if(row.status === 'conflict' && row.decision === 'overwrite') confWrite++; });
+    st.rows.forEach(function(row){
+      if(row.status === 'conflict' && (row.decision === 'overwrite' || row.decision === 'new')) confWrite++;
+    });
     return {
       sum:sum, dupWrite:dupWrite, confWrite:confWrite,
       write:sum.new + dupWrite + confWrite,
@@ -26354,6 +26576,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       var html = '<div class="field" style="margin-top:4px"><label>冲突记录（同店同日，人均差异超过 10%）</label>' +
         '<div class="actions" style="margin:0 0 6px">' +
           '<button type="button" class="btn btn-sm" data-conf-all="overwrite">全部用对方的覆盖</button>' +
+          '<button type="button" class="btn btn-sm" data-conf-all="new">全部作为新记录</button>' +
           '<button type="button" class="btn btn-sm" data-conf-all="keep">全部保留我的</button>' +
         '</div>';
       conflicts.forEach(function(row){
@@ -26362,6 +26585,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           '<select data-conf="'+row.idx+'" aria-label="冲突处理">' +
             '<option value="keep"'+(row.decision === 'keep' ? ' selected' : '')+'>保留我的</option>' +
             '<option value="overwrite"'+(row.decision === 'overwrite' ? ' selected' : '')+'>用对方的覆盖</option>' +
+            '<option value="new"'+(row.decision === 'new' ? ' selected' : '')+'>作为新记录导入</option>' +
           '</select></div>';
       });
       html += '</div>';
@@ -26531,17 +26755,20 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(st.kind === 'trip') return applyTripImport();
     var plan = importPlan();
     if(!plan.write){ toast('没有需要写入的记录'); return Promise.resolve({ write:0 }); }
+    var dupMode = $('#importDupMode').value;
     var rows = [];
     st.rows.forEach(function(row){
       if(row.status === 'new') rows.push(row);
-      else if(row.status === 'dup' && $('#importDupMode').value === 'overwrite') rows.push(row);
-      else if(row.status === 'conflict' && row.decision === 'overwrite') rows.push(row);
+      else if(row.status === 'dup' && (dupMode === 'overwrite' || dupMode === 'new')) rows.push(row);
+      else if(row.status === 'conflict' && (row.decision === 'overwrite' || row.decision === 'new')) rows.push(row);
     });
     importBusy = true;
     var t0 = nowMs();
     var before = JSON.parse(JSON.stringify(db.records));
     makeSnapshot('before-import');
     var addedPhotos = [];
+    var addedIds = [];
+    var replaced = [];
     var includeStats = !!($('#importIncludeStats') && $('#importIncludeStats').checked);
     var stats = { added:0, overwritten:0, photos:0 };
     var i = 0;
@@ -26555,7 +26782,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           addedPhotos.push(photoId);
           stats.photos++;
         }
-        if(row.status === 'new'){
+        var asNew = row.status === 'new' ||
+          (row.status === 'dup' && dupMode === 'new') ||
+          (row.status === 'conflict' && row.decision === 'new');
+        if(asNew){
           rec.id = newId('r');
           rec.createdAt = new Date().toISOString();
           rec.updatedAt = rec.createdAt;
@@ -26564,6 +26794,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           rec.importedAt = rec.createdAt;
           rec.statsExcluded = includeStats ? false : true;
           db.records.unshift(rec);
+          addedIds.push(rec.id);
           stats.added++;
           return;
         }
@@ -26585,6 +26816,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
             if(old.photoId) merged.photoId = old.photoId;
             else if(old.photo) merged.photo = old.photo;
           }
+          replaced.push({ id: old.id, prev: JSON.parse(JSON.stringify(old)), afterAt: merged.updatedAt });
           db.records[pos] = merged;
           stats.overwritten++;
         }else{
@@ -26595,6 +26827,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           rec.importedAt = rec.createdAt;
           rec.statsExcluded = includeStats ? false : true;
           db.records.unshift(rec);
+          addedIds.push(rec.id);
           stats.added++;
         }
       }
@@ -26619,7 +26852,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         importBusy = false;
         save();
         var elapsed = Math.round(nowMs() - t0);
-        importSnapshot = { records:before, photoIds:addedPhotos, at:Date.now() };
+        importSnapshot = { kind:'records', records:before, addedIds:addedIds, replaced:replaced, photoIds:addedPhotos, at:Date.now() };
         $('#importPreview').classList.add('hidden');
         $('#importResult').classList.remove('hidden');
         $('#importResult').innerHTML =
@@ -26652,13 +26885,42 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       toast('已撤销本次行程导入');
       return true;
     }
-    db.records = snap.records;
-    snap.photoIds.forEach(function(id){ photoDelete(id); });
+    /* 精确回退：只移除本次导入新增的、且导入后没被再改动过的记录；
+       只还原被本次覆盖的、且覆盖后没被再改动过的记录。导入后用户自己新增的记录与后续编辑一律保留。 */
+    var removed = 0, restored = 0, keptEdited = 0;
+    if(snap.addedIds && snap.replaced){
+      var drop = {};
+      snap.addedIds.forEach(function(id){ drop[id] = 1; });
+      db.records = db.records.filter(function(r){
+        if(drop[r.id] !== 1) return true;
+        if(r.importedAt && r.updatedAt === r.importedAt){ removed++; return false; }
+        keptEdited++;
+        return true;
+      });
+      snap.replaced.forEach(function(it){
+        for(var k = 0; k < db.records.length; k++){
+          if(db.records[k].id !== it.id) continue;
+          if(db.records[k].updatedAt === it.afterAt){ db.records[k] = it.prev; restored++; }
+          else keptEdited++;
+          break;
+        }
+      });
+    }else{
+      db.records = snap.records;
+      removed = -1;
+    }
+    /* 照片只在确实没人再引用时才删，避免误删导入后新增记录的照片 */
+    var refIdx = photoRefIndex();
+    snap.photoIds.forEach(function(id){ if(!refIdx.used[id]) photoDelete(id); });
     save();
-    $('#importResult').innerHTML = '<h3>已撤销</h3><p class="muted">记录已恢复到导入前的状态。</p>' +
+    $('#importResult').innerHTML = '<h3>已撤销</h3><p class="muted">' +
+      (removed >= 0
+        ? '已移除导入新增 '+removed+' 条，恢复被覆盖 '+restored+' 条' +
+          (keptEdited ? '；有 '+keptEdited+' 条在导入后又被改动过，已保留现状未回退' : '') + '。'
+        : '记录已恢复到导入前的状态。') + '</p>' +
       '<div class="actions"><button type="button" class="btn" id="btnImportDone">关闭</button></div>';
     setImportStatus('已撤销本次导入。');
-    toast('已撤销本次导入');
+    toast(keptEdited ? ('已撤销导入，保留 '+keptEdited+' 条导入后的改动') : '已撤销本次导入');
     return true;
   }
   function handleFanziHash(){
@@ -27759,7 +28021,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
           '</select></div>' +
         '<div class="import-sum" style="margin-top:6px"><div><b>' + sum.new + '</b><span>可新增</span></div><div><b>' + sum.dup + '</b><span>重复</span></div><div><b>' + sum.conflict + '</b><span>冲突</span></div></div>' +
         '<p class="dist-note">合并模式只写入「可新增」，重复与冲突保留本机；完整替换会恢复备份里的全部记录。两种模式都会在写入前自动保存本机恢复点。</p>' +
-        '<div class="import-warn">恢复前会自动把当前数据存到本机恢复点（只保留最近 2 份，下一次导入会覆盖最旧的一份）；恢复点不是长期存档，请另存备份文件。</div>' +
+        '<div class="import-warn">恢复前会自动把当前数据存到本机恢复点（只保留最近 2 份，下一次导入会覆盖最旧的一份）；恢复点只存记录与配置、照片只存引用，如果照片本体已被清理，恢复点也找不回照片；恢复点不是长期存档，请另存备份文件。</div>' +
         '<div class="actions" style="margin-top:12px">' +
           '<button class="btn btn-primary" data-act="doRestore">开始恢复</button>' +
           '<button class="btn" data-act="close">取消</button>' +
@@ -27876,13 +28138,18 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var AUTOB_TIME_TOLERANCE = 10 * 60 * 1000;   /* 允许的时钟误差；超出即视为时间异常 */
   var AUTOB_CHECK_GAP = 60 * 1000;   /* 回前台 / 关键写入后的检查节流窗口 */
   var autobCheckAt = 0;
+  var autobBootArmed = false;   /* 是否已挂上「首次明确操作后检查一次」的一次性监听 */
+  var autobPanelChecked = false;   /* 本次会话内是否已因打开本机数据面板检查过 */
   var AUTOB_DB_NAME = 'fandazi.backups';
   var AUTOB_DIR = 'fandazi-backups';
+  /* 1.2.1：写/读顺序 = 子目录优先，失败退到 Data 根目录；空串表示根目录 */
+  var AUTOB_PATHS = [AUTOB_DIR, ''];
   var AUTOB_FILE_RE = /^fandazi-autobak-[0-9]{8}-[0-9]{6}(?:-[0-9]{1,4})?\.json$/;
   var autobMetaCache = null;
   var autobDbPromise = null;
   var autobBusy = false;
   var autobSeq = 0;
+  var autobNativeListErr = '';   /* 原生目录明确读取失败时的原因；空串 = 无错。禁止把失败伪装成空列表 */
   var autobForceFail = false;   /* 测试注入：只在 test hook 里打开 */
 
   function autobMetaClean(raw){
@@ -27902,7 +28169,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       dirKind: (o.dirKind === 'External' || o.dirKind === 'Data') ? o.dirKind : '',
       degraded: typeof o.degraded === 'string' ? o.degraded.slice(0, 180) : '',
       perm: typeof o.perm === 'string' ? o.perm.slice(0, 20) : '',
-      nativeOk: o.nativeOk === true
+      nativeOk: o.nativeOk === true,
+      bootAuto: o.bootAuto === true
     };
   }
   function autobMetaLoad(){
@@ -27917,6 +28185,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     catch(e){ logError('自动备份状态', e); }
     try{ autobBadgeRender(); }catch(e){ logError('自动备份角标', e); }
     return autobMetaCache;
+  }
+  /* 启动时自动备份开关：默认关；关闭时任何自动触发（启动检查/回前台/写入后补查）都不执行 */
+  function autobBootAuto(){
+    var m = autobMetaLoad();
+    return m.bootAuto === true;
+  }
+  function autobSetBootAuto(on){
+    var m = autobMetaLoad();
+    m.bootAuto = !!on;
+    autobMetaSave(m);
+    autobBootArmed = false;
+    if(on) autobArmBootAuto();
+    return m.bootAuto;
   }
   function autobKeep(){
     var n = 0;
@@ -28006,6 +28287,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   function autobFs(){
     try{ return (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Filesystem) || null; }catch(e){ return null; }
   }
+  /* 自建原生插件 FileStore（save/list/read/delete，直写 getFilesDir()/fandazi-backups）；优先于 Filesystem */
+  function autobStore(){
+    try{
+      if(window.Capacitor){
+        if(Capacitor.Plugins && Capacitor.Plugins.FileStore) return Capacitor.Plugins.FileStore;
+        if(typeof Capacitor.registerPlugin === 'function'){
+          var p = Capacitor.registerPlugin('FileStore');
+          if(p) return p;
+        }
+      }
+    }catch(e){}
+    return null;
+  }
   function autobPad2(n){ return (n < 10 ? '0' : '') + n; }
   function autobFileName(at){
     var d = new Date(num(at) > 0 ? num(at) : Date.now());
@@ -28025,112 +28319,152 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function autobReadDir(fs, kind){
     if(!fs || typeof fs.readdir !== 'function') return Promise.resolve([]);
-    return Promise.resolve(fs.readdir({ directory:kind, path:AUTOB_DIR })).then(function(res){
-      var names = ((res && res.files) || []).map(function(f){ return typeof f === 'string' ? f : String((f && f.name) || ''); })
-        .filter(function(n){ return AUTOB_FILE_RE.test(n); });
-      return Promise.all(names.map(function(name){
-        return Promise.resolve(typeof fs.stat === 'function' ? fs.stat({ directory:kind, path:AUTOB_DIR + '/' + name }) : null)
-          .then(function(st){
-            return { name:name, dirKind:kind, bytes:num(st && st.size), at:(num(st && st.mtime) > 0 ? num(st.mtime) : 0) || autobNameAt(name) || 0 };
-          }, function(){
-            return { name:name, dirKind:kind, bytes:0, at:autobNameAt(name) || 0 };
-          });
-      }));
-    }).catch(function(){ return []; });
+    function step(i){
+      if(i >= AUTOB_PATHS.length) return Promise.resolve([]);
+      var dir = AUTOB_PATHS[i];
+      return capSafe(function(){ return fs.readdir({ directory:kind, path:dir }); }, 'autob:readdir').then(function(res){
+        var names = ((res && res.files) || []).map(function(f){ return typeof f === 'string' ? f : String((f && f.name) || ''); })
+          .filter(function(n){ return AUTOB_FILE_RE.test(n); });
+        return Promise.all(names.map(function(name){
+          return capSafe(function(){ return typeof fs.stat === 'function' ? fs.stat({ directory:kind, path:(dir ? dir + '/' : '') + name }) : null; }, 'autob:stat')
+            .then(function(st){
+              return { name:name, dirKind:kind, bytes:num(st && st.size), at:(num(st && st.mtime) > 0 ? num(st && st.mtime) : 0) || autobNameAt(name) || 0 };
+            }, function(){
+              return { name:name, dirKind:kind, bytes:0, at:autobNameAt(name) || 0 };
+            });
+        }));
+      }, function(){ return step(i + 1); });
+    }
+    return step(0).catch(function(){ return []; });
   }
   function autobNativeList(){
+    var store = autobStore();
     var fs = autobFs();
-    if(!fs) return Promise.resolve([]);
-    return Promise.all(['External', 'Data'].map(function(k){ return autobReadDir(fs, k); })).then(function(all){
-      var seen = {}, out = [];
-      all.forEach(function(list){
-        list.forEach(function(it){
-          if(seen[it.name]) return;
-          seen[it.name] = 1;
-          out.push(it);
-        });
-      });
-      out.sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
-      return out;
-    });
-  }
-  function autobNativeDelete(name){
-    var fs = autobFs();
-    if(!fs) return Promise.resolve(false);
-    return Promise.all(['External', 'Data'].map(function(kind){
-      return Promise.resolve(fs.deleteFile({ directory:kind, path:AUTOB_DIR + '/' + name }))
-        .then(function(){ return true; }, function(){ return false; });
-    })).then(function(r){ return r.some(Boolean); });
-  }
-  function autobWriteFile(fs, kind, name, text){
-    return Promise.resolve().then(function(){
-      return fs.mkdir({ directory:kind, path:AUTOB_DIR, recursive:true });
-    }).catch(function(e){
-      var msg = String((e && e.message) || e || '');
-      if(/exist|already/i.test(msg)) return true;
-      throw e;
-    }).then(function(){
-      return fs.writeFile({ directory:kind, path:AUTOB_DIR + '/' + name, data:text, encoding:'utf8', recursive:true });
-    }).then(function(){
-      return Promise.resolve(typeof fs.getUri === 'function' ? fs.getUri({ directory:kind, path:AUTOB_DIR + '/' + name }) : null)
-        .then(function(u){
-          var uri = (u && u.uri) ? String(u.uri) : '';
-          return { ok:true, name:name, dirKind:kind, uri:uri.replace(/^file:\/\//, ''), reason:'' };
-        }, function(){ return { ok:true, name:name, dirKind:kind, uri:'', reason:'' }; });
-    }).catch(function(e){
-      return { ok:false, name:name, dirKind:kind, uri:'', reason:String((e && e.message) || e || '原生写入失败').slice(0, 140) };
-    });
-  }
-  /* 外部目录写不进去且是权限问题时，运行时申请一次；被拒后由调用方降级 */
-  function autobAskPermission(fs, reason){
-    var msg = String(reason || '');
-    if(!fs || typeof fs.requestPermissions !== 'function') return Promise.resolve({ needed:false, granted:false, state:'unknown' });
-    if(!/permission|denied|EACCES|EPERM|权限|拒绝/i.test(msg)) return Promise.resolve({ needed:false, granted:false, state:'not_needed' });
-    try{ toast('自动备份需要存储权限，用于把备份写入手机文件目录'); }catch(e){}
-    var check = (typeof fs.checkPermissions === 'function') ? fs.checkPermissions() : Promise.resolve({ publicStorage:'prompt' });
-    return Promise.resolve(check).catch(function(){ return { publicStorage:'prompt' }; }).then(function(st){
-      if(st && st.publicStorage === 'granted') return { needed:true, granted:true, state:'granted' };
-      return Promise.resolve(fs.requestPermissions()).then(function(r){
-        var ok = !!(r && r.publicStorage === 'granted');
-        return { needed:true, granted:ok, state:ok ? 'granted' : 'denied' };
-      }, function(){ return { needed:true, granted:false, state:'denied' }; });
-    });
-  }
-  function autobNativeWrite(rec){
-    var fs = autobFs();
-    if(!fs) return Promise.resolve({ ok:false, reason:'unavailable', dirKind:'', name:'', perm:'not_needed', degraded:'' });
-    var name = rec.nativeName || autobFileName(rec.at);
-    return autobWriteFile(fs, 'External', name, rec.text).then(function(first){
-      if(first.ok) return { ok:true, name:first.name, dirKind:'External', uri:first.uri, perm:'not_needed', degraded:'' };
-      return autobAskPermission(fs, first.reason).then(function(p){
-        var retry = p.granted ? autobWriteFile(fs, 'External', name, rec.text) : Promise.resolve(first);
-        return retry.then(function(second){
-          if(second.ok) return { ok:true, name:second.name, dirKind:'External', uri:second.uri, perm:p.state, degraded:'' };
-          return autobWriteFile(fs, 'Data', name, rec.text).then(function(third){
-            if(third.ok){
-              var why = (p.state === 'denied') ? '存储权限被拒' : ('外部目录写入失败：' + (second.reason || '未知原因'));
-              return { ok:true, name:third.name, dirKind:'Data', uri:third.uri, perm:p.state, degraded:why.slice(0, 140) };
-            }
-            return { ok:false, name:name, dirKind:'', reason:(third.reason || second.reason || '原生写入失败'), perm:p.state, degraded:'' };
+    function viaFs(){
+      if(!fs) return Promise.resolve([]);
+      return Promise.all(['Data'].map(function(k){ return autobReadDir(fs, k); })).then(function(all){
+        var seen = {}, out = [];
+        all.forEach(function(list){
+          list.forEach(function(it){
+            if(seen[it.name]) return;
+            seen[it.name] = 1;
+            out.push(it);
           });
         });
+        out.sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
+        return out;
+      });
+    }
+    if(!store) return viaFs();
+    return capSafe(function(){ return store.list(); }, 'filestore:list').then(function(r){
+      if(r && r.ok === false){
+        /* 原生明确报错（如 listFiles 返回 null、目录不可读）：不得静默当作空列表。
+           先试 Filesystem 降级，降级也拿不到东西时把原因留给界面显示。 */
+        var why = String(r.error || '未知错误');
+        return viaFs().then(function(fb){
+          if(fb && fb.length){ autobNativeListErr = ''; return fb; }
+          autobNativeListErr = why;
+          return [];
+        });
+      }
+      autobNativeListErr = '';
+      var files = (r && r.files) || [];
+      return files.map(function(f){
+        return { name:String((f && f.name) || ''), dirKind:'FileStore', bytes:num(f && f.bytes), at:num(f && f.mtime) || autobNameAt(f && f.name) || 0 };
+      }).filter(function(it){ return AUTOB_FILE_RE.test(it.name); })
+        .sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
+    }, function(){ return viaFs(); });
+  }
+  function autobNativeDelete(name){
+    var store = autobStore();
+    var fs = autobFs();
+    function viaFs(){
+      if(!fs) return Promise.resolve(false);
+      return Promise.all(AUTOB_PATHS.map(function(dir){
+        var p = (dir ? dir + '/' : '') + name;
+        return capSafe(function(){ return fs.deleteFile({ directory:'Data', path:p }); }, 'autob:deleteFile')
+          .then(function(){ return true; }, function(){ return false; });
+      })).then(function(r){ return r.some(Boolean); });
+    }
+    if(!store) return viaFs();
+    return capSafe(function(){ return store.delete({ name:name }); }, 'filestore:delete').then(function(r){
+      if(r && r.ok) return true;
+      return viaFs();
+    }, function(){ return viaFs(); });
+  }
+  /* 1.2.1：不再 mkdir / 不再 getUri，只用 writeFile（recursive 自动建父目录）+ 根目录兜底 */
+  function autobWriteFile(fs, kind, name, text){
+    function step(i){
+      if(i >= AUTOB_PATHS.length){
+        var err = new Error('写入失败：子目录与根目录都不可写');
+        diagBakNote('autob:write-final', err);
+        return Promise.resolve({ ok:false, name:name, dirKind:kind, uri:'', reason:String(err.message) });
+      }
+      var dir = AUTOB_PATHS[i];
+      var p = (dir ? dir + '/' : '') + name;
+      return capSafe(function(){
+        return fs.writeFile({ directory:kind, path:p, data:text, encoding:'utf8', recursive:true });
+      }, 'autob:writeFile').then(function(){
+        return { ok:true, name:name, dirKind:kind, uri:p, reason:'' };
+      }, function(e){
+        diagBakNote('autob:write-retry(' + (dir || 'root') + ')', e);
+        return step(i + 1);
+      });
+    }
+    return step(0);
+  }
+  /* 自动备份只写应用私有目录：优先自建 FileStore，其次 Capacitor Filesystem，都失败才报失败 */
+  function autobNativeWrite(rec){
+    var name = rec.nativeName || autobFileName(rec.at);
+    var store = autobStore();
+    function viaFs(){
+      var fs = autobFs();
+      if(!fs) return Promise.resolve({ ok:false, name:name, dirKind:'', uri:'', reason:'原生插件不可用', perm:'not_needed', degraded:'' });
+      return autobWriteFile(fs, 'Data', name, rec.text).then(function(r){
+        if(r.ok) return { ok:true, name:r.name, dirKind:'Data', uri:r.uri, perm:'not_needed', degraded:'' };
+        return { ok:false, name:name, dirKind:'', uri:'', reason:(r.reason || '原生写入失败'), perm:'not_needed', degraded:'' };
+      });
+    }
+    if(!store) return viaFs();
+    return capSafe(function(){ return store.save({ name:name, data:rec.text }); }, 'filestore:save').then(function(r){
+      if(r && r.ok) return { ok:true, name:name, dirKind:'FileStore', uri:String(r.path || ''), perm:'not_needed', degraded:'' };
+      var why = 'FileStore: ' + String((r && r.error) || '未知错误');
+      return viaFs().then(function(fb){
+        if(fb.ok) return fb;
+        return { ok:false, name:name, dirKind:'', uri:'', reason:why + ' ｜ Filesystem: ' + (fb.reason || '写入失败'), perm:'not_needed', degraded:'' };
+      });
+    }, function(e){
+      var why = 'FileStore: ' + String((e && ((e.name || 'Error') + ': ' + (e.message || e))) || e);
+      return viaFs().then(function(fb){
+        if(fb.ok) return fb;
+        return { ok:false, name:name, dirKind:'', uri:'', reason:why + ' ｜ Filesystem: ' + (fb.reason || '写入失败'), perm:'not_needed', degraded:'' };
       });
     });
   }
   function autobNativeRead(name){
+    var store = autobStore();
     var fs = autobFs();
-    if(!fs) return Promise.resolve('');
-    var kinds = ['External', 'Data'];
-    function step(i){
-      if(i >= kinds.length) return Promise.resolve('');
-      return Promise.resolve(fs.readFile({ directory:kinds[i], path:AUTOB_DIR + '/' + name, encoding:'utf8' })).then(function(r){
-        var data = r && r.data;
-        if(typeof data !== 'string') data = autobUtf8FromBase64(data);
-        return data || '';
-      }, function(){ return step(i + 1); });
+    function viaFs(){
+      if(!fs) return Promise.resolve('');
+      function step(i){
+        if(i >= AUTOB_PATHS.length) return Promise.resolve('');
+        var dir = AUTOB_PATHS[i];
+        var p = (dir ? dir + '/' : '') + name;
+        return capSafe(function(){ return fs.readFile({ directory:'Data', path:p, encoding:'utf8' }); }, 'autob:readFile').then(function(r){
+          var data = r && r.data;
+          if(typeof data !== 'string') data = autobUtf8FromBase64(data);
+          return data || '';
+        }, function(){ return step(i + 1); });
+      }
+      return step(0);
     }
-    return step(0);
+    if(!store) return viaFs();
+    return capSafe(function(){ return store.read({ name:name }); }, 'filestore:read').then(function(r){
+      if(r && r.ok) return String(r.data || '');
+      return viaFs();
+    }, function(){ return viaFs(); });
   }
+  function autobNativeCap(){ return !!(autobStore() || autobFs()); }
   function autobNativeRotate(){
     var keep = autobKeep();
     return autobNativeList().then(function(list){
@@ -28145,16 +28479,8 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     });
   }
   function autobNativeProbePath(){
-    var fs = autobFs();
-    if(!fs) return Promise.resolve('');
-    var kinds = ['External', 'Data'];
-    function step(i){
-      if(i >= kinds.length) return Promise.resolve('');
-      return Promise.resolve(fs.getUri({ directory:kinds[i], path:AUTOB_DIR })).then(function(u){
-        return String((u && u.uri) || '').replace(/^file:\/\//, '');
-      }, function(){ return step(i + 1); });
-    }
-    return step(0).catch(function(){ return ''; });
+    /* 1.2.1：不再调用 getUri（部分机型上这条桥接调用会抛原生异常），路径固定用文案说明 */
+    return Promise.resolve('');
   }
   function autobWebSave(rec){
     try{
@@ -28222,7 +28548,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         photos:b.obj.stats.photoRefs, recipes:b.obj.stats.recipes, text:b.text, native:false, nativeName:autobFileName(at) };
       return autobPut(rec);
     }).then(function(){
-      if(!autobFs()) return { ok:false, reason:'unavailable', dirKind:'', name:'', perm:'not_needed', degraded:'' };
+      if(!autobNativeCap()) return { ok:false, reason:'unavailable', dirKind:'', name:'', perm:'not_needed', degraded:'' };
       return autobNativeWrite(rec);
     }).then(function(nr){
       rec.native = nr.ok === true;
@@ -28231,19 +28557,27 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         return autobNativeRotate().then(function(nativeRemoved){
           var m = autobMetaLoad();
           m.lastAt = rec.at;
-          m.lastOkAt = rec.at;
-          m.lastErr = '';
-          m.failCount = 0;
-          m.lastFailAt = 0;
+          m.lastOkAt = rec.at;   /* 本机 IndexedDB 备份成功即算一次成功；原生目录只是附带 */
           m.nativeOk = nr.ok === true;
+          m.store = nr.ok === true ? 'native' : 'web';   /* 三态：native 原生文件 / web 仅应用内 / failed 失败 */
           m.dirKind = nr.dirKind || '';
-          m.perm = nr.perm || 'not_needed';
-          m.degraded = nr.degraded || '';
-          m.lastNativeErr = (!autobFs() || nr.ok) ? '' : String(nr.reason || '未写入手机目录').slice(0, 180);
+          m.perm = 'not_needed';
+          m.degraded = '';
+          if(autobNativeCap() && nr.ok !== true){
+            m.failCount = (num(m.failCount) || 0) + 1;
+            m.lastFailAt = Date.now();
+            m.lastNativeErr = String(nr.reason || '未知原因');
+            m.lastErr = '应用私有目录写入失败：' + m.lastNativeErr;
+          }else{
+            m.lastErr = '';
+            m.failCount = 0;
+            m.lastFailAt = 0;
+            m.lastNativeErr = '';
+          }
           if(nr.ok && nr.uri) m.dirPath = nr.uri;
-          if(!autobFs()){ m.dirPath = ''; m.dirKind = ''; m.nativeOk = false; }
+          if(!autobNativeCap()){ m.dirPath = ''; m.dirKind = ''; m.nativeOk = false; }
           autobMetaSave(m);
-          if(!autobFs()) autobWebSave(rec);
+          if(!autobNativeCap()) autobWebSave(rec);
           return { ok:true, at:rec.at, id:rec.id, bytes:rec.bytes, native:!!nr.ok,
             dirKind:nr.dirKind || '', degraded:nr.degraded || '', perm:nr.perm || 'not_needed',
             nativeReason:nr.reason || '', rotated:removed + nativeRemoved, ms:Math.round(nowMs() - t0) };
@@ -28251,6 +28585,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       });
     }).catch(function(e){
       autobBusy = false;
+      diagBakNote('autob:runOnce', e);
       throw e;
     }).then(function(res){
       autobBusy = false;
@@ -28266,14 +28601,15 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     return autobRunOnce().catch(function(){
       return autobRunOnce();
     }).then(function(res){
-      /* 完成提示：手机端原生目录没写进去时必须明说「未写入手机目录」 */
-      if(res && res.ok && autobFs() && res.native !== true){
-        try{ toast('自动备份已完成，但未写入手机目录（仅应用内）：' + (res.nativeReason || '未知原因')); }
+      /* 完成提示：私有目录没写进去时必须明说，不能伪装成已写入 */
+      if(res && res.ok && autobNativeCap() && res.native !== true){
+        try{ toast('自动备份已完成，但应用私有目录写入失败（仅应用内）：' + (res.nativeReason || '未知原因')); }
         catch(e){ logError('自动备份降级提示', e); }
       }
       return res;
     }).catch(function(e){
       var m = autobMetaLoad();
+      m.store = 'failed';
       m.lastErr = String((e && e.message) || e || '未知错误').slice(0, 180);
       m.failCount = Math.max(0, Math.round(num(m.failCount))) + 1;
       m.lastFailAt = Date.now();
@@ -28313,7 +28649,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     try{ toast(msg); }catch(e){ logError('自动备份失败提示', e); }
     return msg;
   }
+  /* 启动阶段完全不碰文件系统：只有开关打开、且用户已有一次明确操作后，才允许检查一次 */
+  function autobArmBootAuto(){
+    if(!autobBootAuto() || autobBootArmed) return false;
+    autobBootArmed = true;
+    var fire = function(){
+      document.removeEventListener('pointerdown', fire, true);
+      document.removeEventListener('keydown', fire, true);
+      setTimeout(function(){ try{ autobBootCheck(); }catch(e){ logError('自动备份启动检查', e); } }, 1500);
+    };
+    document.addEventListener('pointerdown', fire, true);
+    document.addEventListener('keydown', fire, true);
+    return true;
+  }
   function autobBootCheck(){
+    if(!autobBootAuto()) return false;
     var kick = function(){
       try{
         autobFailNotice();
@@ -28324,9 +28674,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     /* 页面空闲时再跑，不占首屏 */
     if(typeof window.requestIdleCallback === 'function') window.requestIdleCallback(kick, { timeout:4000 });
     else setTimeout(kick, 2000);
+    return true;
   }
   /* 回前台 / 关键写入后补查：仍按 24h 判定，60s 内只查一次，实际生成放到页面空闲时 */
   function autobCheckSoon(){
+    if(!autobBootAuto()) return false;
     if(document.hidden) return false;
     var now = Date.now();
     if(now - autobCheckAt < AUTOB_CHECK_GAP) return false;
@@ -28343,21 +28695,19 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(!box) return;
     var m = autobMetaLoad();
     autobBadgeRender();
-    var native = !!autobFs();
+    var native = !!autobNativeCap();
     var keep = autobKeep();
     var dirTxt;
     if(native){
-      var kindTxt = m.dirKind === 'Data' ? '应用私有目录（已降级）' : '应用专属外部目录';
-      dirTxt = '备份保存在：' + (m.dirPath ? m.dirPath : kindTxt + ' fandazi-backups（首次写入后显示完整路径）');
+      dirTxt = '备份保存在：应用私有目录 fandazi-backups' + (m.dirPath ? '（' + m.dirPath + '）' : '（首次写入后显示完整路径）');
     }else{
       dirTxt = '备份保存在：本机 IndexedDB（网页端生成后还会触发一次浏览器下载，需你自己的下载目录保存）';
     }
     var status = m.lastOkAt ? '上次成功：' + backupDateText(m.lastOkAt) : '还没有自动备份';
-    if(m.nativeOk) status += ' · 已写入手机目录';
-    else if(native && m.lastOkAt) status += ' · 仅应用内（未写入手机目录）';
+    if(m.nativeOk) status += ' · 已写入应用私有目录';
+    else if(native && m.lastOkAt) status += ' · 仅应用内（私有目录写入失败）';
     var errTxt = '';
-    if(m.degraded) errTxt += '<p class="notice" style="margin:6px 0 0">已降级到应用私有目录（原因：' + esc(m.degraded) + '）。备份仍可用，但清除 App 数据会一并删除。</p>';
-    if(m.lastNativeErr && !m.degraded) errTxt += '<p class="notice" style="margin:6px 0 0">手机目录写入失败：' + esc(m.lastNativeErr) + '（本机 IndexedDB 备份仍可用）</p>';
+    if(m.lastNativeErr) errTxt += '<p class="notice" style="margin:6px 0 0">应用私有目录写入失败：' + esc(m.lastNativeErr) + '（本机 IndexedDB 备份仍可用）</p>';
     if(m.lastErr) errTxt += '<p class="notice" style="margin:6px 0 0">上次失败：' + esc(m.lastErr) + '（已自动重试一次）' +
       (m.failCount >= 2 ? ' · 已连续失败 <b>' + m.failCount + '</b> 次' : '') +
       (m.lastFailAt ? '，最近一次 ' + esc(backupDateText(m.lastFailAt)) : '') + '</p>';
@@ -28369,23 +28719,61 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     var keepOpts = [3, 5, 7, 10, 15].map(function(n){
       return '<option value="' + n + '"' + (n === keep ? ' selected' : '') + '>' + n + ' 份</option>';
     }).join('');
+    var storeTxt = m.store === 'native' ? '原生文件保存成功'
+      : (m.store === 'web' ? '仅应用内保存成功' : (m.lastErr ? '保存失败' : '还没有试过'));
+    var stateRows = [
+      ['自动备份开关', m.bootAuto ? '开' : '关（默认关闭）'],
+      ['最近一次备份', m.lastOkAt ? backupDateText(m.lastOkAt) : '还没有'],
+      ['最近一次结果', storeTxt],
+      ['原生目录写入', m.nativeOk ? ('成功' + (m.dirKind ? '（' + m.dirKind + '）' : '')) : '未写入'],
+      ['自动备份含照片本体', '否（只存照片引用）'],
+      ['完整备份含照片', '是（含照片本体）'],
+      ['可增量同步', '记录 + 照片（Gist / Contents）'],
+      ['只能整包迁移', '其余设置、旅行、菜谱、食材等']
+    ];
+    if(autobNativeListErr) stateRows.push(['备份目录读取', '失败：' + autobNativeListErr]);
+    var stateHtml = '<div class="dist-note" style="margin:8px 0 0;line-height:1.65">' +
+      stateRows.map(function(r){
+        return '<div><span class="muted">' + esc(r[0]) + '</span>：' + esc(r[1]) + '</div>';
+      }).join('') +
+      '<div class="muted" style="margin-top:4px">自动备份 ≠ 完整照片备份；WebDAV 整包 ≠ 实时同步。</div></div>';
     box.innerHTML =
-      '<p class="dist-note" style="margin-top:0"><b>定时自动备份（手机文件目录）</b>：每天首次打开应用时检查，距上次自动备份超过 24 小时就在页面空闲时生成一份整包备份。保留最近 <select id="autoBakKeep" class="input" style="display:inline-block;width:auto;padding:1px 6px;font-size:12px">' + keepOpts + '</select>，超出按时间淘汰最旧的。只保存记录与照片引用，不含照片本体；照片需完整备份才能一起带走。</p>' +
+      '<p class="dist-note" style="margin-top:0"><b>定时自动备份（应用私有目录）</b>：只在下面的开关打开时生效；打开后，距上次自动备份超过 24 小时且你有明确操作（首次点按界面、保存记录、进入本页）时，才会在页面空闲时生成一份整包备份，写入应用私有目录 fandazi-backups。保留最近 <select id="autoBakKeep" class="input" style="display:inline-block;width:auto;padding:1px 6px;font-size:12px">' + keepOpts + '</select>，超出按时间淘汰最旧的。只保存记录与照片引用，不含照片本体；照片需完整备份才能一起带走。</p>' +
+      stateHtml +
+      '<label class="dist-note" style="display:flex;gap:8px;align-items:flex-start;margin:8px 0 0;cursor:pointer">' +
+        '<input type="checkbox" id="autoBakBoot"' + (m.bootAuto ? ' checked' : '') + ' style="margin-top:2px">' +
+        '<span>启动时自动备份（仅应用内）· 默认关闭<br><span class="muted">关闭时启动阶段不调用任何原生文件接口；打开后也只在你有明确操作之后才检查一次。</span></span>' +
+      '</label>' +
       '<p class="dist-note">' + esc(status) + ' · ' + esc(dirTxt) + '</p>' + errTxt +
       (native
-        ? '<p class="dist-note">手机端写入应用专属外部目录 fandazi-backups（Android/data/…/files/fandazi-backups）；系统限制写入时先申请存储权限并说明用途，被拒则降级到应用私有目录并在上方写明结果。</p>'
+        ? '<p class="dist-note">自动备份写在应用私有目录，不申请存储权限、不写 Android/data。这个目录在手机的文件管理器里看不到（系统限制，属于正常现象），要取出来请用下面的导出按钮。清理应用数据或卸载 App 时，这些备份会一起消失。</p>'
         : '<p class="dist-note">网页端需你自己的下载目录保存，本机自动备份仍在 IndexedDB。</p>') +
-      '<p class="dist-note">能防：误删记录、误合并、误恢复。不能防：在浏览器或 WebView 里清除站点数据（IndexedDB 会连同备份一起消失）' +
-        (native ? '；Android「清除数据」也会清掉应用私有目录。需要长期留存请用「完整备份」导出到文件。' : '。需要长期留存请用「完整备份」导出到文件。') +
-      '</p>' +
+      '<p class="dist-note">' + (native
+        ? '要跨设备或长期留存，请手动点下方「导出备份到手机目录」按钮，在弹出的系统分享面板里保存到手机目录或发给自己；导出只在点击时发生，不参与自动备份。'
+        : '要跨设备或长期留存，请手动点下方「导出完整备份」按钮下载到本机；导出只在点击时发生，不参与自动备份。') + '</p>' +
+      '<p class="dist-note">能防：误删记录、误合并、误恢复。不能防：清除站点数据或 Android「清除数据」（IndexedDB 与应用私有目录都会消失）。</p>' +
       '<div class="actions" style="margin-top:8px">' +
         '<button class="btn" data-autob="now">立即备份一次</button>' +
         '<button class="btn btn-soft" data-autob="clean">清理旧备份</button>' +
-        '<button class="btn btn-soft" data-autob="full">导出含照片的完整备份</button>' +
+        '<button class="btn btn-soft" data-autob="full">' + (native ? '导出备份到手机目录' : '导出完整备份') + '</button>' +
       '</div>' +
-      '<p class="dist-note" style="margin:10px 0 0">最近 ' + keep + ' 份（本机 IndexedDB / 手机目录）</p>' +
+      '<details class="dist-note" style="margin-top:10px"><summary>备份诊断（1.2.1-diag · 只在点击后读写）</summary>' +
+        '<div class="actions" style="margin-top:6px">' +
+          '<button type="button" class="btn btn-sm" data-diag="crash">读取上次崩溃堆栈</button>' +
+          '<button type="button" class="btn btn-sm" data-diag="boot">读取启动记录</button>' +
+          '<button type="button" class="btn btn-sm" data-diag="save">写出 diag-backup.txt</button>' +
+          '<button type="button" class="btn btn-sm" data-diag="clear">清空</button>' +
+        '</div>' +
+        '<pre id="diagBakPre" style="white-space:pre-wrap;word-break:break-all;max-height:220px;overflow:auto;font-size:11px;line-height:1.5;background:rgba(0,0,0,.04);padding:8px;border-radius:8px;margin:6px 0 0">' + esc(diagBakText() || '（暂无桥接失败记录）') + '</pre>' +
+      '</details>' +
+      '<p class="dist-note" style="margin:10px 0 0">最近 ' + keep + ' 份（' + (native ? '本机 IndexedDB / 应用私有目录' : '本机 IndexedDB') + '）</p>' +
       '<div id="autoBakList"></div>';
-    Promise.all([autobAll(), autobNativeList()]).then(function(arr){
+    var boxVisible = !!(box && box.offsetParent) && activeView === 'more';   /* 面板没真正打开时不做任何桥接读取 */
+    if(boxVisible && autobBootAuto() && !autobPanelChecked){
+      autobPanelChecked = true;
+      setTimeout(function(){ try{ autobBootCheck(); }catch(e){ logError('自动备份面板检查', e); } }, 300);
+    }
+    Promise.all([autobAll(), boxVisible ? autobNativeList() : Promise.resolve([])]).then(function(arr){
       if(activeView !== 'more') return;
       var el = $('#autoBakList');
       if(!el) return;
@@ -28400,15 +28788,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       dbList.forEach(function(x){ if(!used[x.id]) rows.push({ name:x.nativeName || '', at:x.at, bytes:x.bytes, rec:x, native:false }); });
       rows.sort(function(a, b){ return (b.at || 0) - (a.at || 0); });
       if(!rows.length){
-        el.innerHTML = '<p class="dist-note">还没有自动备份。打开应用满 24 小时后会自动生成第一份。</p>';
+        el.innerHTML = autobNativeListErr
+          ? '<p class="notice">应用私有目录读取失败：' + esc(autobNativeListErr) + '。这不代表没有备份，可稍后重试或检查存储空间。</p>'
+          : '<p class="dist-note">还没有自动备份。打开上面的「启动时自动备份」开关后，有明确操作时才会生成第一份。</p>';
         return;
       }
       el.innerHTML = rows.map(function(x){
         var meta = x.rec
           ? num(x.rec.records) + ' 条记录 · ' + num(x.rec.photos) + ' 张照片引用 · ' + num(x.rec.recipes) + ' 道菜谱'
-          : '手机目录文件 · ' + (x.dirKind === 'Data' ? '应用私有目录' : '应用专属外部目录');
-        var where = x.native ? (' · 手机文件 ' + x.name)
-          : (autobFs() ? ' · 仅应用内（未写入手机目录）' : ' · 仅本机');
+          : '应用私有目录文件';
+        var where = x.native ? (' · 应用私有目录 ' + x.name)
+          : (autobFs() ? ' · 仅应用内（私有目录写入失败）' : ' · 仅本机');
         var acts = x.rec
           ? '<button type="button" class="btn btn-sm" data-autob-exp="' + esc(x.rec.id) + '">导出</button>' +
             '<button type="button" class="btn btn-sm" data-autob-res="' + esc(x.rec.id) + '">还原</button>'
@@ -28443,7 +28833,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function autobNativeRestore(name){
     return autobNativeRead(name).then(function(text){
-      if(!text){ backupErrorModal('读取手机备份文件失败：' + name); return false; }
+      if(!text){ backupErrorModal('读取应用私有目录备份失败：' + name); return false; }
       var obj = parseBackupText(text);
       uiOpenRestorePreview(obj);   /* 与完整备份/本机自动备份同一条校验与恢复流程 */
       return true;
@@ -29113,6 +29503,20 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   });
   $('#autoBakBox').addEventListener('click', function(e){
     var t = e.target;
+    var dg = t.closest ? t.closest('[data-diag]') : null;
+    if(dg){
+      var d = dg.getAttribute('data-diag');
+      if(d === 'crash') diagBakReadNative('diag-crash.txt');
+      else if(d === 'boot') diagBakReadNative('diag-boot.txt');
+      else if(d === 'save') diagBakWriteNative();
+      else if(d === 'clear'){
+        try{ localStorage.removeItem('fandazi.diagbak'); }catch(_){}
+        diagBakLines = [];
+        diagBakRender();
+        toast('已清空本页诊断记录');
+      }
+      return;
+    }
     var act = t.closest ? t.closest('[data-autob]') : null;
     if(act){
       var what = act.getAttribute('data-autob');
@@ -29121,16 +29525,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         autobRunOnce().then(function(res){
           if(!res || !res.ok){ toast('自动备份未能完成'); return; }
           var t2 = '自动备份已完成（' + fmtBytes(res.bytes) + '）';
-          if(res.native) t2 += '，已写入手机目录';
-          else if(autobFs()) t2 += '，未写入手机目录（仅应用内）：' + (res.nativeReason || '未知原因');
-          else t2 += '，已触发浏览器下载';
+          if(res.native) t2 += res.dirKind === 'FileStore' ? '，原生文件保存成功' : '，原生文件保存成功（Filesystem 降级）';
+          else if(autobNativeCap()) t2 += '，仅应用内保存成功（私有目录写入失败：' + (res.nativeReason || '未知原因') + '）';
+          else t2 += '，仅应用内保存成功（网页端，已触发浏览器下载）';
+          t2 += res.native ? '；只含记录与照片引用，不含照片本体' : '';
           toast(t2);
         }).catch(function(err){
           toast('自动备份失败：' + ((err && err.message) || '未知错误'));
         });
       }else if(what === 'clean'){
         autobClean().then(function(r){
-          toast('已清理旧备份：本机 ' + r.db + ' 份、手机目录 ' + r.native + ' 份（当前保留 ' + r.keep + ' 份）');
+          toast('已清理旧备份：本机 ' + r.db + ' 份、应用私有目录 ' + r.native + ' 份（当前保留 ' + r.keep + ' 份）');
           autobRenderBox();
         }).catch(function(err){
           toast('清理旧备份失败：' + ((err && err.message) || '未知错误'));
@@ -29148,6 +29553,12 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(nres) autobNativeRestore(nres.getAttribute('data-autob-nres'));
   });
   $('#autoBakBox').addEventListener('change', function(e){
+    if(e.target && e.target.id === 'autoBakBoot'){
+      var on = autobSetBootAuto(e.target.checked);
+      toast(on ? '已打开启动时自动备份：只在你操作后检查一次，启动阶段不调原生文件接口' : '已关闭启动时自动备份：启动阶段不调原生文件接口');
+      autobRenderBox();
+      return;
+    }
     if(!e.target || e.target.id !== 'autoBakKeep') return;
     var n = autobSetKeep(e.target.value);
     autobClean().then(function(r){
@@ -29481,7 +29892,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       toast('已关闭全部筛选，重新推荐');
     }
     else if(act === 'copyShareText'){ if(friendState && friendState.text) copyText(friendState.text); }
-    else if(act === 'copyShareLink'){ if(friendState && friendState.link) copyText(friendState.link); }
+    else if(act === 'copyShareLink'){
+      if(friendState && friendState.link) copyText(friendState.link);
+      else toast('当前环境无法生成可分享链接，请复制文案发给朋友');
+    }
     else if(act === 'planVote'){ createVote(idx); renderParty(); }
     else if(act === 'voteUp' || act === 'voteDown'){
       var vv = voteById(vid);
@@ -29956,6 +30370,14 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     calSelected = (calSelected === d) ? '' : d;
     renderCalendar();
   });
+  /* 键盘可达：Enter / 空格等同点击，焦点留在同一格 */
+  $('#calGrid').addEventListener('keydown', function(e){
+    if(e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    var cell = e.target.closest ? e.target.closest('.cal-cell[data-day]') : null;
+    if(!cell) return;
+    e.preventDefault();
+    cell.click();
+  });
 
   /* 美食日记 */
   $('#diaryPrev').addEventListener('click', function(){ diaryCycleMonth(-1); });
@@ -29985,6 +30407,22 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     }
     var row = e.target.closest ? e.target.closest('[data-diary-id]') : null;
     if(row) diaryOpenDetail(row.getAttribute('data-diary-id'));
+  });
+  $('#diaryBox').addEventListener('keydown', function(e){
+    if(e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    var t = e.target;
+    var day = t.closest ? t.closest('[data-diary-day]') : null;
+    var row = t.closest ? t.closest('[data-diary-id]') : null;
+    if(!day && !row) return;
+    e.preventDefault();
+    if(day){
+      diaryState.day = day.getAttribute('data-diary-day');
+      diaryState.month = diaryState.day.slice(0, 7);
+      diaryState.shown = DIARY_PAGE;
+      renderDiary(true);
+      return;
+    }
+    diaryOpenDetail(row.getAttribute('data-diary-id'));
   });
   $('#diaryClose').addEventListener('click', closeDiaryDetail);
   $('#diaryMask').addEventListener('click', function(e){ if(e.target === this) closeDiaryDetail(); });
@@ -31143,7 +31581,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   initTheme();
   renderAll();
   try{ homeUIInit(); }catch(e){ logError('在家吃初始化', e); toast('「在家吃」初始化失败，部分功能可能不可用'); }
-  try{ autobBootCheck(); }catch(e){ logError('自动备份启动检查', e); }
+  try{ autobArmBootAuto(); }catch(e){ logError('自动备份启动挂载', e); }
   webdavInit();
   showView('record');
   try{ blindBallInit(); blindShakeBind(); }catch(e){ logError('盲盒初始化', e); toast('盲盒初始化失败，摇一摇可能不可用'); }
@@ -33264,7 +33702,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       list: function(){ return autobAll(); },
       get: function(id){ return autobGet(id); },
       build: function(){ return autobBuild(); },
-      native: function(){ return !!autobFs(); },
+      native: function(){ return !!autobNativeCap(); },
       dirPath: function(){ return autobMetaLoad().dirPath; },
       probePath: function(){ return autobNativeProbePath(); },
       exportOne: function(id){ return autobExport(id); },
@@ -33283,8 +33721,13 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       setKeep: function(n){ return autobSetKeep(n); },
       clean: function(){ return autobClean(); },
       nativeList: function(){ return autobNativeList(); },
+      nativeListErr: function(){ return autobNativeListErr; },
       nativeRead: function(name){ return autobNativeRead(name); },
       nativeRestore: function(name){ return autobNativeRestore(name); },
+      nativeDelete: function(name){ return autobNativeDelete(name); },
+      setBootAuto: function(on){ return autobSetBootAuto(on === true); },
+      bootAuto: function(){ return autobBootAuto(); },
+      armed: function(){ return autobBootArmed; },
       fail: function(on){ autobForceFail = !!on; return autobForceFail; },
       closeDb: function(){
         var p = autobDbPromise;
@@ -33742,6 +34185,17 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         };
       },
       statsToggle: function(on){ var cb = $('#importIncludeStats'); if(cb) cb.checked = !!on; return !!(cb && cb.checked); },
+      decide: function(i, d){
+        var st = importPreviewState;
+        if(st && st.rows && st.rows[i]) st.rows[i].decision = d;
+        return st && st.rows && st.rows[i] ? st.rows[i].decision : '';
+      },
+      dupMode: function(v){ var el = $('#importDupMode'); if(el && v != null) el.value = String(v); return el ? el.value : ''; },
+      snapshot: function(){
+        return importSnapshot ? { kind:importSnapshot.kind, added:(importSnapshot.addedIds || []).length,
+          replaced:(importSnapshot.replaced || []).length, photos:(importSnapshot.photoIds || []).length } : null;
+      },
+      resultText: function(){ return $('#importResult') ? $('#importResult').innerText : ''; },
       confirm: function(){ return applyImport(); },
       undo: function(){ return undoImport(); },
       file: readImportFile,
