@@ -468,7 +468,27 @@ public class FileStoreCoreTest {
                             + "/" + d34.error() + " name=" + d34.failedName());
             stuck3.delete();
         } else {
-            info("34b 自动清理失败写入诊断", "Linux 下删除不受写位限制，无法在单次 save 内构造清理失败；CI 走 34a 的目录只读路径");
+            /* Linux 上删除通常总能成功，用注入点在同一 save 流程里制造清理失败 */
+            File stuck4 = c.file("stuck4.json.stuck_1.part");
+            writeBytes(stuck4, "x");
+            stuck4.setLastModified(System.currentTimeMillis() - FileStoreCore.PART_TTL_MS - 60000);
+            POINT.set("cleanup-delete-fail");
+            boolean saveOk4;
+            try {
+                c.save("auto2.json", "{\"v\":2}");
+                saveOk4 = true;
+            } catch (Exception e) {
+                saveOk4 = false;
+            } finally {
+                POINT.remove();
+            }
+            FileStoreCore.CleanupDiagnostics d34b = c.cleanupDiagnostics();
+            check("34b 自动清理失败写入诊断且不阻断保存",
+                    saveOk4 && d34b.lastFailed() && d34b.failedName() != null
+                            && c.read("auto2.json").equals("{\"v\":2}"),
+                    "saveOk=" + saveOk4 + " diag=" + d34b.removed() + "/" + d34b.failed()
+                            + "/" + d34b.error() + " name=" + d34b.failedName());
+            stuck4.delete();
         }
 
 
