@@ -26937,12 +26937,21 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   var BACKUP_SCHEMA_VERSION = 8;
   var BACKUP_LAST_KEY = 'fandazi.backup.last';
   var BACKUP_TMP_KEY = KEY + '.restore.tmp';
-  var BACKUP_FILE_MAX = 200 * 1024 * 1024;
+  /* 导入上限（2026-11-09 实测依据，见《备份恢复容量实测报告》）：
+     记录型备份在 Chrome（localStorage 约 5M 字符配额）下 3500 条 / 2.06MB 可恢复，
+     4000 条 / 2.31MB 必然失败；含照片的备份因照片落 IndexedDB，2.87MB 仍可恢复。
+     自产备份的合理上限约为「照片 4MB 策略 + 记录 ~1.5MB」≈ 5.5MB，故取 16MB 作硬上限：
+     既能容纳含照片的合法备份，又把解析峰值压在约 120MB、主线程冻结 0.5s 以内。 */
+  var BACKUP_FILE_MAX = 16 * 1024 * 1024;
+  /* 超过该体积先让用户确认：读取会占内存，且记录多时可能超出本机存储配额 */
+  var BACKUP_WARN_FILE = 4 * 1024 * 1024;
   var BACKUP_WARN_BYTES = 50 * 1024 * 1024;
   var SNAPSHOT_LIMIT = 2;
 
   var backupBusy = false;
   var restoreBusy = false;
+  /* 导入全流程互斥：从选择文件到恢复结束；与 restoreBusy（仅写入阶段）分工不同 */
+  var restoreImportBusy = false;
   var backupLastCache = null;
   var backupReminderMuted = false;
   var testFailPhotoWrite = false;
@@ -27908,7 +27917,11 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     $('#backupMask').classList.remove('hidden');
     $('#backupModal').innerHTML = html;
   }
-  function closeBackupModal(){ $('#backupMask').classList.add('hidden'); }
+  function closeBackupModal(){
+    /* 用户关闭弹窗 = 放弃本次导入：释放互斥标记与待恢复对象，不让大对象继续驻留 */
+    if(!restoreBusy){ restoreImportBusy = false; pendingRestore = null; pendingRestorePhotoGap = 0; }
+    $('#backupMask').classList.add('hidden');
+  }
   function backupErrorModal(msg, title){
     openBackupModal(
       '<div class="sheet-head" style="margin-bottom:8px"><h3>' + esc(title || '无法恢复') + '</h3>' +
@@ -28039,6 +28052,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
         '</div>';
       openBackupModal(html);
     }).catch(function(e){
+      restoreImportBusy = false;
       pendingRestore = null;
       pendingRestorePhotoGap = 0;
       backupErrorModal(e && e.message ? e.message : '校验失败');
@@ -28052,6 +28066,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
     if(pendingRestorePhotoGap > 0 && !confirm('本次恢复有 ' + pendingRestorePhotoGap + ' 张照片本机不存在，相关记录恢复后没有照片。\n照片需完整备份（含照片本体）才能带回，确定继续恢复？')) return;
     openBackupModal('<h3>正在恢复…</h3><p class="muted">正在写入照片并切换数据；期间请勿关闭页面。</p>');
     applyBackupRestore(pendingRestore, mode).then(function(res){
+      restoreImportBusy = false;
       pendingRestore = null;
       pendingRestorePhotoGap = 0;
       openBackupModal(
@@ -28074,6 +28089,7 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       renderMore();
       toast('已恢复备份');
     }).catch(function(e){
+      restoreImportBusy = false;
       restoreFailModal(e, '恢复失败');
     });
   }
@@ -29455,19 +29471,33 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
   }
   function readBackupFile(file){
     if(!file) return;
+    /* 互斥：读取、解析、校验、恢复串成一条链，任何一环未结束时不再接受新文件 */
+    if(restoreImportBusy){ toast('正在处理上一份备份，请稍候'); return; }
     if(file.size > BACKUP_FILE_MAX){
-      backupErrorModal('文件超过 200MB 上限（' + Math.round(file.size / 1024 / 1024) + 'MB），未读取', '文件过大');
+      backupErrorModal('这份备份有 ' + fmtBytes(file.size) + '，超过 ' + fmtBytes(BACKUP_FILE_MAX) + ' 的导入上限，未读取。本机数据未改动。', '文件过大');
       return;
     }
+    /* 较大文件先确认：读取与校验会占内存、界面会短暂卡顿；记录多时可能超出本机存储配额 */
+    if(file.size > BACKUP_WARN_FILE && !confirm('这份备份有 ' + fmtBytes(file.size) + '，读取与校验时会占用较多内存，界面可能卡顿数秒。\n\n如果里面记录条数很多，还可能超出本机存储上限而恢复失败（失败不会改动现有数据）。继续？')) return;
+    restoreImportBusy = true;
     var fr = new FileReader();
     fr.onload = function(){
       var text = String(fr.result || '');
       var obj;
       try{ obj = parseBackupText(text); }
-      catch(e){ backupErrorModal(e && e.message ? e.message : '无法解析备份文件'); return; }
-      uiOpenRestorePreview(obj);
+      catch(e){
+        restoreImportBusy = false;
+        backupErrorModal(e && e.message ? e.message : '无法解析备份文件');
+        return;
+      }
+      try{ uiOpenRestorePreview(obj); }
+      catch(e){
+        restoreImportBusy = false;
+        logError('恢复预览', e);
+        backupErrorModal('无法打开恢复预览，本机数据未改动');
+      }
     };
-    fr.onerror = function(){ backupErrorModal('文件读取失败，请重试'); };
+    fr.onerror = function(){ restoreImportBusy = false; backupErrorModal('文件读取失败，请重试'); };
     fr.readAsText(file);
   }
   $('#backupMask').addEventListener('click', function(e){
