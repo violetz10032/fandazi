@@ -598,11 +598,14 @@ i吃饭 · 分享清单
 
 ### 7.1 启动阶段与原生桥接（1.2.0 起）
 
-- **启动路径零文件系统操作**：`init()` / `renderAll()` / 首屏渲染期间不调用 `Filesystem` / `Share`；自动备份的启动检查（`autobBootCheck`）已从启动序列移除，改为 `autobArmBootAuto()` 只挂一次性监听。
+- **启动路径零文件系统操作**：`init()` / `renderAll()` / 首屏渲染期间不调用 `FileStore` / `Filesystem` / `Share`；自动备份的启动检查（`autobBootCheck`）已从启动序列移除，改为 `autobArmBootAuto()` 只挂一次性监听。
 - **自动备份默认关闭**：`autobMetaLoad().bootAuto` 默认 `false`（「我的 → 本机数据 → 启动时自动备份（仅应用内）」）；关闭时 `autobBootCheck()` 与 `autobCheckSoon()` 直接返回，不触发任何桥接。
 - **只在明确操作后检查一次**：开关打开后，首次 `pointerdown` / `keydown`、保存记录、或进入本机数据页时，才在 `requestIdleCallback` 里检查一次「距上次超过 24 小时」。
 - **面板未真正打开不读私有目录**：`autobRenderBox()` 只在 `#autoBakBox` 可见且 `activeView === 'more'` 时才 `readdir` / `stat`。
-- **桥接调用逐个兜底**：`Filesystem.mkdir / writeFile / getUri / readdir / stat / readFile / deleteFile` 与 `Share.share` 全部经 `capSafe()` 包裹，同步抛错转 `rejected Promise`，异常不再冒泡到 Capacitor 线程。
+- **桥接调用逐个兜底**：`FileStore.save / list / read / delete`、`Filesystem.writeFile / readdir / stat / readFile / deleteFile` 与 `Share.share` 全部经 `capSafe()` 包裹，同步抛错转 `rejected Promise`，异常不再冒泡到 Capacitor 线程。
+- **原生文件存储换成自建插件（1.2.2）**：`FileStorePlugin.java`（`@CapacitorPlugin(name="FileStore")`）直写 `getContext().getFilesDir()/fandazi-backups`，暴露 `save({name,data})` → `{ok,path,bytes}`、`list()` → `{ok,files:[{name,bytes,mtime}]}`、`read({name})` → `{ok,data}`、`delete({name})` → `{ok,deleted}`；每个方法 `try/catch` 后 `resolve({ok:false,error})`，`MainActivity` 与 IconAlias / GeoPermission 并列注册。
+- **崩溃根因与旧行为差异**：1.2.0 前 `@capacitor/filesystem` 在本机写应用私有目录失败，rejected promise 冒泡到 Capacitor 线程，原生 Java 异常直接闪退；1.2.0 用 `capSafe()` 兜住后不再闪退，但仍报「私有目录写入失败」；1.2.2 改走 `FileStore` 才真正落盘成功。`list / read / delete` 也从「只写走新插件」补齐为「优先 `FileStore`，失败再退 `Filesystem`」。
+- **失败降级顺序**：写 `FileStore.save` → `Filesystem.writeFile` 子目录 `fandazi-backups/` → `Filesystem.writeFile` `Data` 根目录 → 失败提示；写失败提示同时保留 `FileStore: <error>` 与 `Filesystem: <reason>` 两段原文，不截断。读 / 列 / 删按同一优先级降级。
 - **照片本体不进自动备份**：自动备份只写记录与照片引用，照片仍在 IndexedDB。
 
 ---
@@ -673,6 +676,9 @@ i吃饭 · 分享清单
 | B4 分享/导入 | 互导 10 条、重复导入、8%/12% 边界、20 条链接、81 条阈值、二维码矩阵比对、损坏 JSON/version 2/11MB、1000 条耗时、375×812 预览 | 通过 |
 | 互导教程 | 帮助/分享/导入入口角色、首次提示与标记、引导冲突、1000 条耗时、375×812 与 375×520 布局、控制台/外部请求 | 通过 |
 | 店铺档案增强（第一阶段） | `shop-archive-test.js`：POI / 地址 / 坐标判重、跨城不误判、不自动合并、实际与参考人均分离、无数据「暂无数据」、时间轴、关联 / 忽略不改记录、合并保留历史与照片、四入口反馈 `surface`、想去只进 `wishlist`、v1 shopmeta 备份兼容、console/exception 0 | **28/28 通过** |
+| FileStore 全链路 | `.tmp/filestore-chain-check.js`：`save → list → read → delete` 全走 `FileStore` | **A 通过**：写入 320,699 B → 列表 1 条（同名同字节同 mtime）→ 读回 320,699 字符、`JSON.parse` 无错 → 删除后列表 0 |
+| 原生备份恢复 | `.tmp/restore-check.js`：好文件进恢复预览；`不存在.json` 失败不动数据 | **B 通过**：好文件打开 `#backupMask`；坏文件 `ok=false`、提示「原数据没有被修改」、records 0 → 0 |
+| 启动自动备份开关 | `.tmp/filestore-chain-check.js`：默认关 vs 打开 | **C/D 通过**：关时桥接调用 0 次、写入 0；打开后首次 `pointerdown` 触发 `save` + `list` 各 1 次 |
 | 移动截图 | 375×812 推荐页/抽签页/导入预览/教程顶底部；375×520 矮视口 | 布局正常，无溢出 |
 
 ### 10.2 手工自测清单
@@ -700,6 +706,7 @@ i吃饭 · 分享清单
 | 文件 | 作用 |
 | --- | --- |
 | `index.html` | v6 应用本体 |
+| `android-app/android/app/src/main/java/com/fandazi/app/FileStorePlugin.java` | 自建 `FileStore` 插件（`save / list / read / delete`，落盘 `files/fandazi-backups`） |
 | `manifest.webmanifest` | PWA 清单 |
 | `sw.js` | Service Worker（v11 缓存；`Capacitor.isNativePlatform()` 为真时直接跳过注册，避免 APK 长期缓存旧页面） |
 | `icons/icon-192.png` / `icons/icon-512.png` | 普通图标 |

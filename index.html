@@ -33669,6 +33669,10 @@ var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('co
       nativeList: function(){ return autobNativeList(); },
       nativeRead: function(name){ return autobNativeRead(name); },
       nativeRestore: function(name){ return autobNativeRestore(name); },
+      nativeDelete: function(name){ return autobNativeDelete(name); },
+      setBootAuto: function(on){ return autobSetBootAuto(on === true); },
+      bootAuto: function(){ return autobBootAuto(); },
+      armed: function(){ return autobBootArmed; },
       fail: function(on){ autobForceFail = !!on; return autobForceFail; },
       closeDb: function(){
         var p = autobDbPromise;

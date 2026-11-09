@@ -112,7 +112,9 @@
 | 恢复点（导入、恢复、清空照片前自动建，保留最近 2 份） | IndexedDB `snapshots` | 当时的记录与配置 | **照片本体**（只存 `photoId` 引用；照片被清理后恢复点也找不回） | 下一次导入会覆盖最旧的一份 |
 | 完整备份（手动导出 `.fanzi.json` / 上传 WebDAV） | 你自己的下载目录 / 网盘 | 记录、配置，**可选是否内联照片 base64** | — | 只要文件还在就一直可用 |
 
-- **APK 内自动备份目录在文件管理器里看不到**：`fandazi-backups` 是应用私有目录（系统限制，正常现象），不申请存储权限、也不写 `Android/data`。要把备份取出来，请用「我的 → 本机数据 → 导出备份到手机目录」，在弹出的系统面板里另存或发给自己。
+- **APK 内自动备份目录在文件管理器里看不到**：`fandazi-backups` 是应用私有目录（系统限制，正常现象），不申请存储权限、也不写 `Android/data`。实际落盘位置是 `getFilesDir()/fandazi-backups`（即 `/data/data/com.fandazi.app/files/fandazi-backups`），`list / read / delete` 与 `save` 都优先走这个目录。要把备份取出来，请用「我的 → 本机数据 → 导出备份到手机目录」，在弹出的系统面板里另存或发给自己。
+- **原生写入改用自建 `FileStore` 插件（1.2.2 起）**：不再用 `@capacitor/filesystem` 写私有目录。崩溃根因是后者在本机（小米 14 / Android 16）写入失败并让 rejected promise 冒泡到 Capacitor 线程，原生 Java 异常直接闪退；1.2.0 用 `capSafe()` 包住后不再闪退，但仍报「私有目录写入失败」；1.2.2 换成 `FileStorePlugin` 后才真正写成。
+- **失败降级顺序**：`FileStore.save` → `Filesystem.writeFile` 的 `fandazi-backups/` 子目录 → `Filesystem.writeFile` 的 `Data` 根目录 → 失败提示（`FileStore` 与 `Filesystem` 两段 `error` 原文完整显示，不截断）。列表 / 读取 / 删除同样「先 FileStore，失败再依次探测 Filesystem 两条路径」。
 - **照片要跟着走，必须用完整备份**：自动备份与恢复点都只存引用；换机或清数据前，请在完整备份里勾选「包含照片」。
 - **启动阶段不做任何文件系统操作**：`init()` / 首屏渲染期间不调用 `Filesystem` / `Share` 等原生桥接；自动备份的启动检查被移除，改成「开关打开 + 你有明确操作（首次点按、保存记录、进入本机数据页）之后才检查一次」。
 - **自动备份默认关闭**：开关在「我的 → 本机数据 → 启动时自动备份（仅应用内）」，默认关；关着时启动阶段与后台都不会读写私有目录。手动「立即备份」不受开关影响，始终可用且只写应用私有目录。
@@ -210,6 +212,16 @@ android-app/
 └── android/                  # Capacitor 生成的 Android 工程（Gradle + 原生壳）
 ```
 
+原生壳里共有 3 个自建插件（都在 `android/app/src/main/java/com/fandazi/app/`，由 `MainActivity.onCreate` 注册）：
+
+| 文件 | 插件名 | 作用 |
+| --- | --- | --- |
+| `IconAliasPlugin.java` | `IconAlias` | 切换桌面图标 A / B |
+| `GeoPermissionPlugin.java` | `GeoPermission` | 定位权限状态查询与跳转设置 |
+| `FileStorePlugin.java` | `FileStore` | 直写 `getFilesDir()/fandazi-backups` 的 `save / list / read / delete` |
+
+`FileStore` 是 1.2.2 新增：全部方法 `try/catch` 后 `resolve({ok:false,error})`，绝不把异常抛回 Capacitor 线程。
+
 `index.html` 仍然只有一份"源头"在仓库根，`www/` 里的副本在 CI 里用 `npm run sync:www` 重新生成，所以不必担心两边不同步。`node_modules/`、`android/build/`、`android/.gradle/` 都在 `.gitignore` 里。
 
 本地想自己改原生壳、重新出包：
@@ -226,7 +238,7 @@ cd android && ./gradlew assembleDebug
 
 ### 签名与分发限制
 
-- 当前是 **debug 签名**（Gradle 自动用 debug keystore 签名，`applicationId` = `com.fandazi.app`，`versionName` 1.2.0、`versionCode` 13）。
+- 当前是 **debug 签名**（Gradle 自动用 debug keystore 签名，`applicationId` = `com.fandazi.app`，`versionName` 1.2.3、`versionCode` 16）。
 - debug APK **只能自己装**：需要手动允许「未知来源」，也不能上传 Google Play / 国内应用商店，部分国产 ROM 会额外提示风险。
 - 真要正式发布，需要自己的 keystore + `release` 构建类型，并把 keystore 以 GitHub Secrets（base64）形式注入 CI，`./gradlew assembleRelease` 后再用 `apksigner` 校验；keystore 文件本身绝不能进仓库。
 
